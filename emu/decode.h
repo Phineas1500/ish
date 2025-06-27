@@ -29,7 +29,13 @@ __no_instrument DECODER_RET glue(DECODER_NAME, OP_SIZE)(DECODER_ARGS) {
     byte_t rex_r = 0;  // ModR/M reg extension (REX.R)  
     byte_t rex_x = 0;  // SIB index extension (REX.X)
     byte_t rex_b = 0;  // ModR/M r/m extension (REX.B)
+    
+    // Effective operand size: 64-bit when REX.W=1, otherwise default
+    #define EFFECTIVE_OZ (rex_w ? 64 : oz)
+#else
+    #define EFFECTIVE_OZ oz
 #endif
+
 #define READIMM_(name, size) _READIMM(name, size); TRACE("imm %llx ", (long long) name)
 #define READINSN _READIMM(insn, 8); TRACE("%02x ", insn)
 #define READIMM READIMM_(imm, OP_SIZE)
@@ -68,15 +74,15 @@ restart:
         case x+0x0: TRACEI(op " reg8, modrm8"); \
                    READMODRM; OP(modrm_reg, modrm_val,8); break; \
         case x+0x1: TRACEI(op " reg, modrm"); \
-                   READMODRM; OP(modrm_reg, modrm_val,oz); break; \
+                   READMODRM; OP(modrm_reg, modrm_val,EFFECTIVE_OZ); break; \
         case x+0x2: TRACEI(op " modrm8, reg8"); \
                    READMODRM; OP(modrm_val, modrm_reg,8); break; \
         case x+0x3: TRACEI(op " modrm, reg"); \
-                   READMODRM; OP(modrm_val, modrm_reg,oz); break; \
+                   READMODRM; OP(modrm_val, modrm_reg,EFFECTIVE_OZ); break; \
         case x+0x4: TRACEI(op " imm8, al\t"); \
                    READIMM8; OP(imm, reg_a,8); break; \
         case x+0x5: TRACEI(op " imm, oax\t"); \
-                   READIMM; OP(imm, reg_a,oz); break
+                   READIMM; OP(imm, reg_a,EFFECTIVE_OZ); break
 
         MAKE_OP(0x00, ADD, "add");
         MAKE_OP(0x08, OR, "or");
@@ -823,11 +829,11 @@ restart:
         case 0x88: TRACEI("mov reg8, modrm8");
                    READMODRM; MOV(modrm_reg, modrm_val,8); break;
         case 0x89: TRACEI("mov reg, modrm");
-                   READMODRM; MOV(modrm_reg, modrm_val,oz); break;
+                   READMODRM; MOV(modrm_reg, modrm_val,EFFECTIVE_OZ); break;
         case 0x8a: TRACEI("mov modrm8, reg8");
                    READMODRM; MOV(modrm_val, modrm_reg,8); break;
         case 0x8b: TRACEI("mov modrm, reg");
-                   READMODRM; MOV(modrm_val, modrm_reg,oz); break;
+                   READMODRM; MOV(modrm_val, modrm_reg,EFFECTIVE_OZ); break;
 
         case 0x8d: TRACEI("lea\t\t"); READMODRM_MEM;
                    MOV(addr, modrm_reg,oz); break;
@@ -919,13 +925,13 @@ restart:
                    READIMM8; MOV(imm, reg_bh,8); break;
 
         case 0xb8: TRACEI("mov imm, oax\t");
-                   READIMM; MOV(imm, reg_a,oz); break;
+                   READIMM; MOV(imm, reg_a,EFFECTIVE_OZ); break;
         case 0xb9: TRACEI("mov imm, ocx\t");
-                   READIMM; MOV(imm, reg_c,oz); break;
+                   READIMM; MOV(imm, reg_c,EFFECTIVE_OZ); break;
         case 0xba: TRACEI("mov imm, odx\t");
-                   READIMM; MOV(imm, reg_d,oz); break;
+                   READIMM; MOV(imm, reg_d,EFFECTIVE_OZ); break;
         case 0xbb: TRACEI("mov imm, obx\t");
-                   READIMM; MOV(imm, reg_b,oz); break;
+                   READIMM; MOV(imm, reg_b,EFFECTIVE_OZ); break;
         case 0xbc: TRACEI("mov imm, osp\t");
                    READIMM; MOV(imm, reg_sp,oz); break;
         case 0xbd: TRACEI("mov imm, obp\t");
