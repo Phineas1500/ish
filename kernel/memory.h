@@ -10,14 +10,24 @@
 #include "misc.h"
 
 struct mem {
+#ifdef ISH_64BIT
+    // 4-level page table for 64-bit: L4 -> L3 -> L2 -> L1
+    void ****pgdir_l4;  // Array of pointers to L3 tables
+#else
+    // 2-level page table for 32-bit: L1 -> L2
     struct pt_entry **pgdir;
+#endif
     int pgdir_used;
 
     struct mmu mmu;
 
     wrlock_t lock;
 };
-#define MEM_PGDIR_SIZE (1 << 10)
+#ifdef ISH_64BIT
+#define MEM_PGDIR_SIZE (1 << 9)  // 512 entries for 64-bit (matches x86-64 hardware)
+#else
+#define MEM_PGDIR_SIZE (1 << 10) // 1024 entries for 32-bit
+#endif
 
 // Initialize the address space
 void mem_init(struct mem *mem);
