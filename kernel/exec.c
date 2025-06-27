@@ -34,28 +34,113 @@ static inline dword_t copy_string(addr_t sp, const char *string);
 static inline dword_t args_copy(addr_t sp, struct exec_args args);
 static size_t args_size(struct exec_args args);
 
-static int read_header(struct fd *fd, struct elf_header *header) {
+static int read_header(struct fd *fd, struct elf_header_unified *header) {
     int err;
     if (fd->ops->lseek(fd, 0, SEEK_SET))
         return _EIO;
-    if ((err = fd->ops->read(fd, header, sizeof(*header))) != sizeof(*header)) {
+    
+    // First read the common part to determine bitness
+    byte_t temp_header[24]; // Size of common fields before bitness-dependent fields
+    if ((err = fd->ops->read(fd, temp_header, sizeof(temp_header))) != sizeof(temp_header)) {
         if (err < 0)
             return _EIO;
         return _ENOEXEC;
     }
+    
+    // Extract bitness from the common part
+    byte_t bitness = temp_header[4];
+    
+    // Reset file position and read the appropriate structure
+    if (fd->ops->lseek(fd, 0, SEEK_SET))
+        return _EIO;
+        
+    if (bitness == ELF_32BIT) {
+        struct elf_header header32;
+        if ((err = fd->ops->read(fd, &header32, sizeof(header32))) != sizeof(header32)) {
+            if (err < 0)
+                return _EIO;
+            return _ENOEXEC;
+        }
+        
+        // Convert 32-bit header to unified format
+        header->magic = header32.magic;
+        header->bitness = header32.bitness;
+        header->endian = header32.endian;
+        header->elfversion1 = header32.elfversion1;
+        header->abi = header32.abi;
+        header->abi_version = header32.abi_version;
+        memcpy(header->padding, header32.padding, sizeof(header32.padding));
+        header->type = header32.type;
+        header->machine = header32.machine;
+        header->elfversion2 = header32.elfversion2;
+        header->entry_point = header32.entry_point;
+        header->prghead_off = header32.prghead_off;
+        header->secthead_off = header32.secthead_off;
+        header->flags = header32.flags;
+        header->header_size = header32.header_size;
+        header->phent_size = header32.phent_size;
+        header->phent_count = header32.phent_count;
+        header->shent_size = header32.shent_size;
+        header->shent_count = header32.shent_count;
+        header->sectname_index = header32.sectname_index;
+        
+    } else if (bitness == ELF_64BIT) {
+        struct elf_header_64 header64;
+        if ((err = fd->ops->read(fd, &header64, sizeof(header64))) != sizeof(header64)) {
+            if (err < 0)
+                return _EIO;
+            return _ENOEXEC;
+        }
+        
+        // Convert 64-bit header to unified format
+        header->magic = header64.magic;
+        header->bitness = header64.bitness;
+        header->endian = header64.endian;
+        header->elfversion1 = header64.elfversion1;
+        header->abi = header64.abi;
+        header->abi_version = header64.abi_version;
+        memcpy(header->padding, header64.padding, sizeof(header64.padding));
+        header->type = header64.type;
+        header->machine = header64.machine;
+        header->elfversion2 = header64.elfversion2;
+        header->entry_point = header64.entry_point;
+        header->prghead_off = header64.prghead_off;
+        header->secthead_off = header64.secthead_off;
+        header->flags = header64.flags;
+        header->header_size = header64.header_size;
+        header->phent_size = header64.phent_size;
+        header->phent_count = header64.phent_count;
+        header->shent_size = header64.shent_size;
+        header->shent_count = header64.shent_count;
+        header->sectname_index = header64.sectname_index;
+        
+    } else {
+        return _ENOEXEC;
+    }
+    
     if (memcmp(&header->magic, ELF_MAGIC, sizeof(header->magic)) != 0
             || (header->type != ELF_EXECUTABLE && header->type != ELF_DYNAMIC)
-            || header->bitness != ELF_32BIT
             || header->endian != ELF_LITTLEENDIAN
-            || header->elfversion1 != 1
-            || header->machine != ELF_X86)
+            || header->elfversion1 != 1)
         return _ENOEXEC;
+    
+    // Validate bitness and machine type
+#ifdef ISH_64BIT
+    // 64-bit builds can run both 32-bit and 64-bit programs
+    if ((header->bitness == ELF_32BIT && header->machine != ELF_X86) ||
+        (header->bitness == ELF_64BIT && header->machine != ELF_X86_64) ||
+        (header->bitness != ELF_32BIT && header->bitness != ELF_64BIT))
+        return _ENOEXEC;
+#else
+    // 32-bit builds only support 32-bit programs
+    if (header->bitness != ELF_32BIT || header->machine != ELF_X86)
+        return _ENOEXEC;
+#endif
     return 0;
 }
 
-static int read_prg_headers(struct fd *fd, struct elf_header header, struct prg_header **ph_out) {
-    ssize_t ph_size = sizeof(struct prg_header) * header.phent_count;
-    struct prg_header *ph = malloc(ph_size);
+static int read_prg_headers(struct fd *fd, struct elf_header_unified header, struct prg_header_unified **ph_out) {
+    struct prg_header_unified *ph = malloc(sizeof(struct prg_header_unified) * header.phent_count);
     if (ph == NULL)
         return _ENOMEM;
 
@@ -63,10 +148,71 @@ static int read_prg_headers(struct fd *fd, struct elf_header header, struct prg_
         free(ph);
         return _EIO;
     }
-    if (fd->ops->read(fd, ph, ph_size) != ph_size) {
+
+    if (header.bitness == ELF_32BIT) {
+        // Read 32-bit program headers
+        ssize_t ph_size = sizeof(struct prg_header) * header.phent_count;
+        struct prg_header *ph32 = malloc(ph_size);
+        if (ph32 == NULL) {
+            free(ph);
+            return _ENOMEM;
+        }
+        
+        if (fd->ops->read(fd, ph32, ph_size) != ph_size) {
+            free(ph32);
+            free(ph);
+            if (errno != 0)
+                return _EIO;
+            return _ENOEXEC;
+        }
+        
+        // Convert 32-bit program headers to unified format
+        for (int i = 0; i < header.phent_count; i++) {
+            ph[i].type = ph32[i].type;
+            ph[i].flags = ph32[i].flags;
+            ph[i].offset = ph32[i].offset;
+            ph[i].vaddr = ph32[i].vaddr;
+            ph[i].paddr = ph32[i].paddr;
+            ph[i].filesize = ph32[i].filesize;
+            ph[i].memsize = ph32[i].memsize;
+            ph[i].alignment = ph32[i].alignment;
+        }
+        
+        free(ph32);
+        
+    } else if (header.bitness == ELF_64BIT) {
+        // Read 64-bit program headers
+        ssize_t ph_size = sizeof(struct prg_header_64) * header.phent_count;
+        struct prg_header_64 *ph64 = malloc(ph_size);
+        if (ph64 == NULL) {
+            free(ph);
+            return _ENOMEM;
+        }
+        
+        if (fd->ops->read(fd, ph64, ph_size) != ph_size) {
+            free(ph64);
+            free(ph);
+            if (errno != 0)
+                return _EIO;
+            return _ENOEXEC;
+        }
+        
+        // Convert 64-bit program headers to unified format
+        for (int i = 0; i < header.phent_count; i++) {
+            ph[i].type = ph64[i].type;
+            ph[i].flags = ph64[i].flags;
+            ph[i].offset = ph64[i].offset;
+            ph[i].vaddr = ph64[i].vaddr;
+            ph[i].paddr = ph64[i].paddr;
+            ph[i].filesize = ph64[i].filesize;
+            ph[i].memsize = ph64[i].memsize;
+            ph[i].alignment = ph64[i].alignment;
+        }
+        
+        free(ph64);
+        
+    } else {
         free(ph);
-        if (errno != 0)
-            return _EIO;
         return _ENOEXEC;
     }
 
@@ -74,7 +220,7 @@ static int read_prg_headers(struct fd *fd, struct elf_header header, struct prg_
     return 0;
 }
 
-static int load_entry(struct prg_header ph, addr_t bias, struct fd *fd) {
+static int load_entry(struct prg_header_unified ph, addr_t bias, struct fd *fd) {
     int err;
 
     addr_t addr = ph.vaddr + bias;
@@ -124,8 +270,8 @@ static int load_entry(struct prg_header ph, addr_t bias, struct fd *fd) {
     return 0;
 }
 
-static addr_t find_hole_for_elf(struct elf_header *header, struct prg_header *ph) {
-    struct prg_header *first = NULL, *last = NULL;
+static addr_t find_hole_for_elf(struct elf_header_unified *header, struct prg_header_unified *ph) {
+    struct prg_header_unified *first = NULL, *last = NULL;
     for (int i = 0; i < header->phent_count; i++) {
         if (ph[i].type == PT_LOAD) {
             if (first == NULL)
@@ -146,18 +292,18 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     int err = 0;
 
     // read the headers
-    struct elf_header header;
+    struct elf_header_unified header;
     if ((err = read_header(fd, &header)) < 0)
         return err;
-    struct prg_header *ph;
+    struct prg_header_unified *ph;
     if ((err = read_prg_headers(fd, header, &ph)) < 0)
         return err;
 
     // look for an interpreter
     char *interp_name = NULL;
     struct fd *interp_fd = NULL;
-    struct elf_header interp_header;
-    struct prg_header *interp_ph = NULL;
+    struct elf_header_unified interp_header;
+    struct prg_header_unified *interp_ph = NULL;
     for (unsigned i = 0; i < header.phent_count; i++) {
         if (ph[i].type != PT_INTERP)
             continue;
@@ -332,7 +478,7 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
         {AX_PAGESZ, PAGE_SIZE},
         {AX_CLKTCK, 0x64},
         {AX_PHDR, load_addr + header.prghead_off},
-        {AX_PHENT, sizeof(struct prg_header)},
+        {AX_PHENT, header.bitness == ELF_32BIT ? sizeof(struct prg_header) : sizeof(struct prg_header_64)},
         {AX_PHNUM, header.phent_count},
         {AX_BASE, interp_base},
         {AX_FLAGS, 0},

@@ -12,6 +12,7 @@
 #define ELF_EXECUTABLE 2
 #define ELF_DYNAMIC 3
 #define ELF_X86 3
+#define ELF_X86_64 62
 
 struct elf_header {
     uint32_t magic;
@@ -36,6 +37,36 @@ struct elf_header {
     uint16_t sectname_index;
 };
 
+// 64-bit ELF header structure
+struct elf_header_64 {
+    uint32_t magic;
+    byte_t bitness;
+    byte_t endian;
+    byte_t elfversion1;
+    byte_t abi;
+    byte_t abi_version;
+    byte_t padding[7];
+    uint16_t type;
+    uint16_t machine;
+    uint32_t elfversion2;
+    uint64_t entry_point;
+    uint64_t prghead_off;
+    uint64_t secthead_off;
+    uint32_t flags;
+    uint16_t header_size;
+    uint16_t phent_size;
+    uint16_t phent_count;
+    uint16_t shent_size;
+    uint16_t shent_count;
+    uint16_t sectname_index;
+};
+
+// Union to handle both 32-bit and 64-bit headers
+union elf_header_any {
+    struct elf_header h32;
+    struct elf_header_64 h64;
+};
+
 #define PT_NULL 0
 #define PT_LOAD 1
 #define PT_DYNAMIC 2
@@ -55,6 +86,60 @@ struct prg_header {
     dword_t memsize;
     uint32_t flags;
     dword_t alignment; // must be power of 2
+};
+
+// 64-bit program header structure
+struct prg_header_64 {
+    uint32_t type;
+    uint32_t flags;
+    uint64_t offset;
+    uint64_t vaddr;
+    uint64_t paddr;
+    uint64_t filesize;
+    uint64_t memsize;
+    uint64_t alignment;
+};
+
+// Union to handle both 32-bit and 64-bit program headers
+union prg_header_any {
+    struct prg_header h32;
+    struct prg_header_64 h64;
+};
+
+// Unified ELF header structure - holds common fields as 64-bit for compatibility
+struct elf_header_unified {
+    uint32_t magic;
+    byte_t bitness;
+    byte_t endian;
+    byte_t elfversion1;
+    byte_t abi;
+    byte_t abi_version;
+    byte_t padding[7];
+    uint16_t type;
+    uint16_t machine;
+    uint32_t elfversion2;
+    uint64_t entry_point;    // 64-bit to accommodate both formats
+    uint64_t prghead_off;    // 64-bit to accommodate both formats
+    uint64_t secthead_off;   // 64-bit to accommodate both formats
+    uint32_t flags;
+    uint16_t header_size;
+    uint16_t phent_size;
+    uint16_t phent_count;
+    uint16_t shent_size;
+    uint16_t shent_count;
+    uint16_t sectname_index;
+};
+
+// Unified program header structure - holds common fields as 64-bit for compatibility
+struct prg_header_unified {
+    uint32_t type;
+    uint32_t flags;
+    uint64_t offset;     // 64-bit to accommodate both formats
+    uint64_t vaddr;      // 64-bit to accommodate both formats
+    uint64_t paddr;      // 64-bit to accommodate both formats
+    uint64_t filesize;   // 64-bit to accommodate both formats
+    uint64_t memsize;    // 64-bit to accommodate both formats
+    uint64_t alignment;  // 64-bit to accommodate both formats
 };
 
 #define PH_R (1 << 2)
