@@ -38,6 +38,60 @@ struct cpu_state {
 
     // general registers
     // assumes little endian (as does literally everything)
+#ifdef ISH_64BIT
+    // 64-bit register definitions
+#define _REG64(n) \
+    union { \
+        qword_t r##n; \
+        dword_t e##n; \
+        word_t n; \
+    }
+#define _REG64X(n) \
+    union { \
+        qword_t r##n##x; \
+        dword_t e##n##x; \
+        word_t n##x; \
+        struct { \
+            byte_t n##l; \
+            byte_t n##h; \
+        }; \
+    }
+#define _REG64_R(n) \
+    union { \
+        qword_t r##n; \
+        dword_t r##n##d; \
+        word_t r##n##w; \
+        byte_t r##n##b; \
+    }
+
+    union {
+        struct {
+            _REG64X(a);    // RAX
+            _REG64X(c);    // RCX  
+            _REG64X(d);    // RDX
+            _REG64X(b);    // RBX
+            _REG64(sp);    // RSP
+            _REG64(bp);    // RBP
+            _REG64(si);    // RSI
+            _REG64(di);    // RDI
+            _REG64_R(8);   // R8
+            _REG64_R(9);   // R9
+            _REG64_R(10);  // R10
+            _REG64_R(11);  // R11
+            _REG64_R(12);  // R12
+            _REG64_R(13);  // R13
+            _REG64_R(14);  // R14
+            _REG64_R(15);  // R15
+        };
+        qword_t regs[16];
+    };
+#undef _REG64_R
+#undef _REG64X
+#undef _REG64
+
+    qword_t rip;
+#else
+    // 32-bit register definitions (existing)
 #define _REG(n) \
     union { \
         dword_t e##n; \
@@ -70,6 +124,7 @@ struct cpu_state {
 #undef REG
 
     dword_t eip;
+#endif
 
     // flags
     union {
@@ -175,6 +230,26 @@ struct cpu_state {
 
 #define CPU_OFFSET(field) offsetof(struct cpu_state, field)
 
+#ifdef ISH_64BIT
+// 64-bit register order validation
+static_assert(CPU_OFFSET(rax) == CPU_OFFSET(regs[0]), "register order");
+static_assert(CPU_OFFSET(rcx) == CPU_OFFSET(regs[1]), "register order");
+static_assert(CPU_OFFSET(rdx) == CPU_OFFSET(regs[2]), "register order");
+static_assert(CPU_OFFSET(rbx) == CPU_OFFSET(regs[3]), "register order");
+static_assert(CPU_OFFSET(rsp) == CPU_OFFSET(regs[4]), "register order");
+static_assert(CPU_OFFSET(rbp) == CPU_OFFSET(regs[5]), "register order");
+static_assert(CPU_OFFSET(rsi) == CPU_OFFSET(regs[6]), "register order");
+static_assert(CPU_OFFSET(rdi) == CPU_OFFSET(regs[7]), "register order");
+static_assert(CPU_OFFSET(r8) == CPU_OFFSET(regs[8]), "register order");
+static_assert(CPU_OFFSET(r9) == CPU_OFFSET(regs[9]), "register order");
+static_assert(CPU_OFFSET(r10) == CPU_OFFSET(regs[10]), "register order");
+static_assert(CPU_OFFSET(r11) == CPU_OFFSET(regs[11]), "register order");
+static_assert(CPU_OFFSET(r12) == CPU_OFFSET(regs[12]), "register order");
+static_assert(CPU_OFFSET(r13) == CPU_OFFSET(regs[13]), "register order");
+static_assert(CPU_OFFSET(r14) == CPU_OFFSET(regs[14]), "register order");
+static_assert(CPU_OFFSET(r15) == CPU_OFFSET(regs[15]), "register order");
+#else
+// 32-bit register order validation (existing)
 static_assert(CPU_OFFSET(eax) == CPU_OFFSET(regs[0]), "register order");
 static_assert(CPU_OFFSET(ecx) == CPU_OFFSET(regs[1]), "register order");
 static_assert(CPU_OFFSET(edx) == CPU_OFFSET(regs[2]), "register order");
@@ -183,6 +258,7 @@ static_assert(CPU_OFFSET(esp) == CPU_OFFSET(regs[4]), "register order");
 static_assert(CPU_OFFSET(ebp) == CPU_OFFSET(regs[5]), "register order");
 static_assert(CPU_OFFSET(esi) == CPU_OFFSET(regs[6]), "register order");
 static_assert(CPU_OFFSET(edi) == CPU_OFFSET(regs[7]), "register order");
+#endif
 static_assert(sizeof(struct cpu_state) < 0xffff, "cpu struct is too big for vector gadgets");
 
 // flags
@@ -213,6 +289,56 @@ static inline void expand_flags(struct cpu_state *cpu) {
     cpu->zf_res = cpu->sf_res = cpu->pf_res = cpu->af_ops = 0;
 }
 
+#ifdef ISH_64BIT
+enum reg64 {
+    reg_rax = 0, reg_rcx, reg_rdx, reg_rbx, reg_rsp, reg_rbp, reg_rsi, reg_rdi,
+    reg_r8, reg_r9, reg_r10, reg_r11, reg_r12, reg_r13, reg_r14, reg_r15,
+    reg_count,
+    reg_none = reg_count,
+};
+
+static inline const char *reg64_name(enum reg64 reg) {
+    switch (reg) {
+        case reg_rax: return "rax";
+        case reg_rcx: return "rcx";
+        case reg_rdx: return "rdx";
+        case reg_rbx: return "rbx";
+        case reg_rsp: return "rsp";
+        case reg_rbp: return "rbp";
+        case reg_rsi: return "rsi";
+        case reg_rdi: return "rdi";
+        case reg_r8: return "r8";
+        case reg_r9: return "r9";
+        case reg_r10: return "r10";
+        case reg_r11: return "r11";
+        case reg_r12: return "r12";
+        case reg_r13: return "r13";
+        case reg_r14: return "r14";
+        case reg_r15: return "r15";
+        default: return "?";
+    }
+}
+
+// For compatibility, define 32-bit subset
+enum reg32 {
+    reg_eax = 0, reg_ecx, reg_edx, reg_ebx, reg_esp, reg_ebp, reg_esi, reg_edi, reg_count_32,
+    reg_none_32 = reg_count_32,
+};
+
+static inline const char *reg32_name(enum reg32 reg) {
+    switch (reg) {
+        case reg_eax: return "eax";
+        case reg_ecx: return "ecx";
+        case reg_edx: return "edx";
+        case reg_ebx: return "ebx";
+        case reg_esp: return "esp";
+        case reg_ebp: return "ebp";
+        case reg_esi: return "esi";
+        case reg_edi: return "edi";
+        default: return "?";
+    }
+}
+#else
 enum reg32 {
     reg_eax = 0, reg_ecx, reg_edx, reg_ebx, reg_esp, reg_ebp, reg_esi, reg_edi, reg_count,
     reg_none = reg_count,
@@ -231,5 +357,6 @@ static inline const char *reg32_name(enum reg32 reg) {
         default: return "?";
     }
 }
+#endif
 
 #endif

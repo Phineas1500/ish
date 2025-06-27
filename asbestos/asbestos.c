@@ -187,7 +187,11 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 
     int interrupt = INT_NONE;
     while (interrupt == INT_NONE) {
+#ifdef ISH_64BIT
+        addr_t ip = frame->cpu.rip;
+#else
         addr_t ip = frame->cpu.eip;
+#endif
         size_t cache_index = fiber_cache_hash(ip);
         struct fiber_block *block = cache[cache_index];
         if (block == NULL || block->addr != ip) {
@@ -244,7 +248,11 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 
 static int cpu_single_step(struct cpu_state *cpu, struct tlb *tlb) {
     struct gen_state state;
+#ifdef ISH_64BIT
+    gen_start(cpu->rip, &state);
+#else
     gen_start(cpu->eip, &state);
+#endif
     gen_step(&state, tlb);
     gen_exit(&state);
     gen_end(&state);
