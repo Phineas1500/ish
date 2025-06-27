@@ -23,6 +23,13 @@ __no_instrument DECODER_RET glue(DECODER_NAME, OP_SIZE)(DECODER_ARGS) {
     byte_t insn;
     uint64_t imm = 0;
     struct modrm modrm;
+#ifdef ISH_64BIT
+    // REX prefix support for 64-bit mode
+    byte_t rex_w = 0;  // 64-bit operand size (REX.W)
+    byte_t rex_r = 0;  // ModR/M reg extension (REX.R)  
+    byte_t rex_x = 0;  // SIB index extension (REX.X)
+    byte_t rex_b = 0;  // ModR/M r/m extension (REX.B)
+#endif
 #define READIMM_(name, size) _READIMM(name, size); TRACE("imm %llx ", (long long) name)
 #define READINSN _READIMM(insn, 8); TRACE("%02x ", insn)
 #define READIMM READIMM_(imm, OP_SIZE)
@@ -34,7 +41,28 @@ __no_instrument DECODER_RET glue(DECODER_NAME, OP_SIZE)(DECODER_ARGS) {
 
 restart:
     TRACEIP();
+#ifdef ISH_64BIT
+    // Reset REX state and check for REX prefix (0x40-0x4F)
+    rex_w = rex_r = rex_x = rex_b = 0;
     READINSN;
+    if ((insn & 0xF0) == 0x40) {
+        // Parse REX prefix bits
+        rex_w = (insn >> 3) & 1;  // Bit 3: 64-bit operand size
+        rex_r = (insn >> 2) & 1;  // Bit 2: ModR/M reg extension
+        rex_x = (insn >> 1) & 1;  // Bit 1: SIB index extension
+        rex_b = insn & 1;         // Bit 0: ModR/M r/m extension
+        TRACE("REX %02x", insn);
+        if (rex_w) TRACE(" W");
+        if (rex_r) TRACE(" R"); 
+        if (rex_x) TRACE(" X");
+        if (rex_b) TRACE(" B");
+        TRACE(" ");
+        // Read actual instruction after REX prefix
+        READINSN;
+    }
+#else
+    READINSN;
+#endif
     switch (insn) {
 #define MAKE_OP(x, OP, op) \
         case x+0x0: TRACEI(op " reg8, modrm8"); \
