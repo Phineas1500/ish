@@ -389,7 +389,11 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
 
     current->mm->stack_start = sp;
     current->cpu.esp = sp;
+#ifdef ISH_64BIT
+    current->cpu.rip = entry;
+#else
     current->cpu.eip = entry;
+#endif
     current->cpu.fcw = 0x37f;
 
     // This code was written when I discovered that the glibc entry point

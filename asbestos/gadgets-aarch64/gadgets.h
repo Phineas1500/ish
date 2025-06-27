@@ -13,8 +13,20 @@ esi .req w24
 edi .req w25
 ebp .req w26
 esp .req w27
+
+# 64-bit register assignments (for ISH_64BIT mode)
+rax .req x20
+rbx .req x21
+rcx .req x22
+rdx .req x23
+rsi .req x24
+rdi .req x25
+rbp .req x26
+rsp .req x27
+
 _ip .req x28
 eip .req w28
+rip .req x28
 _tmp .req w0
 _xtmp .req x0
 _cpu .req x1
@@ -219,6 +231,17 @@ back_write_done_\id :
 .endm
 
 .macro save_regs
+#ifdef ISH_64BIT
+    str rax, [_cpu, CPU_rax]
+    str rbx, [_cpu, CPU_rbx]
+    str rcx, [_cpu, CPU_rcx]
+    str rdx, [_cpu, CPU_rdx]
+    str rdi, [_cpu, CPU_rdi]
+    str rsi, [_cpu, CPU_rsi]
+    str rbp, [_cpu, CPU_rbp]
+    str rsp, [_cpu, CPU_rsp]
+    str rip, [_cpu, CPU_rip]
+#else
     str eax, [_cpu, CPU_eax]
     str ebx, [_cpu, CPU_ebx]
     str ecx, [_cpu, CPU_ecx]
@@ -228,6 +251,7 @@ back_write_done_\id :
     str ebp, [_cpu, CPU_ebp]
     str esp, [_cpu, CPU_esp]
     str eip, [_cpu, CPU_eip]
+#endif
 .endm
 
 # vim: ft=gas

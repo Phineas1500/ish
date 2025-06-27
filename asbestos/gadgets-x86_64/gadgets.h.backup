@@ -1,33 +1,19 @@
 #include "../gadgets-generic.h"
 #include "cpu-offsets.h"
 
-# register assignments for 64-bit x86 emulation
-# Main x86_64 registers (RAX, RBX, RCX, RDX, RSI, RDI, RBP, RSP)
-rax .req x20
+# register assignments
 eax .req w20
-rbx .req x21  
-ebx .req w21
-rcx .req x22
-ecx .req w22
-rdx .req x23
-edx .req w23
-rsi .req x24
-esi .req w24
-rdi .req x25
-edi .req w25
-rbp .req x26
-ebp .req w26
-rsp .req x27
-esp .req w27
-
-# Additional aliases for compatibility
 xax .req x20
+ebx .req w21
+ecx .req w22
 xcx .req x22
+edx .req w23
 xdx .req x23
-
-# Instruction pointer
+esi .req w24
+edi .req w25
+ebp .req w26
+esp .req w27
 _ip .req x28
-rip .req x28
 eip .req w28
 _tmp .req w0
 _xtmp .req x0
@@ -107,17 +93,6 @@ back_write_done_\id :
     \macro reg_di, edi
     \macro reg_bp, ebp
     \macro reg_sp, esp
-.endm
-
-.macro .each_reg64 macro:vararg
-    \macro reg_rax, rax
-    \macro reg_rbx, rbx
-    \macro reg_rcx, rcx
-    \macro reg_rdx, rdx
-    \macro reg_rsi, rsi
-    \macro reg_rdi, rdi
-    \macro reg_rbp, rbp
-    \macro reg_rsp, rsp
 .endm
 
 .macro ss size, macro, args:vararg
@@ -233,26 +208,26 @@ back_write_done_\id :
 .endm
 
 .macro load_regs
-    ldr rax, [_cpu, CPU_rax]
-    ldr rbx, [_cpu, CPU_rbx]
-    ldr rcx, [_cpu, CPU_rcx]
-    ldr rdx, [_cpu, CPU_rdx]
-    ldr rsi, [_cpu, CPU_rsi]
-    ldr rdi, [_cpu, CPU_rdi]
-    ldr rbp, [_cpu, CPU_rbp]
-    ldr rsp, [_cpu, CPU_rsp]
+    ldr eax, [_cpu, CPU_eax]
+    ldr ebx, [_cpu, CPU_ebx]
+    ldr ecx, [_cpu, CPU_ecx]
+    ldr edx, [_cpu, CPU_edx]
+    ldr esi, [_cpu, CPU_esi]
+    ldr edi, [_cpu, CPU_edi]
+    ldr ebp, [_cpu, CPU_ebp]
+    ldr esp, [_cpu, CPU_esp]
 .endm
 
 .macro save_regs
-    str rax, [_cpu, CPU_rax]
-    str rbx, [_cpu, CPU_rbx]
-    str rcx, [_cpu, CPU_rcx]
-    str rdx, [_cpu, CPU_rdx]
-    str rdi, [_cpu, CPU_rdi]
-    str rsi, [_cpu, CPU_rsi]
-    str rbp, [_cpu, CPU_rbp]
-    str rsp, [_cpu, CPU_rsp]
-    str rip, [_cpu, CPU_rip]
+    str eax, [_cpu, CPU_eax]
+    str ebx, [_cpu, CPU_ebx]
+    str ecx, [_cpu, CPU_ecx]
+    str edx, [_cpu, CPU_edx]
+    str edi, [_cpu, CPU_edi]
+    str esi, [_cpu, CPU_esi]
+    str ebp, [_cpu, CPU_ebp]
+    str esp, [_cpu, CPU_esp]
+    str eip, [_cpu, CPU_eip]
 .endm
 
 # vim: ft=gas

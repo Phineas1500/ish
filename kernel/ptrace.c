@@ -37,7 +37,11 @@ static void get_user_regs(struct cpu_state *cpu, struct user_regs_struct_ *user_
 //  user_regs_->xfs = cpu->xfs;
 //  user_regs_->xgs = cpu->xgs;
     user_regs_->orig_eax = cpu->eax;
+#ifdef ISH_64BIT
+    user_regs_->eip = cpu->rip;
+#else
     user_regs_->eip = cpu->eip;
+#endif
 //  user_regs_->xcs = cpu->xcs;
     user_regs_->eflags = cpu->eflags;
     user_regs_->esp = cpu->esp;
@@ -58,7 +62,11 @@ static void set_user_regs(struct cpu_state *cpu, struct user_regs_struct_ *user_
 //  cpu->xfs = user_regs_->xfs;
 //  cpu->xgs = user_regs_->xgs;
 //  cpu->eax = user_regs_->orig_eax;
+#ifdef ISH_64BIT
+    cpu->rip = user_regs_->eip;
+#else
     cpu->eip = user_regs_->eip;
+#endif
 //  cpu->xcs = user_regs_->xcs;
     cpu->eflags = user_regs_->eflags;
     cpu->esp = user_regs_->esp;

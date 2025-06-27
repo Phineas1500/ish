@@ -278,7 +278,11 @@ void handle_interrupt(int interrupt) {
         void *ptr = mem_ptr(current->mem, cpu->segfault_addr, cpu->segfault_was_write ? MEM_WRITE : MEM_READ);
         read_wrunlock(&current->mem->lock);
         if (ptr == NULL) {
+#ifdef ISH_64BIT
+            printk("%d page fault on 0x%x at 0x%llx\n", current->pid, cpu->segfault_addr, cpu->rip);
+#else
             printk("%d page fault on 0x%x at 0x%x\n", current->pid, cpu->segfault_addr, cpu->eip);
+#endif
             struct siginfo_ info = {
                 .code = mem_segv_reason(current->mem, cpu->segfault_addr),
                 .fault.addr = cpu->segfault_addr,
@@ -287,18 +291,30 @@ void handle_interrupt(int interrupt) {
             deliver_signal(current, SIGSEGV_, info);
         }
     } else if (interrupt == INT_UNDEFINED) {
+#ifdef ISH_64BIT
+        printk("%d illegal instruction at 0x%llx: ", current->pid, cpu->rip);
+        for (int i = 0; i < 8; i++) {
+            uint8_t b;
+            if (user_get(cpu->rip + i, b))
+                break;
+#else
         printk("%d illegal instruction at 0x%x: ", current->pid, cpu->eip);
         for (int i = 0; i < 8; i++) {
             uint8_t b;
             if (user_get(cpu->eip + i, b))
                 break;
+#endif
             printk("%02x ", b);
         }
         printk("\n");
         dump_stack(8);
         struct siginfo_ info = {
             .code = SI_KERNEL_,
+#ifdef ISH_64BIT
+            .fault.addr = cpu->rip,
+#else
             .fault.addr = cpu->eip,
+#endif
         };
         deliver_signal(current, SIGILL_, info);
     } else if (interrupt == INT_BREAKPOINT) {
@@ -361,7 +377,11 @@ void dump_mem(addr_t start, uint_t len) {
 }
 
 void dump_stack(int lines) {
+#ifdef ISH_64BIT
+    printk("stack at %llx, base at %llx, ip at %llx\n", current->cpu.rsp, current->cpu.rbp, current->cpu.rip);
+#else
     printk("stack at %x, base at %x, ip at %x\n", current->cpu.esp, current->cpu.ebp, current->cpu.eip);
+#endif
     dump_mem(current->cpu.esp, lines * sizeof(dword_t) * 8);
 }
 

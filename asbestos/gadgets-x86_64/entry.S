@@ -2,32 +2,30 @@
 #include "gadgets.h"
 
 .global NAME(fiber_enter)
-.type_compat NAME(fiber_enter),function
+.type_compat fiber_enter,function
 NAME(fiber_enter):
-    push %rbp
-    push %rbx
-    push %r12
-    push %r13
-    push %r14
-    push %r15
-    # make stack 16 byte aligned
-    # this is preserved elsewhere by only doing even numbers of pushes
-    sub $0x8, %rsp
-    leaq FIBER_BLOCK_code(%rdi), %_ip
-    movq %rsi, %_cpu
-    movq %rsp, LOCAL_bp(%_cpu)
-    leaq TLB_entries(%rdx), %_tlb
+    stp x18, x19, [sp, -0x70]!
+    stp x20, x21, [sp, 0x10]
+    stp x22, x23, [sp, 0x20]
+    stp x24, x25, [sp, 0x30]
+    stp x26, x27, [sp, 0x40]
+    stp x28, x29, [sp, 0x50]
+    str lr, [sp, 0x60]
+    add _ip, x0, FIBER_BLOCK_code
+    # cpu is already x1
+    add _tlb, x2, TLB_entries
     load_regs
     gret
 
 .global fiber_ret_chain
 fiber_ret_chain:
-    btq $63, %_ip
-    jc fiber_ret
-    mov CPU_poked_ptr(%_cpu), %r10
-    cmpb $0, (%r10)
-    jnz poke
-    leaq -FIBER_BLOCK_code(%_ip), %r10
+    cmp _ip, 0
+    b.lt fiber_ret
+    ldr x8, [_cpu, CPU_poked_ptr]
+    ldrb w8, [x8]
+    cmp w8, 0
+    b.ne poke
+    sub x8, _ip, FIBER_BLOCK_code
     mov %r10, LOCAL_last_block(%_cpu)
     gret
 

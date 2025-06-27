@@ -55,7 +55,10 @@ emu_src = [
     'emu/float80.c',
 
 ]
+# For now, use aarch64 gadgets for both 32-bit and 64-bit emulation on ARM64
+# TODO: Create proper 64-bit gadgets later
 gadgets = 'asbestos/gadgets-' + host_machine.cpu_family()
+
 emu_src += [
     'asbestos/asbestos.c',
     'asbestos/gen.c',
