@@ -22,6 +22,10 @@ endforeach
 add_project_arguments('-DLOG_HANDLER_' + get_option('log_handler').to_upper() + '=1', language: 'c')
 add_project_arguments('-DENGINE_' + get_option('engine').to_upper() + '=1', language: 'c')
 
+if get_option('arch') == 'x86_64'
+    add_project_arguments('-DISH_64BIT=1', language: 'c')
+endif
+
 if get_option('no_crlf')
     add_project_arguments('-DNO_CRLF', language: 'c')
 endif

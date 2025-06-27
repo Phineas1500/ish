@@ -109,9 +109,15 @@ typedef int32_t sdword_t;
 typedef uint16_t word_t;
 typedef uint8_t byte_t;
 
+#ifdef ISH_64BIT
+typedef qword_t addr_t;
+typedef qword_t uint_t;
+typedef sqword_t int_t;
+#else
 typedef dword_t addr_t;
 typedef dword_t uint_t;
 typedef sdword_t int_t;
+#endif
 
 typedef sdword_t pid_t_;
 typedef dword_t uid_t_;
