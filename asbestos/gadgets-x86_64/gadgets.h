@@ -20,6 +20,24 @@ ebp .req w26
 rsp .req x27
 esp .req w27
 
+# Extended registers R8-R15 for 64-bit mode
+r8 .req x15
+r8d .req w15
+r9 .req x16
+r9d .req w16
+r10 .req x17
+r10d .req w17
+r11 .req x18
+r11d .req w18
+r12 .req x19
+r12d .req w19
+r13 .req x12
+r13d .req w12
+r14 .req x13
+r14d .req w13
+r15 .req x14
+r15d .req w14
+
 # Additional aliases for compatibility
 xax .req x20
 xcx .req x22
@@ -107,6 +125,15 @@ back_write_done_\id :
     \macro reg_di, edi
     \macro reg_bp, ebp
     \macro reg_sp, esp
+    # Extended registers for 64-bit mode
+    \macro reg_r8, r8d
+    \macro reg_r9, r9d
+    \macro reg_r10, r10d
+    \macro reg_r11, r11d
+    \macro reg_r12, r12d
+    \macro reg_r13, r13d
+    \macro reg_r14, r14d
+    \macro reg_r15, r15d
 .endm
 
 .macro .each_reg64 macro:vararg
@@ -118,6 +145,15 @@ back_write_done_\id :
     \macro reg_rdi, rdi
     \macro reg_rbp, rbp
     \macro reg_rsp, rsp
+    # Extended registers for 64-bit mode
+    \macro reg_r8, r8
+    \macro reg_r9, r9
+    \macro reg_r10, r10
+    \macro reg_r11, r11
+    \macro reg_r12, r12
+    \macro reg_r13, r13
+    \macro reg_r14, r14
+    \macro reg_r15, r15
 .endm
 
 .macro ss size, macro, args:vararg

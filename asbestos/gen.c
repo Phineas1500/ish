@@ -93,13 +93,23 @@ void gen_exit(struct gen_state *state) {
     if (!tlb_read(tlb, state->ip - size/8, &name, size/8)) SEGFAULT; \
 } while (0)
 
+#ifdef ISH_64BIT
+// Use REX-aware decoder in 64-bit mode, passing REX bits from decoder context
+#define READMODRM if (!modrm_decode64(&state->ip, tlb, &modrm, rex_r, rex_x, rex_b)) SEGFAULT
+#else
+// Use traditional 32-bit decoder in 32-bit mode
 #define READMODRM if (!modrm_decode32(&state->ip, tlb, &modrm)) SEGFAULT
+#endif
 #define READADDR _READIMM(addr_offset, 32)
 #define SEG_GS() seg_gs = true
 
 // This should stay in sync with the definition of .gadget_array in gadgets.h
 enum arg {
     arg_reg_a, arg_reg_c, arg_reg_d, arg_reg_b, arg_reg_sp, arg_reg_bp, arg_reg_si, arg_reg_di,
+#ifdef ISH_64BIT
+    // Extended registers for 64-bit mode (R8-R15)
+    arg_reg_r8, arg_reg_r9, arg_reg_r10, arg_reg_r11, arg_reg_r12, arg_reg_r13, arg_reg_r14, arg_reg_r15,
+#endif
     arg_imm, arg_mem, arg_addr, arg_gs,
     arg_count, arg_invalid,
     // the following should not be synced with the list mentioned above (no gadgets implement them)
