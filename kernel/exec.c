@@ -434,39 +434,39 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
 
     // STACK TIME!
 
+    // allocate 1 page of stack 
 #ifdef ISH_64BIT
-    // allocate 1 page of stack in high memory for 64-bit (around 0x7fffff000)
+    // allocate in high memory for 64-bit (around 0x7fffff000)
     if ((err = pt_map_nothing(current->mem, 0x7fffff0, 1, P_WRITE | P_GROWSDOWN)) < 0)
         goto beyond_hope;
-    // that was the last memory mapping
-    write_wrunlock(&current->mem->lock);
     addr_t sp = 0x7fffff000;
     // on 64-bit linux, there's 8 empty bytes at the very bottom of the stack
     sp -= sizeof(void *);
 #else
-    // allocate 1 page of stack at 0xffffd, and let it grow down
+    // allocate at 0xffffd for 32-bit, and let it grow down
     if ((err = pt_map_nothing(current->mem, 0xffffd, 1, P_WRITE | P_GROWSDOWN)) < 0)
         goto beyond_hope;
-    // that was the last memory mapping
-    write_wrunlock(&current->mem->lock);
     addr_t sp = 0xffffe000;
     // on 32-bit linux, there's 4 empty bytes at the very bottom of the stack
     sp -= sizeof(void *);
 #endif
+    
+    // that was the last memory mapping - unlock once for both branches
+    write_wrunlock(&current->mem->lock);
 
     err = _EFAULT;
     // first, copy stuff pointed to by argv/envp/auxv
     // filename, argc, argv
     addr_t file_addr = sp = copy_string(sp, file);
     if (sp == 0)
-        goto beyond_hope;
+        goto beyond_hope_unlocked;
     addr_t envp_addr = sp = args_copy(sp, envp);
     if (sp == 0)
-        goto beyond_hope;
+        goto beyond_hope_unlocked;
     current->mm->argv_end = sp;
     addr_t argv_addr = sp = args_copy(sp, argv);
     if (sp == 0)
-        goto beyond_hope;
+        goto beyond_hope_unlocked;
     current->mm->argv_start = sp;
     sp = align_stack(sp);
 
@@ -476,13 +476,13 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     addr_t platform_addr = sp = copy_string(sp, "i686");
 #endif
     if (sp == 0)
-        goto beyond_hope;
+        goto beyond_hope_unlocked;
     // 16 random bytes so no system call is needed to seed a userspace RNG
     char random[16] = {};
     get_random(random, sizeof(random)); // if this fails, eh, no one's really using it
     addr_t random_addr = sp -= sizeof(random);
     if (user_put(sp, random))
-        goto beyond_hope;
+        goto beyond_hope_unlocked;
 
     // the way linux aligns the stack at this point is kinda funky
     // calculate how much space is needed for argv, envp, and auxv, subtract
@@ -547,7 +547,7 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     // copy auxv
     current->mm->auxv_start = p;
     if (user_put(p, aux))
-        goto beyond_hope;
+        goto beyond_hope_unlocked;
     p += sizeof(aux);
     current->mm->auxv_end = p;
 
@@ -585,6 +585,10 @@ out_free_interp:
 out_free_ph:
     free(ph);
     return err;
+
+beyond_hope_unlocked:
+    // Memory was already unlocked - skip the unlock
+    goto out_free_interp;
 
 beyond_hope:
     // TODO force sigsegv
