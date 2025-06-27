@@ -3,8 +3,12 @@
 
 #include "misc.h"
 
-// top 20 bits of an address, i.e. address >> 12
+// top bits of an address, i.e. address >> 12
+#ifdef ISH_64BIT
+typedef qword_t page_t;
+#else
 typedef dword_t page_t;
+#endif
 #define BAD_PAGE 0x10000
 
 #ifndef __KERNEL__
