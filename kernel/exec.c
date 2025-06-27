@@ -27,11 +27,11 @@ struct exec_args {
     const char *args;
 };
 
-static inline dword_t align_stack(addr_t sp);
+static inline addr_t align_stack(addr_t sp);
 static inline ssize_t user_strlen(addr_t p);
 static inline int user_memset(addr_t start, byte_t val, dword_t len);
-static inline dword_t copy_string(addr_t sp, const char *string);
-static inline dword_t args_copy(addr_t sp, struct exec_args args);
+static inline addr_t copy_string(addr_t sp, const char *string);
+static inline addr_t args_copy(addr_t sp, struct exec_args args);
 static size_t args_size(struct exec_args args);
 
 static int read_header(struct fd *fd, struct elf_header_unified *header) {
@@ -369,7 +369,11 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
         if (!load_addr_set && header.type == ELF_DYNAMIC) {
             // see giant comment in linux/fs/binfmt_elf.c, around line 950
             if (interp_name)
+#ifdef ISH_64BIT
+                bias = 0x555555554000ULL; // 64-bit load address for PIE executables
+#else
                 bias = 0x56555000; // I have no idea how this number was arrived at
+#endif
             else
                 bias = find_hole_for_elf(&header, ph);
         }
@@ -430,15 +434,25 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
 
     // STACK TIME!
 
+#ifdef ISH_64BIT
+    // allocate 1 page of stack in high memory for 64-bit (around 0x7fffff000)
+    if ((err = pt_map_nothing(current->mem, 0x7fffff0, 1, P_WRITE | P_GROWSDOWN)) < 0)
+        goto beyond_hope;
+    // that was the last memory mapping
+    write_wrunlock(&current->mem->lock);
+    addr_t sp = 0x7fffff000;
+    // on 64-bit linux, there's 8 empty bytes at the very bottom of the stack
+    sp -= sizeof(void *);
+#else
     // allocate 1 page of stack at 0xffffd, and let it grow down
     if ((err = pt_map_nothing(current->mem, 0xffffd, 1, P_WRITE | P_GROWSDOWN)) < 0)
         goto beyond_hope;
     // that was the last memory mapping
     write_wrunlock(&current->mem->lock);
-    dword_t sp = 0xffffe000;
-    // on 32-bit linux, there's 4 empty bytes at the very bottom of the stack.
-    // on 64-bit linux, there's 8. make ptraceomatic happy. (a major theme in this file)
+    addr_t sp = 0xffffe000;
+    // on 32-bit linux, there's 4 empty bytes at the very bottom of the stack
     sp -= sizeof(void *);
+#endif
 
     err = _EFAULT;
     // first, copy stuff pointed to by argv/envp/auxv
@@ -456,7 +470,11 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     current->mm->argv_start = sp;
     sp = align_stack(sp);
 
+#ifdef ISH_64BIT
+    addr_t platform_addr = sp = copy_string(sp, "x86_64");
+#else
     addr_t platform_addr = sp = copy_string(sp, "i686");
+#endif
     if (sp == 0)
         goto beyond_hope;
     // 16 random bytes so no system call is needed to seed a userspace RNG
@@ -494,7 +512,7 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
         {AX_PLATFORM, platform_addr},
         {0, 0}
     };
-    sp -= ((argv.count + 1) + (envp.count + 1) + 1) * sizeof(dword_t);
+    sp -= ((argv.count + 1) + (envp.count + 1) + 1) * sizeof(addr_t);
     sp -= sizeof(aux);
     sp &=~ 0xf;
 
@@ -504,7 +522,7 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     // argc
     if (user_put(p, argv.count))
         return _EFAULT;
-    p += sizeof(dword_t);
+    p += sizeof(addr_t);
 
     // argv
     size_t argc = argv.count;
@@ -512,9 +530,9 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
         if (user_put(p, argv_addr))
             return _EFAULT;
         argv_addr += user_strlen(argv_addr) + 1;
-        p += sizeof(dword_t); // null terminator
+        p += sizeof(addr_t); // move to next pointer slot
     }
-    p += sizeof(dword_t); // null terminator
+    p += sizeof(addr_t); // null terminator
 
     // envp
     size_t envc = envp.count;
@@ -522,9 +540,9 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
         if (user_put(p, envp_addr))
             return _EFAULT;
         envp_addr += user_strlen(envp_addr) + 1;
-        p += sizeof(dword_t);
+        p += sizeof(addr_t);
     }
-    p += sizeof(dword_t); // null terminator
+    p += sizeof(addr_t); // null terminator
 
     // copy auxv
     current->mm->auxv_start = p;
@@ -585,18 +603,18 @@ static size_t args_size(struct exec_args args) {
     return args_end - args.args;
 }
 
-static inline dword_t align_stack(addr_t sp) {
+static inline addr_t align_stack(addr_t sp) {
     return sp &~ 0xf;
 }
 
-static inline dword_t copy_string(addr_t sp, const char *string) {
+static inline addr_t copy_string(addr_t sp, const char *string) {
     sp -= strlen(string) + 1;
     if (user_write_string(sp, string))
         return 0;
     return sp;
 }
 
-static inline dword_t args_copy(addr_t sp, struct exec_args args) {
+static inline addr_t args_copy(addr_t sp, struct exec_args args) {
     size_t size = args_size(args);
     sp -= size;
     if (user_write(sp, args.args, size))
