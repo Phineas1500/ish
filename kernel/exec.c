@@ -655,8 +655,16 @@ static ssize_t user_read_string_array(addr_t addr, char *buf, size_t max) {
     size_t p = 0;
     for (;;) {
         addr_t str_addr;
+#ifdef ISH_64BIT
+        // In 64-bit builds running 32-bit programs, argv contains 32-bit pointers
+        dword_t str_addr_32;
+        if (user_get(addr + i * sizeof(dword_t), str_addr_32))
+            return _EFAULT;
+        str_addr = str_addr_32;
+#else
         if (user_get(addr + i * sizeof(addr_t), str_addr))
             return _EFAULT;
+#endif
         if (str_addr == 0)
             break;
         size_t str_p = 0;

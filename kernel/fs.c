@@ -79,7 +79,8 @@ fd_t sys_openat(fd_t at_f, addr_t path_addr, dword_t flags, mode_t_ mode) {
     struct fd *fd = generic_openat(at, path, flags, mode);
     if (IS_ERR(fd))
         return PTR_ERR(fd);
-    return f_install(fd, flags);
+    fd_t result = f_install(fd, flags);
+    return result;
 }
 
 fd_t sys_open(addr_t path_addr, dword_t flags, mode_t_ mode) {

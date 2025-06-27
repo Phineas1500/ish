@@ -268,7 +268,14 @@ void handle_interrupt(int interrupt) {
                 printk("%d(%s) stub syscall %d\n", current->pid, current->comm, syscall_num);
             }
             STRACE("%d call %-3d ", current->pid, syscall_num);
+#ifdef ISH_64BIT
+            // For 64-bit builds running 32-bit programs, cast 32-bit registers to addr_t
+            int result = syscall_table[syscall_num](
+                (addr_t)cpu->ebx, (addr_t)cpu->ecx, (addr_t)cpu->edx,
+                (addr_t)cpu->esi, (addr_t)cpu->edi, (addr_t)cpu->ebp);
+#else
             int result = syscall_table[syscall_num](cpu->ebx, cpu->ecx, cpu->edx, cpu->esi, cpu->edi, cpu->ebp);
+#endif
             STRACE(" = 0x%x\n", result);
             cpu->eax = result;
         }

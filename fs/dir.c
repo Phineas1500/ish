@@ -66,7 +66,6 @@ int_t sys_getdents_common(fd_t f, addr_t dirents, dword_t count,
         return _ENOTDIR;
 
     dword_t orig_count = count;
-
     long ptr;
     int err;
     int printed = 0;

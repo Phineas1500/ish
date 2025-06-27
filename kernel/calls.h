@@ -255,6 +255,13 @@ dword_t sys_getrandom(addr_t buf_addr, dword_t len, dword_t flags);
 int_t sys_syslog(int_t type, addr_t buf_addr, int_t len);
 int_t sys_ipc(uint_t call, int_t first, int_t second, int_t third, addr_t ptr, int_t fifth);
 
+#ifdef ISH_64BIT
+// In 64-bit builds, syscalls need addr_t for address parameters (64-bit)
+// but still dword_t for non-address parameters (32-bit)
+typedef int (*syscall_t)(addr_t, addr_t, addr_t, addr_t, addr_t, addr_t);
+#else
+// In 32-bit builds, everything is dword_t
 typedef int (*syscall_t)(dword_t, dword_t, dword_t, dword_t, dword_t, dword_t);
+#endif
 
 #endif
