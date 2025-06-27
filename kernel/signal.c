@@ -164,7 +164,7 @@ static void setup_sigcontext(struct sigcontext_ *sc, struct cpu_state *cpu) {
     sc->si = cpu->esi;
     sc->bp = cpu->ebp;
     sc->sp = sc->sp_at_signal = cpu->esp;
-    sc->ip = cpu->eip;
+    sc->ip = cpu_ip(cpu);
     collapse_flags(cpu);
     sc->flags = cpu->eflags;
     sc->trapno = cpu->trapno;
@@ -254,7 +254,7 @@ static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
 
     // set up registers for signal handler
     current->cpu.eax = info->sig;
-    current->cpu.eip = sighand->action[info->sig].handler;
+    cpu_set_ip(&current->cpu, sighand->action[info->sig].handler);
 
     dword_t sp = current->cpu.esp;
     if (sighand->altstack && !is_on_altstack(sp, sighand)) {
@@ -389,7 +389,7 @@ static void restore_sigcontext(struct sigcontext_ *context, struct cpu_state *cp
     cpu->esi = context->si;
     cpu->ebp = context->bp;
     cpu->esp = context->sp;
-    cpu->eip = context->ip;
+    cpu_set_ip(cpu, context->ip);
     collapse_flags(cpu);
 
     // Use AC, RF, OF, DF, TF, SF, ZF, AF, PF, CF

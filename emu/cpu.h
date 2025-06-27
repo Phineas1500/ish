@@ -261,6 +261,15 @@ static_assert(CPU_OFFSET(edi) == CPU_OFFSET(regs[7]), "register order");
 #endif
 static_assert(sizeof(struct cpu_state) < 0xffff, "cpu struct is too big for vector gadgets");
 
+// Helper functions for instruction pointer access
+#ifdef ISH_64BIT
+static inline addr_t cpu_ip(struct cpu_state *cpu) { return cpu->rip; }
+static inline void cpu_set_ip(struct cpu_state *cpu, addr_t ip) { cpu->rip = ip; }
+#else
+static inline addr_t cpu_ip(struct cpu_state *cpu) { return cpu->eip; }
+static inline void cpu_set_ip(struct cpu_state *cpu, addr_t ip) { cpu->eip = ip; }
+#endif
+
 // flags
 #define ZF (cpu->zf_res ? cpu->res == 0 : cpu->zf)
 #define SF (cpu->sf_res ? (int32_t) cpu->res < 0 : cpu->sf)
