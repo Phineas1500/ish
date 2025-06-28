@@ -119,7 +119,7 @@ r11b .req w7
     .endif
 .endm
 
-# Note: Memory-based R12-R15 operations use existing safe temporaries (_tmp, _xtmp)
+# Note: Memory-based R11-R15 operations use existing safe temporaries (_tmp, _xtmp)
 
 _ip .req x28
 eip .req w28
@@ -202,13 +202,13 @@ back_write_done_\id :
     \macro reg_di, edi
     \macro reg_bp, ebp
     \macro reg_sp, esp
-# Final: Hybrid approach - R8-R10 in registers, R11+ memory-based
+# Hybrid approach - R8-R10 in registers, R11+ memory-based
 #ifdef ISH_64BIT
     # R8-R10 confirmed working (ARM64 x4-x6), x7 has conflicts
     \macro reg_r8, r8d
     \macro reg_r9, r9d
     \macro reg_r10, r10d
-    # R11-R15 will use memory-based approach (x7 conflicts found)
+    # R11-R15 will require special memory-based gadgets (not enabled in each_reg yet)
 #endif
 .endm
 
@@ -221,13 +221,13 @@ back_write_done_\id :
     \macro reg_rdi, rdi
     \macro reg_rbp, rbp
     \macro reg_rsp, rsp
-# Final: Hybrid approach - R8-R10 in registers, R11+ memory-based
+# Hybrid approach - R8-R10 in registers, R11+ memory-based
 #ifdef ISH_64BIT
     # R8-R10 confirmed working (ARM64 x4-x6), x7 has conflicts
     \macro reg_r8, r8
     \macro reg_r9, r9
     \macro reg_r10, r10
-    # R11-R15 will use memory-based approach (x7 conflicts found)
+    # R11-R15 will require special memory-based gadgets (not enabled in each_reg yet)
 #endif
 .endm
 
