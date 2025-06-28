@@ -88,8 +88,9 @@ static inline bool modrm_decode64(addr_t *ip, struct tlb *tlb, struct modrm *mod
     if (mode == mode_reg) {
         modrm->type = modrm_reg;
         modrm->base = modrm->rm_opcode;  // In reg mode, base = r/m register
-    } else if (modrm->rm_opcode == rm_disp32 && mode == mode_disp0) {
-        modrm->base = reg_none;
+    } else if (RM(modrm_byte) == rm_disp32 && mode == mode_disp0) {
+        // In 64-bit mode, mod=00 and r/m=101 (original, before REX) is RIP-relative
+        modrm->base = reg_rip;
         mode = mode_disp32;
     } else if ((RM(modrm_byte) + (rex_b << 3)) == rm_sib && mode != mode_reg) {
         byte_t sib_byte;

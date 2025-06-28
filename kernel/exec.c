@@ -437,11 +437,11 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     // allocate 1 page of stack 
 #ifdef ISH_64BIT
     // allocate in high memory for 64-bit (around 0x7fffff000)
-    if ((err = pt_map_nothing(current->mem, 0x7fffff0, 1, P_WRITE | P_GROWSDOWN)) < 0)
+    if ((err = pt_map_nothing(current->mem, 0x7fffff, 1, P_WRITE | P_GROWSDOWN)) < 0)
         goto beyond_hope;
-    addr_t sp = 0x7fffff000;
+    addr_t sp = 0x7fffffff8;  // Start 8 bytes from the top of the page
     // on 64-bit linux, there's 8 empty bytes at the very bottom of the stack
-    sp -= sizeof(void *);
+    // (these are already accounted for by starting at 0x7fffffff8)
 #else
     // allocate at 0xffffd for 32-bit, and let it grow down
     if ((err = pt_map_nothing(current->mem, 0xffffd, 1, P_WRITE | P_GROWSDOWN)) < 0)
@@ -481,8 +481,9 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     char random[16] = {};
     get_random(random, sizeof(random)); // if this fails, eh, no one's really using it
     addr_t random_addr = sp -= sizeof(random);
-    if (user_put(sp, random))
+    if (user_put(sp, random)) {
         goto beyond_hope_unlocked;
+    }
 
     // the way linux aligns the stack at this point is kinda funky
     // calculate how much space is needed for argv, envp, and auxv, subtract
@@ -520,8 +521,9 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     addr_t p = sp;
 
     // argc
-    if (user_put(p, argv.count))
+    if (user_put(p, argv.count)) {
         return _EFAULT;
+    }
     p += sizeof(addr_t);
 
     // argv
@@ -552,18 +554,18 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     current->mm->auxv_end = p;
 
     current->mm->stack_start = sp;
-    current->cpu.esp = sp;
 #ifdef ISH_64BIT
+    // Initialize all 64-bit registers including extended ones (R8-R15)
+    for (int i = 0; i < 16; i++) {
+        current->cpu.regs[i] = 0;
+    }
+    // Set RSP and RIP after zeroing registers
+    current->cpu.rsp = sp;  // Set 64-bit stack pointer
     current->cpu.rip = entry;
 #else
+    current->cpu.esp = sp;  // Set 32-bit stack pointer
     current->cpu.eip = entry;
-#endif
-    current->cpu.fcw = 0x37f;
-
-    // This code was written when I discovered that the glibc entry point
-    // interprets edx as the address of a function to call on exit, as
-    // specified in the ABI. This register is normally set by the dynamic
-    // linker, so everything works fine until you run a static executable.
+    // Initialize 32-bit registers
     current->cpu.eax = 0;
     current->cpu.ebx = 0;
     current->cpu.ecx = 0;
@@ -571,6 +573,13 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     current->cpu.esi = 0;
     current->cpu.edi = 0;
     current->cpu.ebp = 0;
+#endif
+    current->cpu.fcw = 0x37f;
+
+    // This code was written when I discovered that the glibc entry point
+    // interprets edx as the address of a function to call on exit, as
+    // specified in the ABI. This register is normally set by the dynamic
+    // linker, so everything works fine until you run a static executable.
     collapse_flags(&current->cpu);
     current->cpu.eflags = 0;
 

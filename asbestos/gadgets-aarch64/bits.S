@@ -35,7 +35,11 @@
             .ifc \type,sar
                 # lazy ass copy paste job
                 .ifnb \s
-                    sxt\s _tmp, _tmp
+                    .ifc \s,x
+                        sxtw _tmp, _tmp
+                    .else
+                        sxt\s _tmp, _tmp
+                    .endif
                 .endif
                 sub w8, w8, 1
                 asr _tmp, _tmp, w8
@@ -54,7 +58,11 @@
                     ror _tmp, _tmp, w8
                 .else
                     # kill me
-                    uxt\s _tmp, _tmp
+                    .ifc \s,x
+                        uxtw _tmp, _tmp
+                    .else
+                        uxt\s _tmp, _tmp
+                    .endif
                     neg w9, w8
                     and w8, w8, \size-1
                     and w9, w9, \size-1

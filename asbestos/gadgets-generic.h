@@ -10,7 +10,7 @@
 # sync with enum arg
 #define GADGET_LIST REG_LIST,imm,mem,addr,gs
 # sync with enum size
-#define SIZE_LIST 8,16,32
+#define SIZE_LIST 8,16,32,64
 
 # darwin/linux compatibility
 .macro .pushsection_rodata

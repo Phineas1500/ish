@@ -24,6 +24,20 @@ rdi .req x25
 rbp .req x26
 rsp .req x27
 
+# Extended 64-bit registers R8-R15 (avoid all conflicts)
+# Disable extended registers for now - they conflict with ARM64 operations
+# r8 .req x16  # Could conflict with system calls
+# r9 .req x17  # Could conflict with system calls  
+# r10 .req x18 # Platform-specific register
+# r11 .req x19 # Used in memory operations
+# For now, disable extended registers entirely
+
+# 32-bit versions of extended registers
+# r8d .req w16
+# r9d .req w17
+# r10d .req w18
+# r11d .req w19
+
 _ip .req x28
 eip .req w28
 rip .req x28
@@ -105,15 +119,50 @@ back_write_done_\id :
     \macro reg_di, edi
     \macro reg_bp, ebp
     \macro reg_sp, esp
+# Extended registers disabled temporarily - need proper bit operation support
+#ifdef ISH_64BIT_EXTENDED_REGS_DISABLED
+    # Extended registers for 64-bit mode
+    \macro reg_r8, r8
+    \macro reg_r9, r9
+    \macro reg_r10, r10
+    \macro reg_r11, r11
+    \macro reg_r12, r12
+    \macro reg_r13, r13
+    \macro reg_r14, r14
+    \macro reg_r15, r15
+#endif
 .endm
 
-.macro ss size, macro, args:vararg
+.macro .each_reg64 macro:vararg
+    \macro reg_rax, rax
+    \macro reg_rbx, rbx
+    \macro reg_rcx, rcx
+    \macro reg_rdx, rdx
+    \macro reg_rsi, rsi
+    \macro reg_rdi, rdi
+    \macro reg_rbp, rbp
+    \macro reg_rsp, rsp
+    # Extended registers disabled for now due to ARM64 conflicts
+    # \macro reg_r8, r8
+    # \macro reg_r9, r9
+    # \macro reg_r10, r10
+    # \macro reg_r11, r11
+    # \macro reg_r12, r12
+    # \macro reg_r13, r13
+    # \macro reg_r14, r14
+    # \macro reg_r15, r15
+.endm
+
+# Specialized macros for different instruction types in 64-bit mode
+.macro ss_load size, macro, args:vararg
     .ifnb \args
         .if \size == 8
             \macro \args, \size, b
         .elseif \size == 16
             \macro \args, \size, h
         .elseif \size == 32
+            \macro \args, \size,
+        .elseif \size == 64
             \macro \args, \size,
         .else
             .error "bad size"
@@ -125,6 +174,92 @@ back_write_done_\id :
             \macro \size, h
         .elseif \size == 32
             \macro \size,
+        .elseif \size == 64
+            \macro \size,
+        .else
+            .error "bad size"
+        .endif
+    .endif
+.endm
+
+.macro ss_atomic size, macro, args:vararg
+    .ifnb \args
+        .if \size == 8
+            \macro \args, \size, b
+        .elseif \size == 16
+            \macro \args, \size, h
+        .elseif \size == 32
+            \macro \args, \size,
+        .elseif \size == 64
+            \macro \args, \size,
+        .else
+            .error "bad size"
+        .endif
+    .else
+        .if \size == 8
+            \macro \size, b
+        .elseif \size == 16
+            \macro \size, h
+        .elseif \size == 32
+            \macro \size,
+        .elseif \size == 64
+            \macro \size,
+        .else
+            .error "bad size"
+        .endif
+    .endif
+.endm
+
+.macro ss_extend size, macro, args:vararg
+    .ifnb \args
+        .if \size == 8
+            \macro \args, \size, b
+        .elseif \size == 16
+            \macro \args, \size, h
+        .elseif \size == 32
+            \macro \args, \size,
+        .elseif \size == 64
+            \macro \args, \size, w
+        .else
+            .error "bad size"
+        .endif
+    .else
+        .if \size == 8
+            \macro \size, b
+        .elseif \size == 16
+            \macro \size, h
+        .elseif \size == 32
+            \macro \size,
+        .elseif \size == 64
+            \macro \size, w
+        .else
+            .error "bad size"
+        .endif
+    .endif
+.endm
+
+.macro ss size, macro, args:vararg
+    .ifnb \args
+        .if \size == 8
+            \macro \args, \size, b
+        .elseif \size == 16
+            \macro \args, \size, h
+        .elseif \size == 32
+            \macro \args, \size,
+        .elseif \size == 64
+            \macro \args, \size, x
+        .else
+            .error "bad size"
+        .endif
+    .else
+        .if \size == 8
+            \macro \size, b
+        .elseif \size == 16
+            \macro \size, h
+        .elseif \size == 32
+            \macro \size,
+        .elseif \size == 64
+            \macro \size, x
         .else
             .error "bad size"
         .endif
@@ -161,9 +296,17 @@ back_write_done_\id :
 .endm
 .macro setf_zsp s, val=_tmp
     .ifnb \s
-        sxt\s \val, \val
+        .ifc \s,x
+            # 64-bit case - sign extend to 64-bit register then store 32-bit part
+            sxtw x12, \val
+            str w12, [_cpu, CPU_res]
+        .else
+            sxt\s \val, \val
+            str \val, [_cpu, CPU_res]
+        .endif
+    .else
+        str \val, [_cpu, CPU_res]
     .endif
-    str \val, [_cpu, CPU_res]
     ldr w10, [_cpu, CPU_flags_res]
     orr w10, w10, (ZF_RES|SF_RES|PF_RES)
     str w10, [_cpu, CPU_flags_res]
@@ -191,9 +334,11 @@ back_write_done_\id :
         bfxil \dst, \src, 0, 16
     .else N .ifc \s,b
         bfxil \dst, \src, 0, 8
+    .else N .ifc \s,x
+        mov \dst, \src
     .else
         mov \dst, \src
-    .endif N .endif
+    .endif N .endif N .endif
 .endm
 .macro op_s op, dst, src1, src2, s
     .ifb \s
@@ -205,13 +350,22 @@ back_write_done_\id :
     .endif
 .endm
 .macro ldrs src, dst, s
-    ldr\s w10, \dst
-    movs \src, w10, \s
+    .ifc \s,x
+        ldr x10, \dst
+        movs \src, w10, \s
+    .else
+        ldr\s w10, \dst
+        movs \src, w10, \s
+    .endif
 .endm
 
 .macro uxts dst, src, s=
     .ifnb \s
-        uxt\s \dst, \src
+        .ifc \s,x
+            uxtw \dst, \src
+        .else
+            uxt\s \dst, \src
+        .endif
         .exitm
     .endif
     .ifnc \dst,\src
@@ -220,6 +374,16 @@ back_write_done_\id :
 .endm
 
 .macro load_regs
+#ifdef ISH_64BIT
+    ldr rax, [_cpu, CPU_rax]
+    ldr rbx, [_cpu, CPU_rbx]
+    ldr rcx, [_cpu, CPU_rcx]
+    ldr rdx, [_cpu, CPU_rdx]
+    ldr rsi, [_cpu, CPU_rsi]
+    ldr rdi, [_cpu, CPU_rdi]
+    ldr rbp, [_cpu, CPU_rbp]
+    ldr rsp, [_cpu, CPU_rsp]
+#else
     ldr eax, [_cpu, CPU_eax]
     ldr ebx, [_cpu, CPU_ebx]
     ldr ecx, [_cpu, CPU_ecx]
@@ -228,6 +392,7 @@ back_write_done_\id :
     ldr edi, [_cpu, CPU_edi]
     ldr ebp, [_cpu, CPU_ebp]
     ldr esp, [_cpu, CPU_esp]
+#endif
 .endm
 
 .macro save_regs

@@ -9,11 +9,18 @@
 
 static int gen_step32(struct gen_state *state, struct tlb *tlb);
 static int gen_step16(struct gen_state *state, struct tlb *tlb);
+#ifdef ISH_64BIT
+static int gen_step64(struct gen_state *state, struct tlb *tlb);
+#endif
 
 int gen_step(struct gen_state *state, struct tlb *tlb) {
     state->orig_ip = state->ip;
     state->orig_ip_extra = 0;
+#ifdef ISH_64BIT
+    return gen_step64(state, tlb);
+#else
     return gen_step32(state, tlb);
+#endif
 }
 
 static void gen(struct gen_state *state, unsigned long thing) {
@@ -163,15 +170,26 @@ static inline int sz(int size) {
         case 8: return size_8;
         case 16: return size_16;
         case 32: return size_32;
+        case 64: return size_64;  // 64-bit operations use proper 64-bit gadgets
         default: return -1;
     }
 }
 
 bool gen_addr(struct gen_state *state, struct modrm *modrm, bool seg_gs) {
-    if (modrm->base == reg_none)
+    if (modrm->base == reg_none) {
         gg(addr_none, modrm->offset);
-    else
+    }
+#ifdef ISH_64BIT
+    else if (modrm->base == reg_rip) {
+        // RIP-relative addressing: effective address = RIP + displacement
+        // RIP points to the instruction AFTER the current instruction
+        addr_t rip_relative_addr = state->ip + modrm->offset;
+        gg(addr_rip, rip_relative_addr);
+    }
+#endif
+    else {
         gag(addr, modrm->base, modrm->offset);
+    }
     if (modrm->type == modrm_mem_si)
         ga(si, modrm->index * 4 + modrm->shift);
     if (seg_gs)
@@ -575,3 +593,8 @@ static inline bool gen_vec(enum arg src, enum arg dst, void (*helper)(), gadget_
 #define OP_SIZE 16
 #include "emu/decode.h"
 #undef OP_SIZE
+#ifdef ISH_64BIT
+#define OP_SIZE 64
+#include "emu/decode.h"
+#undef OP_SIZE
+#endif

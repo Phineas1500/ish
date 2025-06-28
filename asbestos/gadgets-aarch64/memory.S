@@ -28,6 +28,9 @@
 .gadget addr_none
     ldr _addr, [_ip]
     gret 1
+.gadget addr_rip
+    ldr _addr, [_ip]
+    gret 1
 .gadget_list addr, REG_LIST
 
 .macro x name, reg

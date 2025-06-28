@@ -304,6 +304,7 @@ enum reg64 {
     reg_r8, reg_r9, reg_r10, reg_r11, reg_r12, reg_r13, reg_r14, reg_r15,
     reg_count,
     reg_none = reg_count,
+    reg_rip,  // Special value for RIP-relative addressing
 };
 
 static inline const char *reg64_name(enum reg64 reg) {
@@ -324,6 +325,7 @@ static inline const char *reg64_name(enum reg64 reg) {
         case reg_r13: return "r13";
         case reg_r14: return "r14";
         case reg_r15: return "r15";
+        case reg_rip: return "rip";
         default: return "?";
     }
 }

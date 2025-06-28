@@ -25,20 +25,30 @@
 .macro do_cmpxchg size, s
     .gadget cmpxchg\size\()_mem
         write_prep \size, cmpxchg\size\()_mem
-        ldr\s w8, [_xaddr]
+        .if \size == 64
+            ldr x8, [_xaddr]
+        .else
+            ldr\s w8, [_xaddr]
+        .endif
         setf_a eax, w8
         mov w9, eax
         do_add sub, w9, w8, \s
         setf_zsp \s, val=w9
         .ifnb \s
             cmp w9, 0
-            and w9, eax, (-1 << \size)
-            orr w8, w8, w9
+            .if \size != 64
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
         .endif
         csel eax, w8, eax, ne
         csel w8, _tmp, w8, eq
         cset w9, eq
-        str\s w8, [_xaddr]
+        .if \size == 64
+            str x8, [_xaddr]
+        .else
+            str\s w8, [_xaddr]
+        .endif
         write_done \size, cmpxchg\size\()_mem
         gret 1
         write_bullshit \size, cmpxchg\size\()_mem
@@ -55,8 +65,10 @@
         setf_zsp \s, val=w9
         .ifnb \s
             cmp w9, 0
-            and w9, eax, (-1 << \size)
-            orr w8, w8, w9
+            .if \size != 64
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
         .endif
         csel eax, w8, eax, ne
         csel w8, _tmp, w8, eq
@@ -65,10 +77,18 @@
         # all that setf stuff writes to memory which means instead of just using
         # ldaxr and stlxr we now have to do *another* compare-and-exchange
     2:
-        ldaxr\s w10, [_xaddr]
+        .if \size == 64
+            ldaxr x10, [_xaddr]
+        .else
+            ldaxr\s w10, [_xaddr]
+        .endif
         cmp w10, w11
         b.ne 3f
-        stlxr\s w10, w8, [_xaddr]
+        .if \size == 64
+            stlxr w10, x8, [_xaddr]
+        .else
+            stlxr\s w10, w8, [_xaddr]
+        .endif
         cbnz w10, 2b
 
         write_done \size, atomic_cmpxchg\size\()_mem
@@ -202,7 +222,7 @@
 do_helper 0
 do_helper 1
 do_helper 2
-.irp size, SIZE_LIST,64,80
+.irp size, SIZE_LIST,80
     do_helper read, \size
     do_helper write, \size
 .endr
@@ -287,7 +307,7 @@ do_helper 2
     .irp rm, reg,imm
         do_vec_helper \rm, \_imm
     .endr
-    .irp size, SIZE_LIST,64,128
+    .irp size, SIZE_LIST,128
         do_vec_helper read, \_imm, \size
         do_vec_helper write, \_imm, \size
     .endr

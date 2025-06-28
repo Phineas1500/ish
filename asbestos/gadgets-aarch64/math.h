@@ -16,31 +16,87 @@
     .else
         # for 16 or 8 bit operands...
         # first figure out unsigned overflow
-        uxt\s w10, \dst
+        .ifc \s,x
+            uxtw x10, \dst
+        .else
+            uxt\s w10, \dst
+        .endif
         .ifin(\op, add,sub)
-            \op w10, w10, \src, uxt\s
+            .ifc \s,x
+                uxtw x11, \src
+                \op x10, x10, x11
+            .else
+                \op w10, w10, \src, uxt\s
+            .endif
         .endifin
         .ifin(\op, adc,sbc)
-            uxt\s w9, \src
-            \op w10, w10, w9
+            .ifc \s,x
+                uxtw x9, \src
+                \op x10, x10, x9
+            .else
+                uxt\s w9, \src
+                \op w10, w10, w9
+            .endif
         .endifin
         .ifc \s,b
             lsr w10, w10, 8
+        .else N .ifc \s,x
+            lsr x10, x10, 32
         .else
             lsr w10, w10, 16
+        .endif N .endif
+        .ifc \s,x
+            # extract low 32 bits from x10
+            mov w10, w10
         .endif
         strb w10, [_cpu, CPU_cf]
         # now signed overflow
-        sxt\s w10, \dst
+        .ifc \s,x
+            sxtw x10, \dst
+        .else
+            sxt\s w10, \dst
+        .endif
         .ifin(\op, add,sub)
-            \op \dst, w10, \src, sxt\s
+            .ifc \s,x
+                sxtw x12, \src
+                \op x11, x10, x12
+            .else
+                \op \dst, w10, \src, sxt\s
+            .endif
         .endifin
         .ifin(\op, adc,sbc)
             # help me
-            sxt\s w9, \src
-            \op \dst, w10, w9
+            .ifc \s,x
+                sxtw x9, \src
+                \op x11, x10, x9
+            .else
+                sxt\s w9, \src
+                \op \dst, w10, w9
+            .endif
         .endifin
-        cmp \dst, \dst, sxt\s
+        .ifc \s,x
+            # compare 64-bit result with sign-extended 32-bit version to detect overflow
+            sxtw x13, w11
+            cmp x11, x13
+            # store low 32 bits back - handle specific known register cases
+            .ifc \dst,_xtmp
+                uxtw \dst, w11
+            .else N .ifc \dst,x8
+                uxtw \dst, w11
+            .else N .ifc \dst,x9
+                uxtw \dst, w11
+            .else N .ifc \dst,x10
+                uxtw \dst, w11
+            .else N .ifc \dst,x11
+                uxtw \dst, w11
+            .else N .ifc \dst,x12
+                uxtw \dst, w11
+            .else
+                mov \dst, w11
+            .endif N .endif N .endif N .endif N .endif N .endif
+        .else
+            cmp \dst, \dst, sxt\s
+        .endif
         cset w10, ne
         strb w10, [_cpu, CPU_of]
     .endif

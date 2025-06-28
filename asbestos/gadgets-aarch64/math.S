@@ -17,16 +17,29 @@
 
 .macro _do_op op, arg, size, s
     .ifc \op,load
-        movs _tmp, \arg, \s
-        uxts _tmp, _tmp, \s
+        .if \size == 64
+            movs _xtmp, \arg, \s
+            uxts _xtmp, _xtmp, \s
+        .else
+            movs _tmp, \arg, \s
+            uxts _tmp, _tmp, \s
+        .endif
         .exitm
     .else N .ifc \op,store
-        movs \arg, _tmp, \s
+        .if \size == 64
+            movs \arg, _xtmp, \s
+        .else
+            movs \arg, _tmp, \s
+        .endif
         .exitm
     .endif N .endif
 
     .ifin(\op, add,sub,adc,sbc)
-        setf_a \arg, _tmp
+        .if \size == 64
+            setf_a \arg, _xtmp
+        .else
+            setf_a \arg, _tmp
+        .endif
     .endifin
     .ifin(\op, and,orr,eor)
         clearf_a
@@ -43,21 +56,50 @@
     .endifin
 
     .ifin(\op, and,orr,eor)
-        \op _tmp, _tmp, \arg
+        .if \size == 64
+            \op _xtmp, _xtmp, \arg
+        .else
+            \op _tmp, _tmp, \arg
+        .endif
     .endifin
 
     .ifin(\op, add,sub,adc,sbc)
-        do_add \op, _tmp, \arg, \s
+        .if \size == 64
+            do_add \op, _xtmp, \arg, \s
+        .else
+            do_add \op, _tmp, \arg, \s
+        .endif
     .endifin
 
     .ifc \op,imul
         .ifnb \s
-            sxt\s w10, \arg
-            mul _tmp, _tmp, w10
-            cmp _tmp, _tmp, sxt\s
+            .ifc \s,x
+                sxtw w10, \arg
+                .if \size == 64
+                    mul _xtmp, _xtmp, w10
+                    cmp _xtmp, _xtmp, sxtw
+                .else
+                    mul _tmp, _tmp, w10
+                    cmp _tmp, _tmp, sxtw
+                .endif
+            .else
+                sxt\s w10, \arg
+                .if \size == 64
+                    mul _xtmp, _xtmp, w10
+                    cmp _xtmp, _xtmp, sxt\s
+                .else
+                    mul _tmp, _tmp, w10
+                    cmp _tmp, _tmp, sxt\s
+                .endif
+            .endif
         .else
-            smull _xtmp, _tmp, \arg
-            cmp _xtmp, _tmp, sxtw
+            .if \size == 64
+                smull x12, _xtmp, \arg
+                cmp x12, _xtmp, sxtw
+            .else
+                smull _xtmp, _tmp, \arg
+                cmp _xtmp, _tmp, sxtw
+            .endif
         .endif
         cset w10, ne
         strb w10, [_cpu, CPU_cf]
@@ -66,7 +108,11 @@
 
     .ifin(\op, bsf,bsr)
         .ifnb \s
-            uxt\s w10, \arg
+            .ifc \s,x
+                uxtw w10, \arg
+            .else
+                uxt\s w10, \arg
+            .endif
         .else
             mov w10, \arg
         .endif
@@ -86,7 +132,11 @@
             mov w9, \size-1
             sub w10, w9, w10
         .endif
-        csel _tmp, w10, _tmp, ne
+        .if \size == 64
+            csel _xtmp, w10, _xtmp, ne
+        .else
+            csel _tmp, w10, _tmp, ne
+        .endif
         cset w10, eq
         ldrb w9, [_cpu, CPU_eflags]
         bic w9, w9, ZF_FLAG
@@ -98,13 +148,23 @@
     .endifin
 
     .ifc \op,xchg
-        mov w9, _tmp
-        mov _tmp, \arg
-        movs \arg, w9, \s
+        .if \size == 64
+            mov x9, _xtmp
+            mov _xtmp, \arg
+            movs \arg, x9, \s
+        .else
+            mov w9, _tmp
+            mov _tmp, \arg
+            movs \arg, w9, \s
+        .endif
     .endif
 
     .ifin(\op, add,sub,adc,sbc,and,orr,eor)
-        setf_zsp \s
+        .if \size == 64
+            setf_zsp \s, val=_xtmp
+        .else
+            setf_zsp \s, val=_tmp
+        .endif
     .endifin
 .endm
 .macro do_op op, size, arg
@@ -113,7 +173,13 @@
 
 .macro do_reg_op op, armop, size, reg
     .gadget \op\size\()_reg_\reg
-        do_op \armop, \size, e\reg\()x
+        .if \size == 64
+            # For 64-bit operations, use 64-bit registers (rax, rbx, etc.)
+            do_op \armop, \size, r\reg\()x
+        .else
+            # For 32-bit and smaller operations, use 32-bit registers (eax, ebx, etc.)
+            do_op \armop, \size, e\reg\()x
+        .endif
         gret
 .endm
 
@@ -126,8 +192,13 @@
 .macro do_op_size op, armop, size, s
     .ifnc \op,store
         .gadget \op\size\()_imm
-            ldr\s w8, [_ip]
-            do_op \armop, \size, w8
+            .if \size == 64
+                ldr x8, [_ip]
+                do_op \armop, \size, x8
+            .else
+                ldr\s w8, [_ip]
+                do_op \armop, \size, w8
+            .endif
             gret 1
     .endif
 
@@ -140,10 +211,19 @@
             .else
                 read_prep \size, \op\size\()_mem
             .endif N .endif
-            ldr\s w8, [_xaddr]
-            do_op \armop, \size, w8
+            .if \size == 64
+                ldr x8, [_xaddr]
+                do_op \armop, \size, x8
+            .else
+                ldr\s w8, [_xaddr]
+                do_op \armop, \size, w8
+            .endif
             .ifc \op,store
-                str\s w8, [_xaddr]
+                .if \size == 64
+                    str _xtmp, [_xaddr]
+                .else
+                    str\s _tmp, [_xaddr]
+                .endif
                 write_done \size, \op\size\()_mem
             .endif
             gret 1
@@ -159,10 +239,19 @@
         .gadget \op\size\()_mem
             write_prep \size, \op\size\()_mem
         1:
-            ldaxr\s w8, [_xaddr]
-            stlxr\s w10, _tmp, [_xaddr]
+            .if \size == 64
+                ldaxr x8, [_xaddr]
+                stlxr w10, _xtmp, [_xaddr]
+            .else
+                ldaxr\s w8, [_xaddr]
+                stlxr\s w10, _tmp, [_xaddr]
+            .endif
             cbnz w10, 1b
-            movs _tmp, w8
+            .if \size == 64
+                uxtw _xtmp, w8
+            .else
+                movs _tmp, w8
+            .endif
             write_done \size, \op\size\()_mem
             gret 1
             write_bullshit \size, \op\size\()_mem
@@ -180,7 +269,11 @@
                 .ifc \reg,si N do_hi_op \armop, \size, d N .else
                 .ifc \reg,di N do_hi_op \armop, \size, b
                 .endif N .endif N .endif N .endif
+            .elseif \size == 64
+                # For 64-bit operations, use 64-bit registers (rsi, rdi, rsp, rbp)
+                do_op \armop, \size, r\reg
             .else
+                # For 32-bit and 16-bit operations, use 32-bit registers (esi, edi, esp, ebp)
                 do_op \armop, \size, e\reg
             .endif
             gret
@@ -217,14 +310,26 @@
         # There's so much stuff going on inside most of these operations that
         # the implementation is a compare-and-swap loop, instead of just ldaxr/stlxr
         write_prep \size, atomic_\opname\size\()_mem
-        ldr\s w12, [_xaddr]
+        .if \size == 64
+            ldr x12, [_xaddr]
+        .else
+            ldr\s w12, [_xaddr]
+        .endif
     1:
-        mov w8, w12
+        .if \size == 64
+            mov x8, x12
+        .else
+            mov w8, w12
+        .endif
 
         # do the operation
-        # dest = w8, src = _tmp
+        # dest = w8/x8, src = _tmp/_xtmp
         .ifin(\op, add,sub,adc,sbc)
-            setf_a src=_tmp, dst=w8
+            .if \size == 64
+                setf_a src=_xtmp, dst=x8
+            .else
+                setf_a src=_tmp, dst=w8
+            .endif
         .endifin
         .ifin(\op, and,orr,eor)
             clearf_a
@@ -241,25 +346,47 @@
         .endifin
 
         .ifin(\op, and,orr,eor)
-            \op w8, w8, _tmp
+            .if \size == 64
+                \op x8, x8, _xtmp
+            .else
+                \op w8, w8, _tmp
+            .endif
         .endifin
         .ifin(\op, add,sub,adc,sbc)
-            do_add \op, w8, _tmp, \s
+            .if \size == 64
+                do_add \op, x8, _xtmp, \s
+            .else
+                do_add \op, w8, _tmp, \s
+            .endif
         .endifin
         .ifc \op,xadd
             # exchange, then add
-            mov w9, w8
-            mov w8, _tmp
-            do_add add, w8, w9, \s
+            .if \size == 64
+                mov x9, x8
+                mov x8, _xtmp
+                do_add add, x8, x9, \s
+            .else
+                mov w9, w8
+                mov w8, _tmp
+                do_add add, w8, w9, \s
+            .endif
         .endif
 
         .ifin(\op, add,sub,adc,sbc,and,orr,eor,xadd)
-            setf_zsp \s, val=w8
+            .if \size == 64
+                setf_zsp \s, val=x8
+            .else
+                setf_zsp \s, val=w8
+            .endif
         .endifin
 
         .ifin(\op, inc,dec)
             mov w10, 1
-            setf_a src=w10, dst=w8
+            .if \size == 64
+                setf_a src=w10, dst=x8
+            .else
+                setf_a src=w10, dst=w8
+            .endif
             .ifb \s
                 .ifc \op,inc
                     adds w8, w8, 1
@@ -268,24 +395,52 @@
                 .endif
                 cset w9, vs
             .else
-                sxt\s w8, w8
-                .ifc \op,inc
-                    adds w8, w8, 1
+                .ifc \s,x
+                    # For 64-bit atomic operations, work with full 64-bit values
+                    .ifc \op,inc
+                        adds x8, x8, 1
+                    .else
+                        subs x8, x8, 1
+                    .endif
+                    # Check if result fits in 32 bits
+                    sxtw x9, w8
+                    cmp x8, x9
                 .else
-                    subs w8, w8, 1
+                    sxt\s w8, w8
+                    .ifc \op,inc
+                        adds w8, w8, 1
+                    .else
+                        subs w8, w8, 1
+                    .endif
+                    cmp w8, w8, sxt\s
                 .endif
-                cmp w8, w8, sxt\s
                 cset w9, ne
             .endif
             strb w9, [_cpu, CPU_of]
-            setf_zsp \s, val=w8
+            .if \size == 64
+                setf_zsp \s, val=x8
+            .else
+                setf_zsp \s, val=w8
+            .endif
         .endifin
 
     2:
-        ldaxr\s w13, [_xaddr]
-        cmp w12, w13
+        .if \size == 64
+            ldaxr x13, [_xaddr]
+        .else
+            ldaxr\s w13, [_xaddr]
+        .endif
+        .if \size == 64
+            cmp x12, x13
+        .else
+            cmp w12, w13
+        .endif
         b.ne 3f
-        stlxr\s w13, w8, [_xaddr]
+        .if \size == 64
+            stlxr w13, x8, [_xaddr]
+        .else
+            stlxr\s w13, w8, [_xaddr]
+        .endif
         cbnz w13, 2b
         .ifc \op,xadd
             mov _tmp, w9
@@ -295,7 +450,11 @@
         write_bullshit \size, atomic_\opname\size\()_mem
     3:
         dmb ish
-        mov w12, w13
+        .if \size == 64
+            mov x12, x13
+        .else
+            mov w12, w13
+        .endif
         b 1b
 .endm
 
@@ -323,9 +482,19 @@
         adds _tmp, _tmp, 1
         cset w8, vs
     .else
-        sxt\s _tmp, _tmp
-        add _tmp, _tmp, 1
-        cmp _tmp, _tmp, sxt\s
+        .ifc \s,x
+            # For 64-bit, sign-extend then work with 64-bit registers
+            sxtw x9, _tmp
+            add x9, x9, 1
+            # Check if result fits in sign-extended 32-bit
+            sxtw x10, w9
+            cmp x9, x10
+            mov _tmp, w9
+        .else
+            sxt\s _tmp, _tmp
+            add _tmp, _tmp, 1
+            cmp _tmp, _tmp, sxt\s
+        .endif
         cset w8, ne
     .endif
     strb w8, [_cpu, CPU_of]
@@ -338,9 +507,19 @@
         subs _tmp, _tmp, 1
         cset w8, vs
     .else
-        sxt\s _tmp, _tmp
-        sub _tmp, _tmp, 1
-        cmp _tmp, _tmp, sxt\s
+        .ifc \s,x
+            # For 64-bit, sign-extend then work with 64-bit registers
+            sxtw x9, _tmp
+            sub x9, x9, 1
+            # Check if result fits in sign-extended 32-bit
+            sxtw x10, w9
+            cmp x9, x10
+            mov _tmp, w9
+        .else
+            sxt\s _tmp, _tmp
+            sub _tmp, _tmp, 1
+            cmp _tmp, _tmp, sxt\s
+        .endif
         cset w8, ne
     .endif
     strb w8, [_cpu, CPU_of]
@@ -350,12 +529,24 @@
 .macro do_sign_extend size, s
     .if \size != 32
         # movs\ss\()l %tmp\s, %tmpd
-        sxt\s _tmp, _tmp
+        .ifc \s,x
+            # For 64-bit, sign extend 32-bit _tmp to 64-bit
+            sxtw x9, _tmp
+            mov _tmp, w9
+        .else
+            sxt\s _tmp, _tmp
+        .endif
     .endif
 .endm
 .macro do_zero_extend size, s
     .if \size != 32
-        uxt\s _tmp, _tmp
+        .ifc \s,x
+            # For 64-bit, zero extend 32-bit _tmp to 64-bit
+            uxtw x9, _tmp
+            mov _tmp, w9
+        .else
+            uxt\s _tmp, _tmp
+        .endif
     .endif
 .endm
 .macro do_div size, s
@@ -416,13 +607,33 @@
         umull xax, eax, _tmp
         lsr xdx, xax, 32
         cmp xax, eax, uxtw
+    .elseif \size == 64
+        # 64-bit mul doesn't use bit field operations
+        uxtw x8, eax
+        uxtw x9, _tmp
+        mul x8, x8, x9
+        # Check if result fits in 32 bits (unsigned)
+        uxtw x10, w8
+        cmp x8, x10
+        mov eax, w8
+        lsr x9, x8, 32
+        mov edx, w9
     .else
-        uxt\s w8, eax
-        uxt\s _tmp, _tmp
-        mul w8, w8, _tmp
-        cmp w8, w8, uxt\s
+        .ifc \s,x
+            uxtw x8, eax
+            uxtw x9, _tmp
+            mul x8, x8, x9
+            uxtw x10, w8
+            cmp x8, x10
+            mov w8, w8  # Store result back to w8
+        .else
+            uxt\s w8, eax
+            uxt\s _tmp, _tmp
+            mul w8, w8, _tmp
+            cmp w8, w8, uxt\s
+        .endif
         .if \size == 8
-            bfxil eax, w8, 0, \size*2
+            bfxil eax, w8, 0, 16
         .else
             bfxil eax, w8, 0, \size
             bfxil edx, w8, \size, \size
@@ -437,13 +648,33 @@
         smull xax, eax, _tmp
         lsr xdx, xax, 32
         cmp xax, eax, sxtw
+    .elseif \size == 64
+        # 64-bit imul doesn't use bit field operations
+        sxtw x8, eax
+        sxtw x9, _tmp
+        mul x8, x8, x9
+        # Check if result fits in 32 bits (signed)
+        sxtw x10, w8
+        cmp x8, x10
+        mov eax, w8
+        lsr x9, x8, 32
+        mov edx, w9
     .else
-        sxt\s w8, eax
-        sxt\s _tmp, _tmp
-        mul w8, w8, _tmp
-        cmp w8, w8, sxt\s
+        .ifc \s,x
+            sxtw x8, eax
+            sxtw x9, _tmp
+            mul x8, x8, x9
+            sxtw x10, w8
+            cmp x8, x10
+            mov w8, w8  # Store result back to w8
+        .else
+            sxt\s w8, eax
+            sxt\s _tmp, _tmp
+            mul w8, w8, _tmp
+            cmp w8, w8, sxt\s
+        .endif
         .if \size == 8
-            bfxil eax, w8, 0, \size*2
+            bfxil eax, w8, 0, 16
         .else
             bfxil eax, w8, 0, \size
             bfxil edx, w8, \size, \size

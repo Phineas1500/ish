@@ -115,6 +115,7 @@ static struct fiber_block *fiber_lookup(struct asbestos *asbestos, addr_t addr) 
 static struct fiber_block *fiber_block_compile(addr_t ip, struct tlb *tlb) {
     struct gen_state state;
     TRACE("%d %08x --- compiling:\n", current_pid(), ip);
+// Debug output removed for cleaner testing
     gen_start(ip, &state);
     while (true) {
         if (!gen_step(&state, tlb))
@@ -232,12 +233,15 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 
         TRACE("%d %08x --- cycle %ld\n", current_pid(), ip, frame->cpu.cycle);
 
+// Debug output removed
         interrupt = fiber_enter(block, frame, tlb);
         if (interrupt == INT_NONE && __atomic_exchange_n(cpu->poked_ptr, false, __ATOMIC_SEQ_CST))
             interrupt = INT_TIMER;
         if (interrupt == INT_NONE && ++frame->cpu.cycle % (1 << 10) == 0)
             interrupt = INT_TIMER;
         *cpu = frame->cpu;
+
+// Debug output removed
     }
 
     free(frame);
