@@ -36,7 +36,7 @@
                 # lazy ass copy paste job
                 .ifnb \s
                     .ifc \s,x
-                        sxtw _tmp, _tmp
+                        sxtw _xtmp, _tmp
                     .else
                         sxt\s _tmp, _tmp
                     .endif
@@ -59,7 +59,7 @@
                 .else
                     # kill me
                     .ifc \s,x
-                        uxtw _tmp, _tmp
+                        uxtw _xtmp, _tmp
                     .else
                         uxt\s _tmp, _tmp
                     .endif

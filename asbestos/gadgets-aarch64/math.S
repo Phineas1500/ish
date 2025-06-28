@@ -19,7 +19,11 @@
     .ifc \op,load
         .if \size == 64
             movs _xtmp, \arg, \s
-            uxts _xtmp, _xtmp, \s
+            .ifc \s,x
+                # For 64-bit, _xtmp is already correct (x0), no extension needed
+            .else
+                uxts _xtmp, _xtmp, \s
+            .endif
         .else
             movs _tmp, \arg, \s
             uxts _tmp, _tmp, \s
@@ -109,7 +113,7 @@
     .ifin(\op, bsf,bsr)
         .ifnb \s
             .ifc \s,x
-                uxtw w10, \arg
+                uxtw x10, \arg
             .else
                 uxt\s w10, \arg
             .endif
@@ -248,7 +252,7 @@
             .endif
             cbnz w10, 1b
             .if \size == 64
-                uxtw _xtmp, w8
+                mov _xtmp, x8
             .else
                 movs _tmp, w8
             .endif
@@ -532,7 +536,7 @@
         .ifc \s,x
             # For 64-bit, sign extend 32-bit _tmp to 64-bit
             sxtw x9, _tmp
-            mov _tmp, w9
+            mov _xtmp, x9
         .else
             sxt\s _tmp, _tmp
         .endif
@@ -541,9 +545,9 @@
 .macro do_zero_extend size, s
     .if \size != 32
         .ifc \s,x
-            # For 64-bit, zero extend 32-bit _tmp to 64-bit
-            uxtw x9, _tmp
-            mov _tmp, w9
+            # For 64-bit, zero extend 32-bit _tmp to 64-bit  
+            uxtw x9, w0
+            mov x0, x9
         .else
             uxt\s _tmp, _tmp
         .endif
@@ -568,7 +572,8 @@
     .elseif \size == 32
         bfi x8, xax, 0, 32
         bfi x8, xdx, 32, 32
-        uxtw _xtmp, _tmp
+        uxtw x9, _tmp
+        mov _xtmp, x9
         udiv x9, x8, _xtmp
         msub x10, x9, _xtmp, x8
         mov eax, w9
@@ -595,7 +600,8 @@
     .elseif \size == 32
         bfi x8, xax, 0, 32
         bfi x8, xdx, 32, 32
-        sxtw _xtmp, _tmp
+        sxtw x9, _tmp
+        mov _xtmp, x9
         sdiv x9, x8, _xtmp
         msub x10, x9, _xtmp, x8
         mov eax, w9
@@ -609,8 +615,8 @@
         cmp xax, eax, uxtw
     .elseif \size == 64
         # 64-bit mul doesn't use bit field operations
-        uxtw x8, eax
-        uxtw x9, _tmp
+        uxtw x8, w20
+        uxtw x9, w0
         mul x8, x8, x9
         # Check if result fits in 32 bits (unsigned)
         uxtw x10, w8

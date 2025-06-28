@@ -315,5 +315,5 @@ do_helper 2
 
 .gadget fstsw_ax
     ldrh w10, [_cpu, CPU_fsw]
-    movs eax, w10, h
+    mov eax, w10
     gret
