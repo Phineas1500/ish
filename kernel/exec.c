@@ -555,8 +555,9 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
 
     current->mm->stack_start = sp;
 #ifdef ISH_64BIT
-    // Initialize all 64-bit registers including extended ones (R8-R15)
-    for (int i = 0; i < 16; i++) {
+    // Initialize basic 64-bit registers (R0-R7 only)
+    // Extended registers R8-R15 not yet supported by ARM64 gadgets
+    for (int i = 0; i < 8; i++) {
         current->cpu.regs[i] = 0;
     }
     // Set RSP and RIP after zeroing registers

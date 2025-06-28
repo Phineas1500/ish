@@ -113,8 +113,8 @@ void gen_exit(struct gen_state *state) {
 // This should stay in sync with the definition of .gadget_array in gadgets.h
 enum arg {
     arg_reg_a, arg_reg_c, arg_reg_d, arg_reg_b, arg_reg_sp, arg_reg_bp, arg_reg_si, arg_reg_di,
-#ifdef ISH_64BIT_EXTENDED_REGS_DISABLED
-    // Extended registers for 64-bit mode (R8-R15) - DISABLED until ARM64 gadgets support them
+#ifdef ISH_64BIT
+    // Extended registers for 64-bit mode (R8-R15)
     arg_reg_r8, arg_reg_r9, arg_reg_r10, arg_reg_r11, arg_reg_r12, arg_reg_r13, arg_reg_r14, arg_reg_r15,
 #endif
     arg_imm, arg_mem, arg_addr, arg_gs,
