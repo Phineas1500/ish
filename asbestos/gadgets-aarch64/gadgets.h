@@ -24,19 +24,102 @@ rdi .req x25
 rbp .req x26
 rsp .req x27
 
-# Extended 64-bit registers R8-R15 (avoid all conflicts)
-# Disable extended registers for now - they conflict with ARM64 operations
-# r8 .req x16  # Could conflict with system calls
-# r9 .req x17  # Could conflict with system calls  
-# r10 .req x18 # Platform-specific register
-# r11 .req x19 # Used in memory operations
-# For now, disable extended registers entirely
+# Extended 64-bit registers R8-R15 - Conservative allocation strategy
+# Phase 1: Use only the safest registers (x4-x7) for R8-R11
+# Phase 2: R12-R15 will use memory-based approach
+r8 .req x4
+r9 .req x5
+r10 .req x6
+r11 .req x7
+# R12-R15 will be memory-based (no register aliases yet)
 
-# 32-bit versions of extended registers
-# r8d .req w16
-# r9d .req w17
-# r10d .req w18
-# r11d .req w19
+# 32-bit versions of extended registers (Phase 1: R8-R11 only)
+r8d .req w4
+r9d .req w5
+r10d .req w6
+r11d .req w7
+# R12d-R15d will be memory-based
+
+# 16-bit versions of extended registers (Phase 1: R8-R11 only)
+r8w .req w4
+r9w .req w5
+r10w .req w6
+r11w .req w7
+# R12w-R15w will be memory-based
+
+# 8-bit versions of extended registers (Phase 1: R8-R11 only)
+r8b .req w4
+r9b .req w5
+r10b .req w6
+r11b .req w7
+# R12b-R15b will be memory-based
+
+# Memory-based register macros for R12-R15 (use safe temporaries)
+.macro load_r12_to_temp size
+    .if \size == 64
+        ldr _xtmp, [_cpu, CPU_r12]
+    .else
+        ldr _tmp, [_cpu, CPU_r12]
+    .endif
+.endm
+
+.macro store_temp_to_r12 size
+    .if \size == 64
+        str _xtmp, [_cpu, CPU_r12]
+    .else
+        str _tmp, [_cpu, CPU_r12]
+    .endif
+.endm
+
+.macro load_r13_to_temp size
+    .if \size == 64
+        ldr _xtmp, [_cpu, CPU_r13]
+    .else
+        ldr _tmp, [_cpu, CPU_r13]
+    .endif
+.endm
+
+.macro store_temp_to_r13 size
+    .if \size == 64
+        str _xtmp, [_cpu, CPU_r13]
+    .else
+        str _tmp, [_cpu, CPU_r13]
+    .endif
+.endm
+
+.macro load_r14_to_temp size
+    .if \size == 64
+        ldr _xtmp, [_cpu, CPU_r14]
+    .else
+        ldr _tmp, [_cpu, CPU_r14]
+    .endif
+.endm
+
+.macro store_temp_to_r14 size
+    .if \size == 64
+        str _xtmp, [_cpu, CPU_r14]
+    .else
+        str _tmp, [_cpu, CPU_r14]
+    .endif
+.endm
+
+.macro load_r15_to_temp size
+    .if \size == 64
+        ldr _xtmp, [_cpu, CPU_r15]
+    .else
+        ldr _tmp, [_cpu, CPU_r15]
+    .endif
+.endm
+
+.macro store_temp_to_r15 size
+    .if \size == 64
+        str _xtmp, [_cpu, CPU_r15]
+    .else
+        str _tmp, [_cpu, CPU_r15]
+    .endif
+.endm
+
+# Note: Memory-based R12-R15 operations use existing safe temporaries (_tmp, _xtmp)
 
 _ip .req x28
 eip .req w28
@@ -119,17 +202,13 @@ back_write_done_\id :
     \macro reg_di, edi
     \macro reg_bp, ebp
     \macro reg_sp, esp
-# Extended registers disabled temporarily - need proper bit operation support
-#ifdef ISH_64BIT_EXTENDED_REGS_DISABLED
-    # Extended registers for 64-bit mode
-    \macro reg_r8, r8
-    \macro reg_r9, r9
-    \macro reg_r10, r10
-    \macro reg_r11, r11
-    \macro reg_r12, r12
-    \macro reg_r13, r13
-    \macro reg_r14, r14
-    \macro reg_r15, r15
+# Final: Hybrid approach - R8-R10 in registers, R11+ memory-based
+#ifdef ISH_64BIT
+    # R8-R10 confirmed working (ARM64 x4-x6), x7 has conflicts
+    \macro reg_r8, r8d
+    \macro reg_r9, r9d
+    \macro reg_r10, r10d
+    # R11-R15 will use memory-based approach (x7 conflicts found)
 #endif
 .endm
 
@@ -142,15 +221,14 @@ back_write_done_\id :
     \macro reg_rdi, rdi
     \macro reg_rbp, rbp
     \macro reg_rsp, rsp
-    # Extended registers disabled for now due to ARM64 conflicts
-    # \macro reg_r8, r8
-    # \macro reg_r9, r9
-    # \macro reg_r10, r10
-    # \macro reg_r11, r11
-    # \macro reg_r12, r12
-    # \macro reg_r13, r13
-    # \macro reg_r14, r14
-    # \macro reg_r15, r15
+# Final: Hybrid approach - R8-R10 in registers, R11+ memory-based
+#ifdef ISH_64BIT
+    # R8-R10 confirmed working (ARM64 x4-x6), x7 has conflicts
+    \macro reg_r8, r8
+    \macro reg_r9, r9
+    \macro reg_r10, r10
+    # R11-R15 will use memory-based approach (x7 conflicts found)
+#endif
 .endm
 
 # Specialized macros for different instruction types in 64-bit mode
@@ -383,6 +461,11 @@ back_write_done_\id :
     ldr rdi, [_cpu, CPU_rdi]
     ldr rbp, [_cpu, CPU_rbp]
     ldr rsp, [_cpu, CPU_rsp]
+    # Load extended registers (Final: R8-R10 only, R11+ memory-based)
+    ldr r8, [_cpu, CPU_r8]
+    ldr r9, [_cpu, CPU_r9]
+    ldr r10, [_cpu, CPU_r10]
+    # R11-R15 are memory-based, loaded on-demand
 #else
     ldr eax, [_cpu, CPU_eax]
     ldr ebx, [_cpu, CPU_ebx]
@@ -406,6 +489,11 @@ back_write_done_\id :
     str rbp, [_cpu, CPU_rbp]
     str rsp, [_cpu, CPU_rsp]
     str rip, [_cpu, CPU_rip]
+    # Save extended registers (Final: R8-R10 only, R11+ memory-based)
+    str r8, [_cpu, CPU_r8]
+    str r9, [_cpu, CPU_r9]
+    str r10, [_cpu, CPU_r10]
+    # R11-R15 are memory-based, saved on-demand
 #else
     str eax, [_cpu, CPU_eax]
     str ebx, [_cpu, CPU_ebx]
