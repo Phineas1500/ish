@@ -163,7 +163,11 @@ static void setup_sigcontext(struct sigcontext_ *sc, struct cpu_state *cpu) {
     sc->di = cpu->edi;
     sc->si = cpu->esi;
     sc->bp = cpu->ebp;
-    sc->sp = sc->sp_at_signal = cpu->esp;
+#ifdef ISH_64BIT
+    sc->sp = sc->sp_at_signal = cpu->rsp;  // Use 64-bit stack pointer
+#else
+    sc->sp = sc->sp_at_signal = cpu->esp;  // Use 32-bit stack pointer
+#endif
     sc->ip = cpu_ip(cpu);
     collapse_flags(cpu);
     sc->flags = cpu->eflags;
@@ -256,7 +260,11 @@ static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
     current->cpu.eax = info->sig;
     cpu_set_ip(&current->cpu, sighand->action[info->sig].handler);
 
-    dword_t sp = current->cpu.esp;
+#ifdef ISH_64BIT
+    dword_t sp = current->cpu.rsp;  // Use 64-bit stack pointer
+#else
+    dword_t sp = current->cpu.esp;  // Use 32-bit stack pointer
+#endif
     if (sighand->altstack && !is_on_altstack(sp, sighand)) {
         sp = sighand->altstack + sighand->altstack_size;
     }
@@ -271,7 +279,11 @@ static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
     sp -= frame_size;
     // align sp + 4 on a 16-byte boundary because that's what the abi says
     sp = ((sp + 4) & ~0xf) - 4;
-    current->cpu.esp = sp;
+#ifdef ISH_64BIT
+    current->cpu.rsp = sp;  // Set 64-bit stack pointer
+#else
+    current->cpu.esp = sp;  // Set 32-bit stack pointer
+#endif
 
     // Update the mask. By default the signal will be blocked while in the
     // handler, but sigaction is allowed to customize this.
@@ -388,7 +400,11 @@ static void restore_sigcontext(struct sigcontext_ *context, struct cpu_state *cp
     cpu->edi = context->di;
     cpu->esi = context->si;
     cpu->ebp = context->bp;
-    cpu->esp = context->sp;
+#ifdef ISH_64BIT
+    cpu->rsp = context->sp;  // Restore 64-bit stack pointer
+#else
+    cpu->esp = context->sp;  // Restore 32-bit stack pointer
+#endif
     cpu_set_ip(cpu, context->ip);
     collapse_flags(cpu);
 
@@ -409,7 +425,11 @@ dword_t sys_rt_sigreturn() {
 
     lock(&current->sighand->lock);
     // FIXME this duplicates logic from sys_sigaltstack
+#ifdef ISH_64BIT
+    if (!is_on_altstack(cpu->rsp, current->sighand) &&
+#else
     if (!is_on_altstack(cpu->esp, current->sighand) &&
+#endif
             frame.uc.stack.size >= MINSIGSTKSZ_) {
         current->sighand->altstack = frame.uc.stack.stack;
         current->sighand->altstack_size = frame.uc.stack.size;
@@ -578,7 +598,11 @@ static void altstack_to_user(struct sighand *sighand, struct stack_t_ *user_stac
     user_stack->flags = 0;
     if (sighand->altstack == 0)
         user_stack->flags |= SS_DISABLE_;
+#ifdef ISH_64BIT
+    if (is_on_altstack(current->cpu.rsp, sighand))
+#else
     if (is_on_altstack(current->cpu.esp, sighand))
+#endif
         user_stack->flags |= SS_ONSTACK_;
 }
 
@@ -595,7 +619,11 @@ dword_t sys_sigaltstack(addr_t ss_addr, addr_t old_ss_addr) {
         }
     }
     if (ss_addr != 0) {
+#ifdef ISH_64BIT
+        if (is_on_altstack(current->cpu.rsp, sighand)) {
+#else
         if (is_on_altstack(current->cpu.esp, sighand)) {
+#endif
             unlock(&sighand->lock);
             return _EPERM;
         }
