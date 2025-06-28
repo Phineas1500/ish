@@ -799,7 +799,7 @@ int __do_execve(const char *file, struct exec_args argv, struct exec_args envp) 
     // consider putting this in fd.c?
     fdtable_do_cloexec(current->files);
 
-    // reset signal handlers
+    // reset signal handlers and signal mask
     lock(&current->sighand->lock);
     for (int sig = 0; sig < NUM_SIGS; sig++) {
         struct sigaction_ *action = &current->sighand->action[sig];
@@ -807,6 +807,9 @@ int __do_execve(const char *file, struct exec_args argv, struct exec_args envp) 
             action->handler = SIG_DFL_;
     }
     current->sighand->altstack = 0;
+    // Reset signal mask to unblocked (CRITICAL FIX for 64-bit signal timing issues)
+    current->blocked = 0;
+    current->pending = 0;  // Clear any pending signals
     unlock(&current->sighand->lock);
 
     current->did_exec = true;
