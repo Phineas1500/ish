@@ -269,10 +269,11 @@ void handle_interrupt(int interrupt) {
             }
             STRACE("%d call %-3d ", current->pid, syscall_num);
 #ifdef ISH_64BIT
-            // For 64-bit builds running 32-bit programs, cast 32-bit registers to addr_t
+            // For 64-bit builds: pass 32-bit register values directly
+            // System calls will internally handle address vs non-address parameter types
             int result = syscall_table[syscall_num](
-                (addr_t)cpu->ebx, (addr_t)cpu->ecx, (addr_t)cpu->edx,
-                (addr_t)cpu->esi, (addr_t)cpu->edi, (addr_t)cpu->ebp);
+                cpu->ebx, cpu->ecx, cpu->edx,
+                cpu->esi, cpu->edi, cpu->ebp);
 #else
             int result = syscall_table[syscall_num](cpu->ebx, cpu->ecx, cpu->edx, cpu->esi, cpu->edi, cpu->ebp);
 #endif
