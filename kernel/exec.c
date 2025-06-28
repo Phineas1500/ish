@@ -554,34 +554,50 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     current->mm->auxv_end = p;
 
     current->mm->stack_start = sp;
+    
+    // Initialize registers based on the PROGRAM's bitness, not iSH's build mode
+    if (header.bitness == ELF_64BIT) {
+        // 64-bit program initialization
 #ifdef ISH_64BIT
-    // Initialize 64-bit registers
 #if defined(__aarch64__) || defined(__arm64__)
-    // ARM64: Only initialize basic registers (R0-R7) since R8-R15 aren't supported yet
-    for (int i = 0; i < 8; i++) {
-        current->cpu.regs[i] = 0;
-    }
+        // ARM64: Only initialize basic registers (R0-R7) since R8-R15 aren't supported yet
+        for (int i = 0; i < 8; i++) {
+            current->cpu.regs[i] = 0;
+        }
 #else
-    // x86_64: Initialize all 16 registers including extended ones (R8-R15)
-    for (int i = 0; i < 16; i++) {
-        current->cpu.regs[i] = 0;
-    }
+        // x86_64: Initialize all 16 registers including extended ones (R8-R15)
+        for (int i = 0; i < 16; i++) {
+            current->cpu.regs[i] = 0;
+        }
 #endif
-    // Set RSP and RIP after zeroing registers
-    current->cpu.rsp = sp;  // Set 64-bit stack pointer
-    current->cpu.rip = entry;
+        current->cpu.rsp = sp;   // Set 64-bit stack pointer
+        current->cpu.rip = entry; // Set 64-bit instruction pointer
 #else
-    current->cpu.esp = sp;  // Set 32-bit stack pointer
-    current->cpu.eip = entry;
-    // Initialize 32-bit registers
-    current->cpu.eax = 0;
-    current->cpu.ebx = 0;
-    current->cpu.ecx = 0;
-    current->cpu.edx = 0;
-    current->cpu.esi = 0;
-    current->cpu.edi = 0;
-    current->cpu.ebp = 0;
+        // 32-bit iSH build cannot run 64-bit programs - this should have been caught earlier
+        // But handle gracefully just in case
+        current->cpu.eax = current->cpu.ebx = current->cpu.ecx = current->cpu.edx = 0;
+        current->cpu.esi = current->cpu.edi = current->cpu.ebp = 0;
+        current->cpu.esp = sp;
+        current->cpu.eip = entry;
 #endif
+    } else {
+        // 32-bit program initialization (works on both 32-bit and 64-bit iSH builds)
+        current->cpu.eax = 0;
+        current->cpu.ebx = 0;
+        current->cpu.ecx = 0;
+        current->cpu.edx = 0;
+        current->cpu.esi = 0;
+        current->cpu.edi = 0;
+        current->cpu.ebp = 0;
+#ifdef ISH_64BIT
+        // Clear the upper 32 bits of registers for 32-bit programs on 64-bit iSH
+        current->cpu.rsp = sp;   // This sets both rsp and esp due to union
+        current->cpu.rip = entry; // This sets both rip and eip due to union
+#else
+        current->cpu.esp = sp;   // 32-bit stack pointer
+        current->cpu.eip = entry; // 32-bit instruction pointer
+#endif
+    }
     current->cpu.fcw = 0x37f;
 
     // This code was written when I discovered that the glibc entry point
