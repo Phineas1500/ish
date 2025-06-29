@@ -559,17 +559,10 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     if (header.bitness == ELF_64BIT) {
         // 64-bit program initialization
 #ifdef ISH_64BIT
-#if defined(__aarch64__) || defined(__arm64__)
-        // ARM64: Only initialize basic registers (R0-R7) since R8-R15 aren't supported yet
-        for (int i = 0; i < 8; i++) {
-            current->cpu.regs[i] = 0;
-        }
-#else
-        // x86_64: Initialize all 16 registers including extended ones (R8-R15)
+        // Initialize all 16 registers (RAX-RDI + R8-R15) for 64-bit programs
         for (int i = 0; i < 16; i++) {
             current->cpu.regs[i] = 0;
         }
-#endif
         current->cpu.rsp = sp;   // Set 64-bit stack pointer
         current->cpu.rip = entry; // Set 64-bit instruction pointer
 #else

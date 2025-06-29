@@ -91,6 +91,11 @@ restart:
             // 2-byte opcode prefix
             READINSN;
             switch (insn) {
+#ifdef ISH_64BIT
+                case 0x05: TRACEI("syscall"); 
+                           // 64-bit syscall instruction - trigger system call
+                           INT(0x80); break;
+#endif
                 case 0x18 ... 0x1f: TRACEI("nop modrm\t"); READMODRM; break;
 
                 case 0x28: TRACEI("movaps xmm:modrm, xmm");
@@ -681,6 +686,8 @@ restart:
 
         case 0x3e: TRACEI("segment ds (useless)"); goto restart;
 
+#ifndef ISH_64BIT
+        // In 32-bit mode, 0x40-0x4F are INC/DEC instructions
         case 0x40: TRACEI("inc oax"); INC(reg_a,oz); break;
         case 0x41: TRACEI("inc ocx"); INC(reg_c,oz); break;
         case 0x42: TRACEI("inc odx"); INC(reg_d,oz); break;
@@ -697,6 +704,17 @@ restart:
         case 0x4d: TRACEI("dec obp"); DEC(reg_bp,oz); break;
         case 0x4e: TRACEI("dec osi"); DEC(reg_si,oz); break;
         case 0x4f: TRACEI("dec odi"); DEC(reg_di,oz); break;
+#else
+        // In 64-bit mode, 0x40-0x4F are REX prefixes, handled earlier in decode
+        case 0x40: case 0x41: case 0x42: case 0x43:
+        case 0x44: case 0x45: case 0x46: case 0x47:
+        case 0x48: case 0x49: case 0x4a: case 0x4b:
+        case 0x4c: case 0x4d: case 0x4e: case 0x4f:
+            // These should have been consumed as REX prefixes already
+            TRACEI("unexpected REX prefix in instruction body");
+            UNDEFINED;
+            break;
+#endif
 
         case 0x50: TRACEI("push oax"); PUSH(reg_a,oz); break;
         case 0x51: TRACEI("push ocx"); PUSH(reg_c,oz); break;
@@ -731,6 +749,11 @@ restart:
                    POP(reg_b,oz); POP(reg_d,oz);
                    POP(reg_c,oz); POP(reg_a,oz);
                    break;
+
+#ifdef ISH_64BIT
+        case 0x63: TRACEI("movsxd modrm32, reg64");
+                   READMODRM; MOVSX(modrm_val, modrm_reg,32,64); break;
+#endif
 
         case 0x66:
 #if OP_SIZE == 32

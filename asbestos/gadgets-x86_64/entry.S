@@ -26,41 +26,40 @@ fiber_ret_chain:
     cmp w8, 0
     b.ne poke
     sub x8, _ip, FIBER_BLOCK_code
-    mov %r10, LOCAL_last_block(%_cpu)
+    str x8, [_cpu, LOCAL_last_block]
     gret
 
 poke:
-    mov -FIBER_BLOCK_code+FIBER_BLOCK_addr(%_ip), %_eip
+    ldr eip, [_ip, -FIBER_BLOCK_code+FIBER_BLOCK_addr]
     # fallthrough
 
 .global fiber_ret
 fiber_ret:
-    movl $-1, %_tmp
+    # load -1
+    mvn _tmp, wzr
     # fallthrough
 
 .global fiber_exit
 fiber_exit:
     save_regs
-    movl %_eip, CPU_eip(%_cpu)
-    movq LOCAL_bp(%_cpu), %rsp
-    add $0x8, %rsp # keep stack 16 byte aligned
-    pop %r15
-    pop %r14
-    pop %r13
-    pop %r12
-    pop %rbx
-    pop %rbp
-    mov %_tmp, %eax
+    ldr lr, [sp, 0x60]
+    ldp x28, x29, [sp, 0x50]
+    ldp x26, x27, [sp, 0x40]
+    ldp x24, x25, [sp, 0x30]
+    ldp x22, x23, [sp, 0x20]
+    ldp x20, x21, [sp, 0x10]
+    ldp x18, x19, [sp], 0x70
+    # _tmp is already x0
     ret
 
 .gadget interrupt
-    movl (%_ip), %_tmp
-    movl 16(%_ip), %r14d
-    movl %r14d, CPU_segfault_addr(%_cpu)
-    movl 8(%_ip), %_eip
-    movb $0, CPU_segfault_was_write(%_cpu)
-    jmp fiber_exit
+    ldr _tmp, [_ip]
+    ldr w8, [_ip, 16]
+    str w8, [_cpu, CPU_segfault_addr]
+    ldr eip, [_ip, 8]
+    strb wzr, [_cpu, CPU_segfault_was_write]
+    b fiber_exit
 
 .gadget exit
-    movl (%_ip), %_eip
-    jmp fiber_ret
+    ldr eip, [_ip]
+    b fiber_ret

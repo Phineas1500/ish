@@ -21,27 +21,28 @@ rsp .req x27
 esp .req w27
 
 # Extended registers R8-R15 for 64-bit mode
-r8 .req x15
-r8d .req w15
-r9 .req x16
-r9d .req w16
-r10 .req x17
-r10d .req w17
-r11 .req x18
-r11d .req w18
-r12 .req x19
-r12d .req w19
-r13 .req x12
-r13d .req w12
-r14 .req x13
-r14d .req w13
-r15 .req x14
-r15d .req w14
+# R8-R10: Direct ARM64 register mapping (confirmed working with x4-x6)
+r8 .req x4
+r8d .req w4
+r9 .req x5
+r9d .req w5
+r10 .req x6
+r10d .req w6
+# R11-R15: Memory-based approach (no direct ARM64 register assignment)
+# These will use special memory-based gadgets instead of register mappings
 
 # Additional aliases for compatibility
 xax .req x20
 xcx .req x22
 xdx .req x23
+
+# Add missing 16-bit and 8-bit versions of extended registers
+r8w .req w4
+r9w .req w5
+r10w .req w6
+r8b .req w4
+r9b .req w5
+r10b .req w6
 
 # Instruction pointer
 _ip .req x28
@@ -125,15 +126,11 @@ back_write_done_\id :
     \macro reg_di, edi
     \macro reg_bp, ebp
     \macro reg_sp, esp
-    # Extended registers for 64-bit mode
+    # Extended registers for 64-bit mode - R8-R10 use direct register mapping
     \macro reg_r8, r8d
     \macro reg_r9, r9d
     \macro reg_r10, r10d
-    \macro reg_r11, r11d
-    \macro reg_r12, r12d
-    \macro reg_r13, r13d
-    \macro reg_r14, r14d
-    \macro reg_r15, r15d
+    # R11-R15 use memory-based approach - special handling required
 .endm
 
 .macro .each_reg64 macro:vararg
@@ -145,15 +142,11 @@ back_write_done_\id :
     \macro reg_rdi, rdi
     \macro reg_rbp, rbp
     \macro reg_rsp, rsp
-    # Extended registers for 64-bit mode
+    # Extended registers for 64-bit mode - R8-R10 use direct register mapping
     \macro reg_r8, r8
     \macro reg_r9, r9
     \macro reg_r10, r10
-    \macro reg_r11, r11
-    \macro reg_r12, r12
-    \macro reg_r13, r13
-    \macro reg_r14, r14
-    \macro reg_r15, r15
+    # R11-R15 use memory-based approach - special handling required
 .endm
 
 .macro ss size, macro, args:vararg
@@ -277,6 +270,11 @@ back_write_done_\id :
     ldr rdi, [_cpu, CPU_rdi]
     ldr rbp, [_cpu, CPU_rbp]
     ldr rsp, [_cpu, CPU_rsp]
+    # Load extended registers R8-R10 for 64-bit mode (direct register mapping)
+    ldr r8, [_cpu, CPU_r8]
+    ldr r9, [_cpu, CPU_r9]
+    ldr r10, [_cpu, CPU_r10]
+    # R11-R15 are memory-based and loaded on-demand
 .endm
 
 .macro save_regs
@@ -289,6 +287,11 @@ back_write_done_\id :
     str rbp, [_cpu, CPU_rbp]
     str rsp, [_cpu, CPU_rsp]
     str rip, [_cpu, CPU_rip]
+    # Save extended registers R8-R10 for 64-bit mode (direct register mapping)
+    str r8, [_cpu, CPU_r8]
+    str r9, [_cpu, CPU_r9]
+    str r10, [_cpu, CPU_r10]
+    # R11-R15 are memory-based and saved automatically
 .endm
 
 # vim: ft=gas

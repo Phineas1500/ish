@@ -25,34 +25,30 @@ rbp .req x26
 rsp .req x27
 
 # Extended 64-bit registers R8-R15 - Conservative allocation strategy
-# Phase 1: Use only the safest registers (x4-x7) for R8-R11
-# Phase 2: R12-R15 will use memory-based approach
+# Phase 1: Use only the safest registers (x4-x6) for R8-R10
+# Phase 2: R11-R15 will use memory-based approach
 r8 .req x4
 r9 .req x5
 r10 .req x6
-r11 .req x7
-# R12-R15 will be memory-based (no register aliases yet)
+# r11-R15 will be memory-based (no register aliases yet)
 
-# 32-bit versions of extended registers (Phase 1: R8-R11 only)
+# 32-bit versions of extended registers (Phase 1: R8-R10 only)
 r8d .req w4
 r9d .req w5
 r10d .req w6
-r11d .req w7
-# R12d-R15d will be memory-based
+# r11d-R15d will be memory-based
 
-# 16-bit versions of extended registers (Phase 1: R8-R11 only)
+# 16-bit versions of extended registers (Phase 1: R8-R10 only)
 r8w .req w4
 r9w .req w5
 r10w .req w6
-r11w .req w7
-# R12w-R15w will be memory-based
+# r11w-R15w will be memory-based
 
-# 8-bit versions of extended registers (Phase 1: R8-R11 only)
+# 8-bit versions of extended registers (Phase 1: R8-R10 only)
 r8b .req w4
 r9b .req w5
 r10b .req w6
-r11b .req w7
-# R12b-R15b will be memory-based
+# r11b-R15b will be memory-based
 
 # Memory-based register macros for R12-R15 (use safe temporaries)
 .macro load_r12_to_temp size
@@ -391,20 +387,24 @@ back_write_done_\id :
 .endm
 
 .macro save_c
-    stp x0, x1, [sp, -0x60]!
+    stp x0, x1, [sp, -0x80]!
     stp x2, x3, [sp, 0x10]
-    stp x8, x9, [sp, 0x20]
-    stp x10, x11, [sp, 0x30]
-    stp x12, x13, [sp, 0x40]
-    str lr, [sp, 0x50]
+    stp x4, x5, [sp, 0x20]  // Save r8, r9 (x4, x5)
+    stp x6, x7, [sp, 0x30]  // Save r10 and x7 (for future use)
+    stp x8, x9, [sp, 0x40]
+    stp x10, x11, [sp, 0x50]
+    stp x12, x13, [sp, 0x60]
+    str lr, [sp, 0x70]
 .endm
 .macro restore_c
-    ldr lr, [sp, 0x50]
-    ldp x12, x13, [sp, 0x40]
-    ldp x10, x11, [sp, 0x30]
-    ldp x8, x9, [sp, 0x20]
+    ldr lr, [sp, 0x70]
+    ldp x12, x13, [sp, 0x60]
+    ldp x10, x11, [sp, 0x50]
+    ldp x8, x9, [sp, 0x40]
+    ldp x6, x7, [sp, 0x30]  // Restore r10 and x7
+    ldp x4, x5, [sp, 0x20]  // Restore r8, r9 (x4, x5)
     ldp x2, x3, [sp, 0x10]
-    ldp x0, x1, [sp], 0x60
+    ldp x0, x1, [sp], 0x80
 .endm
 
 .macro movs dst, src, s
