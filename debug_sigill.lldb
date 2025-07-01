@@ -1,0 +1,7 @@
+target create build-64bit/ish
+settings set target.run-args "-f" "alpine-test-64" "/bin/true"
+process launch
+register read
+thread backtrace
+disassemble --pc
+quit

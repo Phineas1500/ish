@@ -1,0 +1,11 @@
+target create build-64bit/ish
+settings set target.run-args "-f" "alpine-64bit" "/bin/true"
+breakpoint set --name cpu_run_to_interrupt
+breakpoint set --name gadget_exit
+process launch
+continue
+register read
+thread backtrace
+disassemble --pc
+memory read --size 8 --format x --count 4 $pc
+quit

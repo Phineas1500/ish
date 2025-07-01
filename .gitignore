@@ -18,3 +18,13 @@ fastlane/screenshots
 fastlane/test_output
 
 e2e_out/
+alpine-32bit-processed/
+alpine-64bit/
+alpine-test/
+alpine-test-64/
+bin/
+usr/bin/
+usr/sbin/
+usr/lib/
+sbin/
+lib/

@@ -1,0 +1,7 @@
+target create build-64bit/ish
+settings set target.run-args "-f" "alpine-test-64" "/bin/true"
+breakpoint set --name handle_interrupt
+run
+print interrupt
+continue
+quit

@@ -1,0 +1,8 @@
+target create build-64bit/ish
+settings set target.run-args "-f" "alpine-test-64" "/bin/true"
+run
+bt
+register read
+continue
+quit
+EOF < /dev/null

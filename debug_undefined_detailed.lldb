@@ -1,0 +1,11 @@
+target create build-64bit/ish
+settings set target.run-args "-f" "alpine-test-64" "/bin/true"
+breakpoint set -f calls.c -l 308
+run
+print interrupt
+frame variable cpu
+print/x current->cpu.rip
+print/x current->cpu.eip
+memory read --size 1 --count 16 --format x `current->cpu.eip`
+continue
+quit
