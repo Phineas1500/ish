@@ -141,7 +141,8 @@
     .ifin(\op, bsf,bsr)
         .ifnb \s
             .ifc \s,x
-                uxtw x10, \arg
+                # For 64-bit, use full 64-bit register
+                mov x10, \arg
             .else
                 uxt\s w10, \arg
             .endif
@@ -149,23 +150,43 @@
             mov w10, \arg
         .endif
         .ifc \op,bsf
-            .if \size != 32
+            .if \size == 64
+                # For 64-bit bsf, use 64-bit operations
+                rbit x10, x10
+                clz x10, x10
+                cmp x10, \size
+            .elseif \size != 32
                 orr w10, w10, 1<<\size
+                rbit w10, w10
+                clz w10, w10
+                cmp w10, \size
+            .else
+                rbit w10, w10
+                clz w10, w10
+                cmp w10, \size
             .endif
-            rbit w10, w10
-            clz w10, w10
-            cmp w10, \size
         .else
-            clz w10, w10
-            .if \size != 32
+            .if \size == 64
+                # For 64-bit bsr, use 64-bit operations
+                clz x10, x10
+                cmp x10, \size
+                mov x9, \size-1
+                sub x10, x9, x10
+            .elseif \size != 32
+                clz w10, w10
                 sub w10, w10, 32-\size
+                cmp w10, \size
+                mov w9, \size-1
+                sub w10, w9, w10
+            .else
+                clz w10, w10
+                cmp w10, \size
+                mov w9, \size-1
+                sub w10, w9, w10
             .endif
-            cmp w10, \size
-            mov w9, \size-1
-            sub w10, w9, w10
         .endif
         .if \size == 64
-            csel _xtmp, w10, _xtmp, ne
+            csel _xtmp, x10, _xtmp, ne
         .else
             csel _tmp, w10, _tmp, ne
         .endif
@@ -335,12 +356,25 @@
     .endr
     .gadget_array \op
 .endr
-# bsf,bsr still have ARM64 64-bit issues - keep at 16,32 for now
+# bsf,bsr now support 64-bit with ARM64 fixes
 .irp op, bsf,bsr
-    .irp size, 16,32
+    .irp size, 16,32,64
         ss \size, do_op_size, \op, \op
     .endr
     .gadget_array \op
+.endr
+
+# Add missing addr and gs bit scan gadgets for 64-bit support
+.irp op, bsf,bsr
+    .gadget \op\()64_addr
+        _do_op \op, _xaddr, 64, x
+        gret
+
+    .gadget \op\()64_gs  
+        ldr _xtmp, [_cpu, #CPU_gs]
+        _do_op \op, _xtmp, 64, x
+        str _xtmp, [_cpu, #CPU_gs]
+        gret
 .endr
 
 # atomics. oof

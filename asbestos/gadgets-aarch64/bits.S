@@ -402,6 +402,17 @@
 .endm
 
 .macro do_bt op, size, s
+    # Add missing imm variant for bit test operations
+    .gadget \op\size\()_imm
+        .if \size == 64
+            ldr x8, [_ip]
+            do_bt_op \op, x8, \size, \s
+        .else
+            ldr\s w8, [_ip]
+            do_bt_op \op, w8, \size, \s
+        .endif
+        gret 1
+
     .gadget \op\size\()_mem
         .if \size == 64
             bic x8, _xtmp, 0x3f
@@ -484,6 +495,17 @@
 # atomic versions of the above
 
 .macro do_bt_atomic op, size, s
+    # Add missing imm variant for atomic bit test operations
+    .gadget atomic_\op\size\()_imm
+        .if \size == 64
+            ldr x8, [_ip]
+            do_bt_op \op, x8, \size, \s
+        .else
+            ldr\s w8, [_ip]
+            do_bt_op \op, w8, \size, \s
+        .endif
+        gret 1
+
     .gadget atomic_\op\size\()_mem
         .if \size == 64
             bic x8, _xtmp, 0x3f
