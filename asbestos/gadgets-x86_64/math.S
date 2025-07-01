@@ -58,7 +58,9 @@
 
 .macro do_reg_op op, size, reg
     .gadget \op\size\()_reg_\reg
-        .if \size == 32
+        .if \size == 64
+            do_op \op, \size, %r\reg\()x
+        .elseif \size == 32
             do_op \op, \size, %e\reg\()x
         .elseif \size == 16
             do_op \op, \size, %\reg\()x
@@ -103,7 +105,13 @@
 
     .irp reg, si,di,sp,bp
         .gadget \op\size\()_reg_\reg
-            .if \size == 32
+            .if \size == 64
+                .ifnc \reg,sp
+                    do_op \op, \size, %r\reg
+                .else
+                    do_op \op, \size, %_rsp
+                .endif
+            .elseif \size == 32
                 .ifnc \reg,sp
                     do_op \op, \size, %e\reg
                 .else
