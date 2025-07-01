@@ -740,3 +740,24 @@
     sxth eax, eax
     gret
 .gadget_list cvte, SIZE_LIST
+
+# Additional 64-bit addr and gs gadgets for basic operations
+.gadget add64_addr
+    do_op add, 64, _xaddr
+    gret
+
+.gadget add64_gs
+    ldr _xtmp, [_cpu, #CPU_gs]
+    do_op add, 64, _xtmp
+    str _xtmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget sub64_addr
+    do_op sub, 64, _xaddr
+    gret
+
+.gadget sub64_gs
+    ldr _xtmp, [_cpu, #CPU_gs]
+    do_op sub, 64, _xtmp
+    str _xtmp, [_cpu, #CPU_gs]
+    gret
