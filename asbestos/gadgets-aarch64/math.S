@@ -761,3 +761,67 @@
     do_op sub, 64, _xtmp
     str _xtmp, [_cpu, #CPU_gs]
     gret
+
+.gadget and64_addr
+    do_op and, 64, _xaddr
+    gret
+
+.gadget and64_gs
+    ldr _xtmp, [_cpu, #CPU_gs]
+    do_op and, 64, _xtmp
+    str _xtmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget or64_addr
+    do_op or, 64, _xaddr
+    gret
+
+.gadget or64_gs
+    ldr _xtmp, [_cpu, #CPU_gs]
+    do_op or, 64, _xtmp
+    str _xtmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget xor64_addr
+    do_op xor, 64, _xaddr
+    gret
+
+.gadget xor64_gs
+    ldr _xtmp, [_cpu, #CPU_gs]
+    do_op xor, 64, _xtmp
+    str _xtmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget adc64_addr
+    do_op adc, 64, _xaddr
+    gret
+
+.gadget adc64_gs
+    ldr _xtmp, [_cpu, #CPU_gs]
+    do_op adc, 64, _xtmp
+    str _xtmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget sbb64_addr
+    do_op sbb, 64, _xaddr
+    gret
+
+.gadget sbb64_gs
+    ldr _xtmp, [_cpu, #CPU_gs]
+    do_op sbb, 64, _xtmp
+    str _xtmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget store64_addr
+    do_op store, 64, _xaddr
+    gret
+
+.gadget xchg64_addr
+    do_op xchg, 64, _xaddr
+    gret
+
+.gadget xchg64_gs
+    ldr _xtmp, [_cpu, #CPU_gs]
+    do_op xchg, 64, _xtmp
+    str _xtmp, [_cpu, #CPU_gs]
+    gret
