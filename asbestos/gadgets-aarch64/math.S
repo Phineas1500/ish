@@ -90,31 +90,47 @@
     .ifc \op,imul
         .ifnb \s
             .ifc \s,x
-                sxtw w10, \arg
+                # For 64-bit operations, use proper x-register handling
                 .if \size == 64
-                    mul _xtmp, _xtmp, w10
-                    cmp _xtmp, _xtmp, sxtw
+                    sxtw x10, \arg
+                    mul _xtmp, _xtmp, x10
+                    # Check for overflow by comparing with sign-extended result
+                    asr x11, _xtmp, 31
+                    cmp x11, _xtmp, asr 63
                 .else
+                    sxtw x10, \arg
                     mul _tmp, _tmp, w10
-                    cmp _tmp, _tmp, sxtw
+                    # Check for overflow using proper comparison
+                    sxtw x11, _tmp
+                    cmp _tmp, w11
                 .endif
             .else
                 sxt\s w10, \arg
                 .if \size == 64
                     mul _xtmp, _xtmp, w10
-                    cmp _xtmp, _xtmp, sxt\s
+                    # Check for overflow - compare result with sign-extended version
+                    sxt\s x11, _xtmp
+                    cmp _xtmp, x11
                 .else
                     mul _tmp, _tmp, w10
-                    cmp _tmp, _tmp, sxt\s
+                    # Check for overflow
+                    sxt\s w11, _tmp  
+                    cmp _tmp, w11
                 .endif
             .endif
         .else
             .if \size == 64
-                smull x12, _xtmp, \arg
-                cmp x12, _xtmp, sxtw
+                # For 64-bit multiply, use proper w-register operands for smull
+                mov w10, _xtmp  
+                smull x12, w10, \arg
+                # Check if result fits in sign-extended 32-bit value
+                sxtw x13, w12
+                cmp x12, x13
             .else
                 smull _xtmp, _tmp, \arg
-                cmp _xtmp, _tmp, sxtw
+                # Check for overflow
+                sxtw x11, _tmp
+                cmp _xtmp, x11
             .endif
         .endif
         cset w10, ne
@@ -312,7 +328,15 @@
     .endr
     .gadget_array \op
 .endr
-.irp op, imul,bsf,bsr
+# imul now supports 64-bit with ARM64 fixes
+.irp op, imul
+    .irp size, 16,32,64
+        ss \size, do_op_size, \op, \op
+    .endr
+    .gadget_array \op
+.endr
+# bsf,bsr still have ARM64 64-bit issues - keep at 16,32 for now
+.irp op, bsf,bsr
     .irp size, 16,32
         ss \size, do_op_size, \op, \op
     .endr

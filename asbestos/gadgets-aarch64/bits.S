@@ -15,20 +15,44 @@
             # that way we can retrieve the last bit shifted out for calculating CF and OF
             .ifc \type,shl
                 sub w8, w8, 1
-                lsl _tmp, _tmp, w8
-                ubfx w9, _tmp, \size-1, 1
-                ubfx w10, _tmp, \size-2, 1
-                lsl _tmp, _tmp, 1
+                .if \size == 64
+                    # For 64-bit shifts, use x-register for shift amount
+                    uxtw x8, w8
+                    lsl _xtmp, _xtmp, x8
+                    ubfx x9, _xtmp, \size-1, 1
+                    ubfx x10, _xtmp, \size-2, 1
+                    lsl _xtmp, _xtmp, 1
+                    # Extract low bits for flag storage
+                    and w9, w9, 1
+                    and w10, w10, 1
+                .else
+                    lsl _tmp, _tmp, w8
+                    ubfx w9, _tmp, \size-1, 1
+                    ubfx w10, _tmp, \size-2, 1
+                    lsl _tmp, _tmp, 1
+                .endif
                 eor w10, w10, w9
                 strb w9, [_cpu, CPU_cf]
                 strb w10, [_cpu, CPU_of]
             .endif
             .ifc \type,shr
-                ubfx w10, _tmp, \size-1, 1
-                sub w8, w8, 1
-                lsr _tmp, _tmp, w8
-                and w9, _tmp, 1
-                lsr _tmp, _tmp, 1
+                .if \size == 64
+                    ubfx x10, _xtmp, \size-1, 1
+                    sub w8, w8, 1
+                    uxtw x8, w8
+                    lsr _xtmp, _xtmp, x8
+                    and x9, _xtmp, 1
+                    lsr _xtmp, _xtmp, 1
+                    # Extract low bits for flag storage
+                    and w9, w9, 1
+                    and w10, w10, 1
+                .else
+                    ubfx w10, _tmp, \size-1, 1
+                    sub w8, w8, 1
+                    lsr _tmp, _tmp, w8
+                    and w9, _tmp, 1
+                    lsr _tmp, _tmp, 1
+                .endif
                 strb w9, [_cpu, CPU_cf]
                 strb w10, [_cpu, CPU_of]
             .endif
@@ -36,15 +60,32 @@
                 # lazy ass copy paste job
                 .ifnb \s
                     .ifc \s,x
-                        sxtw _xtmp, _tmp
+                        .if \size == 64
+                            # For 64-bit, _xtmp is already the right register
+                        .else
+                            sxtw _xtmp, _tmp
+                        .endif
                     .else
-                        sxt\s _tmp, _tmp
+                        .if \size == 64
+                            sxt\s _xtmp, _xtmp
+                        .else
+                            sxt\s _tmp, _tmp
+                        .endif
                     .endif
                 .endif
                 sub w8, w8, 1
-                asr _tmp, _tmp, w8
-                and w9, _tmp, 1
-                asr _tmp, _tmp, 1
+                .if \size == 64
+                    uxtw x8, w8
+                    asr _xtmp, _xtmp, x8
+                    and x9, _xtmp, 1
+                    asr _xtmp, _xtmp, 1
+                    # Extract low bit for flag storage
+                    and w9, w9, 1
+                .else
+                    asr _tmp, _tmp, w8
+                    and w9, _tmp, 1
+                    asr _tmp, _tmp, 1
+                .endif
                 strb w9, [_cpu, CPU_cf]
                 strb wzr, [_cpu, CPU_of]
             .endif
@@ -143,13 +184,124 @@
     .endr
 .endm
 
-.irp type, shl,shr,sar,rol,ror,rcl,rcr
+.irp type, shl,shr,sar
+    .irp size, 8,16,32,64
+        ss \size, do_shift, \type
+    .endr
+    .gadget_array \type
+.endr
+# rol,ror,rcl,rcr still have ARM64 64-bit issues - keep at 8,16,32 for now
+.irp type, rol,ror,rcl,rcr
     .irp size, 8,16,32
         ss \size, do_shift, \type
     .endr
-    # 64-bit shift operations have ARM64 assembly constraints - exclude for now
     .gadget_array \type
 .endr
+
+# Helper macro for the shift logic without the gadget wrapper
+.macro do_shift_logic type, size, target
+    ands w8, ecx, 31
+    b.eq 1f
+
+    # shift by one less, then by one more to get flags
+    .ifc \type,shl
+        sub w8, w8, 1
+        uxtw x8, w8
+        lsl \target, \target, x8
+        ubfx x9, \target, \size-1, 1
+        ubfx x10, \target, \size-2, 1
+        lsl \target, \target, 1
+        and w9, w9, 1
+        and w10, w10, 1
+        eor w10, w10, w9
+        strb w9, [_cpu, CPU_cf]
+        strb w10, [_cpu, CPU_of]
+    .endif
+    .ifc \type,shr
+        ubfx x10, \target, \size-1, 1
+        sub w8, w8, 1
+        uxtw x8, w8
+        lsr \target, \target, x8
+        and x9, \target, 1
+        lsr \target, \target, 1
+        and w9, w9, 1
+        and w10, w10, 1
+        strb w9, [_cpu, CPU_cf]
+        strb w10, [_cpu, CPU_of]
+    .endif
+    .ifc \type,sar
+        sub w8, w8, 1
+        uxtw x8, w8
+        asr \target, \target, x8
+        and x9, \target, 1
+        asr \target, \target, 1
+        and w9, w9, 1
+        strb w9, [_cpu, CPU_cf]
+        strb wzr, [_cpu, CPU_of]
+    .endif
+    
+    setf_zsp x
+    clearf_a
+1:
+.endm
+
+# Add missing addr and gs shift gadgets for 64-bit support
+.gadget shl64_addr
+    do_shift_logic shl, 64, _xaddr
+    gret
+
+.gadget shl64_gs  
+    ldr _xtmp, [_cpu, #CPU_gs]
+    do_shift_logic shl, 64, _xtmp
+    str _xtmp, [_cpu, #CPU_gs]
+    gret
+    
+.gadget shl64_mem
+    read_prep 64, shl64_mem
+    ldr _xtmp, [_xaddr]
+    do_shift_logic shl, 64, _xtmp
+    str _xtmp, [_xaddr]
+    write_done 64, shl64_mem
+    gret 1
+    write_bullshit 64, shl64_mem
+
+.gadget shr64_addr
+    do_shift_logic shr, 64, _xaddr
+    gret
+
+.gadget shr64_gs  
+    ldr _xtmp, [_cpu, #CPU_gs]
+    do_shift_logic shr, 64, _xtmp
+    str _xtmp, [_cpu, #CPU_gs]
+    gret
+    
+.gadget shr64_mem
+    read_prep 64, shr64_mem
+    ldr _xtmp, [_xaddr]
+    do_shift_logic shr, 64, _xtmp
+    str _xtmp, [_xaddr]
+    write_done 64, shr64_mem
+    gret 1
+    write_bullshit 64, shr64_mem
+
+.gadget sar64_addr
+    do_shift_logic sar, 64, _xaddr
+    gret
+
+.gadget sar64_gs  
+    ldr _xtmp, [_cpu, #CPU_gs]
+    do_shift_logic sar, 64, _xtmp
+    str _xtmp, [_cpu, #CPU_gs]
+    gret
+    
+.gadget sar64_mem
+    read_prep 64, sar64_mem
+    ldr _xtmp, [_xaddr]
+    do_shift_logic sar, 64, _xtmp
+    str _xtmp, [_xaddr]
+    write_done 64, sar64_mem
+    gret 1
+         write_bullshit 64, sar64_mem
 
 .macro do_shiftd op, arg
     .macro x name, reg
@@ -199,34 +351,66 @@
 
 .macro do_bt_op op, arg, size, s
     .ifc \op,bt
-        .ifnc \arg, w8
-            mov w8, \arg
+        .if \size == 64
+            .ifnc \arg, x8
+                mov x8, \arg
+            .endif
+            and _xtmp, _xtmp, \size-1
+            lsr x8, x8, _xtmp
+            and w8, w8, 1
+            strb w8, [_cpu, CPU_cf]
+        .else
+            .ifnc \arg, w8
+                mov w8, \arg
+            .endif
+            and _tmp, _tmp, \size-1
+            lsr w8, w8, _tmp
+            and w8, w8, 1
+            strb w8, [_cpu, CPU_cf]
         .endif
-        and _tmp, _tmp, \size-1
-        lsr w8, w8, _tmp
-        and w8, w8, 1
-        strb w8, [_cpu, CPU_cf]
     .else
-        mov w9, 1
-        and _tmp, _tmp, \size-1
-        lsl w9, w9, _tmp
-        tst \arg, w9
-        .ifc \op,btc
-            eor \arg, \arg, w9
-        .else N .ifc \op,bts
-            orr \arg, \arg, w9
-        .else N .ifc \op,btr
-            bic \arg, \arg, w9
-        .endif N .endif N .endif
-        cset w9, ne
-        strb w9, [_cpu, CPU_cf]
+        .if \size == 64
+            mov x9, 1
+            and _xtmp, _xtmp, \size-1
+            lsl x9, x9, _xtmp
+            tst \arg, x9
+            .ifc \op,btc
+                eor \arg, \arg, x9
+            .else N .ifc \op,bts
+                orr \arg, \arg, x9
+            .else N .ifc \op,btr
+                bic \arg, \arg, x9
+            .endif N .endif N .endif
+            cset w9, ne
+            strb w9, [_cpu, CPU_cf]
+        .else
+            mov w9, 1
+            and _tmp, _tmp, \size-1
+            lsl w9, w9, _tmp
+            tst \arg, w9
+            .ifc \op,btc
+                eor \arg, \arg, w9
+            .else N .ifc \op,bts
+                orr \arg, \arg, w9
+            .else N .ifc \op,btr
+                bic \arg, \arg, w9
+            .endif N .endif N .endif
+            cset w9, ne
+            strb w9, [_cpu, CPU_cf]
+        .endif
     .endif
 .endm
 
 .macro do_bt op, size, s
     .gadget \op\size\()_mem
-        bic w8, _tmp, 0x1f
-        add _addr, _addr, w8, lsr 3
+        .if \size == 64
+            bic x8, _xtmp, 0x3f
+            lsr x8, x8, 3
+            add _xaddr, _xaddr, x8
+        .else
+            bic w8, _tmp, 0x1f
+            add _addr, _addr, w8, lsr 3
+        .endif
         # hell {{{
         .ifin(\op, bt)
             read_prep \size, \op\size\()_mem
@@ -235,10 +419,19 @@
             write_prep \size, \op\size\()_mem
         .endifin
         # }}}
-        ldr w8, [_xaddr]
-        do_bt_op \op, w8, \size, \s
+        .if \size == 64
+            ldr x8, [_xaddr]
+            do_bt_op \op, x8, \size, \s
+        .else
+            ldr w8, [_xaddr]
+            do_bt_op \op, w8, \size, \s
+        .endif
         .ifin(\op, btc,bts,btr)
-            str w8, [_xaddr]
+            .if \size == 64
+                str x8, [_xaddr]
+            .else
+                str w8, [_xaddr]
+            .endif
             write_done \size, \op\size\()_mem
         .endifin
         gret 1
@@ -253,7 +446,28 @@
 
     .macro x name, reg
         .gadget \op\size\()_\name
-            do_bt_op \op, \reg, \size, \s
+            .if \size == 64
+                # For 64-bit operations, need to use the 64-bit register names
+                .ifc \name,reg_a
+                    do_bt_op \op, rax, \size, \s
+                .else N .ifc \name,reg_b
+                    do_bt_op \op, rbx, \size, \s  
+                .else N .ifc \name,reg_c
+                    do_bt_op \op, rcx, \size, \s
+                .else N .ifc \name,reg_d
+                    do_bt_op \op, rdx, \size, \s
+                .else N .ifc \name,reg_si
+                    do_bt_op \op, rsi, \size, \s
+                .else N .ifc \name,reg_di
+                    do_bt_op \op, rdi, \size, \s
+                .else N .ifc \name,reg_sp
+                    do_bt_op \op, rsp, \size, \s
+                .else N .ifc \name,reg_bp
+                    do_bt_op \op, rbp, \size, \s
+                .endif N .endif N .endif N .endif N .endif N .endif N .endif N .endif
+            .else
+                do_bt_op \op, \reg, \size, \s
+            .endif
             gret
     .endm
     .each_reg x
@@ -261,7 +475,7 @@
 .endm
 
 .irp op, bt,btc,bts,btr
-    .irp size, 16,32
+    .irp size, 16,32,64
         ss \size, do_bt, \op
     .endr
     .gadget_array \op
@@ -271,25 +485,48 @@
 
 .macro do_bt_atomic op, size, s
     .gadget atomic_\op\size\()_mem
-        bic w8, _tmp, 0x1f
-        add _addr, _addr, w8, lsr 3
+        .if \size == 64
+            bic x8, _xtmp, 0x3f
+            lsr x8, x8, 3
+            add _xaddr, _xaddr, x8
+        .else
+            bic w8, _tmp, 0x1f
+            add _addr, _addr, w8, lsr 3
+        .endif
         write_prep \size, atomic_\op\size\()_mem
         # this is simple enough that I'm comfortable doing it with ldaxr/stlxr
     1:
-        ldaxr w8, [_xaddr]
-        mov w9, 1
-        and _tmp, _tmp, \size-1
-        lsl w9, w9, _tmp
-        tst w8, w9
-        .ifc \op,btc
-            eor w8, w8, w9
-        .else N .ifc \op,bts
-            orr w8, w8, w9
-        .else N .ifc \op,btr
-            bic w8, w8, w9
-        .endif N .endif N .endif
-        cset w9, ne
-        stlxr w10, w8, [_xaddr]
+        .if \size == 64
+            ldaxr x8, [_xaddr]
+            mov x9, 1
+            and _xtmp, _xtmp, \size-1
+            lsl x9, x9, _xtmp
+            tst x8, x9
+            .ifc \op,btc
+                eor x8, x8, x9
+            .else N .ifc \op,bts
+                orr x8, x8, x9
+            .else N .ifc \op,btr
+                bic x8, x8, x9
+            .endif N .endif N .endif
+            cset w9, ne
+            stlxr w10, x8, [_xaddr]
+        .else
+            ldaxr w8, [_xaddr]
+            mov w9, 1
+            and _tmp, _tmp, \size-1
+            lsl w9, w9, _tmp
+            tst w8, w9
+            .ifc \op,btc
+                eor w8, w8, w9
+            .else N .ifc \op,bts
+                orr w8, w8, w9
+            .else N .ifc \op,btr
+                bic w8, w8, w9
+            .endif N .endif N .endif
+            cset w9, ne
+            stlxr w10, w8, [_xaddr]
+        .endif
         cbnz w10, 1b
         strb w9, [_cpu, CPU_cf]
         write_done \size, atomic_\op\size\()_mem
@@ -298,10 +535,39 @@
 .endm
 
 .irp op, btc,bts,btr
-    .irp size, 16,32
+    .irp size, 16,32,64
         ss \size, do_bt_atomic, \op
     .endr
     .gadget_array atomic_\op
+.endr
+
+# Add missing addr and gs bit test gadgets for 64-bit support
+.irp op, bt,btc,bts,btr
+    .gadget \op\()64_addr
+        do_bt_op \op, _xaddr, 64, x
+        gret
+
+    .gadget \op\()64_gs  
+        ldr _xtmp, [_cpu, #CPU_gs]
+        do_bt_op \op, _xtmp, 64, x
+        str _xtmp, [_cpu, #CPU_gs]
+        gret
+.endr
+
+# Add missing addr and gs atomic bit test gadgets for 64-bit support  
+.irp op, btc,bts,btr
+    .gadget atomic_\op\()64_addr
+        # For atomic operations on addr, we'd need memory at _xaddr
+        # This is complex - for now, fall back to non-atomic version
+        do_bt_op \op, _xaddr, 64, x
+        gret
+
+    .gadget atomic_\op\()64_gs
+        # Atomic operations on gs register - use non-atomic for now
+        ldr _xtmp, [_cpu, #CPU_gs]
+        do_bt_op \op, _xtmp, 64, x
+        str _xtmp, [_cpu, #CPU_gs]
+        gret
 .endr
 
 .macro x name reg
