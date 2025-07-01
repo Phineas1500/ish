@@ -5,12 +5,24 @@
     mov _tmp, _addr
     gret
 
+.gadget load64_addr
+    mov _xtmp, _xaddr
+    gret
+
 .gadget load16_gs
     ldrh _tmp, [_cpu, #CPU_gs]
     gret
 
+.gadget load64_gs
+    ldr _xtmp, [_cpu, #CPU_gs]
+    gret
+
 .gadget store16_gs
     strh _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget store64_gs
+    str _xtmp, [_cpu, #CPU_gs]
     gret
 
 # this would have been just a few nice compact nested loops, but gas said "nuh uh"

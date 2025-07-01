@@ -2,20 +2,43 @@
 #include "emu/interrupt.h"
 
 .gadget push
+#ifdef ISH_64BIT
+    sub _xaddr, rsp, 8
+    write_prep 64, push
+    str _xtmp, [_xaddr]
+    write_done 64, push
+    sub rsp, rsp, 8
+#else
     sub _addr, esp, 4
     write_prep 32, push
     str _tmp, [_xaddr]
     write_done 32, push
     sub esp, esp, 4
+#endif
     gret 1
+#ifdef ISH_64BIT
+    write_bullshit 64, push
+#else
     write_bullshit 32, push
+#endif
 .gadget pop
+#ifdef ISH_64BIT
+    mov _xaddr, rsp
+    read_prep 64, pop
+    ldr _xtmp, [_xaddr]
+    add rsp, rsp, 8
+#else
     mov _addr, esp
     read_prep 32, pop
     ldr _tmp, [_xaddr]
     add esp, esp, 4
+#endif
     gret 1
+#ifdef ISH_64BIT
+    read_bullshit 64, pop
+#else
     read_bullshit 32, pop
+#endif
 
 .macro x name, reg
     .gadget addr_\name

@@ -2,6 +2,17 @@
 
 .gadget call
     // save return address
+#ifdef ISH_64BIT
+    sub _xaddr, rsp, 8
+    write_prep 64, call
+    ldr x8, [_ip, 32]
+    str x8, [_xaddr]
+    // push stack pointer
+    sub rsp, rsp, 8
+    // save ip-to-arguments to return cache
+    ubfx w12, w8, 4, 12
+    write_done 64, call // clobbers w8
+#else
     sub _addr, esp, 4
     write_prep 32, call
     ldr w8, [_ip, 16]
@@ -11,12 +22,21 @@
     // save ip-to-arguments to return cache
     ubfx w12, w8, 4, 12
     write_done 32, call // clobbers w8
+#endif
     add x13, _cpu, LOCAL_ret_cache
     str _ip, [x13, x12, lsl 3]
     // jump to target
+#ifdef ISH_64BIT
+    ldr _ip, [_ip, 64]
+#else
     ldr _ip, [_ip, 32]
+#endif
     b fiber_ret_chain
+#ifdef ISH_64BIT
+    write_bullshit 64, call
+#else
     write_bullshit 32, call
+#endif
 
 .gadget call_indir
     // save return address
