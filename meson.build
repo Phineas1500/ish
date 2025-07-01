@@ -24,6 +24,7 @@ add_project_arguments('-DENGINE_' + get_option('engine').to_upper() + '=1', lang
 
 if get_option('arch') == 'x86_64'
     add_project_arguments('-DISH_64BIT=1', language: 'c')
+    add_project_arguments('-DISH_64BIT=1', language: 'cpp')
 endif
 
 if get_option('no_crlf')

@@ -147,6 +147,7 @@
     .irp size, 8,16,32
         ss \size, do_shift, \type
     .endr
+    # 64-bit shift operations have ARM64 assembly constraints - exclude for now
     .gadget_array \type
 .endr
 
