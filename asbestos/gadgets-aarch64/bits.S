@@ -694,6 +694,19 @@
         gret
 .endr
 
+# Add missing addr and gs bit test gadgets for 8-bit support
+.irp op, bt,btc,bts,btr
+    .gadget \op\()8_addr
+        do_bt_op \op, _addr, 8, b
+        gret
+
+    .gadget \op\()8_gs  
+        ldr _tmp, [_cpu, #CPU_gs]
+        do_bt_op \op, _tmp, 8, b
+        str _tmp, [_cpu, #CPU_gs]
+        gret
+.endr
+
 # Add missing addr and gs atomic bit test gadgets for 64-bit support  
 .irp op, btc,bts,btr
     .gadget atomic_\op\()64_addr

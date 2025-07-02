@@ -1127,3 +1127,65 @@
     do_op xchg, 64, _xtmp
     str _xtmp, [_cpu, #CPU_gs]
     gret
+
+# Add missing 32-bit logical addr and gs gadgets
+.gadget and32_addr
+    do_op and, 32, _addr
+    gret
+
+.gadget and32_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op and, 32, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget or32_addr
+    do_op or, 32, _addr
+    gret
+
+.gadget or32_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op or, 32, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget xor32_addr
+    do_op xor, 32, _addr
+    gret
+
+.gadget xor32_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op xor, 32, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+# Add missing 16-bit logical addr and gs gadgets
+.gadget and16_addr
+    do_op and, 16, _addr
+    gret
+
+.gadget and16_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op and, 16, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget or16_addr
+    do_op or, 16, _addr
+    gret
+
+.gadget or16_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op or, 16, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget xor16_addr
+    do_op xor, 16, _addr
+    gret
+
+.gadget xor16_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op xor, 16, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
