@@ -111,13 +111,15 @@
 .endm
 
 .irp op, lods,stos,movs,scas,cmps
-    .irp size, 8,16,32
+    .irp size, 8,16,32,64
         .irp rep, REP_LIST
             .if \size == 8
                 do_strop \op, \size, \rep, b
             .elseif \size == 16
                 do_strop \op, \size, \rep, h
             .elseif \size == 32
+                do_strop \op, \size, \rep
+            .elseif \size == 64
                 do_strop \op, \size, \rep
             .endif
         .endr

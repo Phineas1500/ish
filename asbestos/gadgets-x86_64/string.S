@@ -99,7 +99,7 @@
 .endm
 
 .irp op, lods,stos,movs,scas,cmps
-    .irp size, 8,16,32
+    .irp size, 8,16,32,64
         .irp rep, REP_LIST
             .if \size == 8
                 do_strop \op, \size, \rep, b, b, al
@@ -107,6 +107,8 @@
                 do_strop \op, \size, \rep, w, w, ax
             .elseif \size == 32
                 do_strop \op, \size, \rep, d, l, eax
+            .elseif \size == 64
+                do_strop \op, \size, \rep, q, q, rax
             .endif
         .endr
     .endr
