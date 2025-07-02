@@ -25,6 +25,67 @@
     str _xtmp, [_cpu, #CPU_gs]
     gret
 
+# Add missing load/store addr/gs/imm variants that gadget_array expects
+
+# Missing load variants
+.gadget load8_addr
+    mov _tmp, _addr
+    gret
+
+.gadget load8_gs
+    ldrb _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget load16_addr
+    mov _tmp, _addr
+    gret
+
+.gadget load32_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    gret
+
+# Missing store variants
+.gadget store8_addr
+    mov _addr, _tmp
+    gret
+
+.gadget store8_gs
+    strb _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget store16_addr
+    mov _addr, _tmp
+    gret
+
+.gadget store32_addr
+    mov _addr, _tmp
+    gret
+
+.gadget store32_gs
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+# Missing store immediate variants
+.gadget store8_imm
+    ldrb w8, [_ip]
+    mov _tmp, w8
+    gret 1
+
+.gadget store16_imm
+    ldrh w8, [_ip]
+    mov _tmp, w8
+    gret 1
+
+.gadget store32_imm
+    ldr w8, [_ip]
+    mov _tmp, w8
+    gret 1
+
+.gadget store64_imm
+    ldr x8, [_ip]
+    mov _xtmp, x8
+    gret 1
+
 # this would have been just a few nice compact nested loops, but gas said "nuh uh"
 
 .macro _do_op op, arg, size, s
@@ -376,6 +437,27 @@
         str _xtmp, [_cpu, #CPU_gs]
         gret
 .endr
+
+# Add missing 8-bit addr/gs variants that were overlooked
+.gadget bsf8_addr
+    _do_op bsf, _addr, 8,
+    gret
+
+.gadget bsf8_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    _do_op bsf, _tmp, 8,
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget bsr8_addr
+    _do_op bsr, _addr, 8,
+    gret
+
+.gadget bsr8_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    _do_op bsr, _tmp, 8,
+    str _tmp, [_cpu, #CPU_gs]
+    gret
 
 # Manually add missing 16-bit and 32-bit variants  
 .gadget bsf16_addr
