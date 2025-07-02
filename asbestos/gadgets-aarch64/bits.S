@@ -668,6 +668,32 @@
         gret
 .endr
 
+# Add missing addr and gs bit test gadgets for 32-bit support
+.irp op, bt,btc,bts,btr
+    .gadget \op\()32_addr
+        do_bt_op \op, _addr, 32, ""
+        gret
+
+    .gadget \op\()32_gs  
+        ldr _tmp, [_cpu, #CPU_gs]
+        do_bt_op \op, _tmp, 32, ""
+        str _tmp, [_cpu, #CPU_gs]
+        gret
+.endr
+
+# Add missing addr and gs bit test gadgets for 16-bit support
+.irp op, bt,btc,bts,btr
+    .gadget \op\()16_addr
+        do_bt_op \op, _addr, 16, h
+        gret
+
+    .gadget \op\()16_gs  
+        ldr _tmp, [_cpu, #CPU_gs]
+        do_bt_op \op, _tmp, 16, h
+        str _tmp, [_cpu, #CPU_gs]
+        gret
+.endr
+
 # Add missing addr and gs atomic bit test gadgets for 64-bit support  
 .irp op, btc,bts,btr
     .gadget atomic_\op\()64_addr
@@ -734,4 +760,51 @@
     strb w9, [_cpu, CPU_cf]
     strb w10, [_cpu, CPU_of]
     str _tmp, [_cpu, #CPU_gs]
+    gret
+
+# Add missing 64-bit rotate operations
+.gadget rol64_addr
+    neg w8, ecx
+    uxtw x8, w8
+    ror _xaddr, _xaddr, x8
+    ubfx x9, _xaddr, 0, 1
+    ubfx x10, _xaddr, 63, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    gret
+
+.gadget ror64_addr
+    uxtw x8, ecx
+    ror _xaddr, _xaddr, x8
+    ubfx x9, _xaddr, 63, 1
+    ubfx x10, _xaddr, 62, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    gret
+
+.gadget rol64_gs
+    ldr _xtmp, [_cpu, #CPU_gs]
+    neg w8, ecx
+    uxtw x8, w8
+    ror _xtmp, _xtmp, x8
+    ubfx x9, _xtmp, 0, 1
+    ubfx x10, _xtmp, 63, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _xtmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget ror64_gs
+    ldr _xtmp, [_cpu, #CPU_gs]
+    uxtw x8, ecx
+    ror _xtmp, _xtmp, x8
+    ubfx x9, _xtmp, 63, 1
+    ubfx x10, _xtmp, 62, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _xtmp, [_cpu, #CPU_gs]
     gret
