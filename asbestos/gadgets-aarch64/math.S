@@ -377,9 +377,74 @@
         gret
 .endr
 
+# Manually add missing 16-bit and 32-bit variants  
+.gadget bsf16_addr
+    _do_op bsf, _addr, 16,
+    gret
+
+.gadget bsf16_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    _do_op bsf, _tmp, 16,
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget bsf32_addr
+    _do_op bsf, _addr, 32,
+    gret
+
+.gadget bsf32_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    _do_op bsf, _tmp, 32,
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget bsr16_addr
+    _do_op bsr, _addr, 16,
+    gret
+
+.gadget bsr16_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    _do_op bsr, _tmp, 16,
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget bsr32_addr
+    _do_op bsr, _addr, 32,
+    gret
+
+.gadget bsr32_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    _do_op bsr, _tmp, 32,
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+# Add missing addr and gs variants for imul operations
+.irp size, 16,32,64
+    .gadget imul\size\()_addr
+        .if \size == 64
+            _do_op imul, _xaddr, \size, x
+        .else
+            _do_op imul, _addr, \size, 
+        .endif
+        gret
+
+    .gadget imul\size\()_gs
+        .if \size == 64
+            ldr _xtmp, [_cpu, #CPU_gs]
+            _do_op imul, _xtmp, \size, x
+            str _xtmp, [_cpu, #CPU_gs]
+        .else
+            ldr _tmp, [_cpu, #CPU_gs]
+            _do_op imul, _tmp, \size,
+            str _tmp, [_cpu, #CPU_gs]
+        .endif
+        gret
+.endr
+
 # atomics. oof
 
 .macro do_op_size_atomic opname, op, size, s
+
     .gadget atomic_\opname\size\()_mem
         # There's so much stuff going on inside most of these operations that
         # the implementation is a compare-and-swap loop, instead of just ldaxr/stlxr
@@ -545,6 +610,185 @@
         .endif N .endif N .endif
     .endr
     .gadget_array atomic_\op
+.endr
+
+# Add missing addr and gs atomic gadgets for 64-bit support
+.irp op, add,sub,adc,sbb,and,or,xor,xadd
+    .gadget atomic_\op\()64_addr
+        write_prep 64, atomic_\op\()64_addr
+        ldr x12, [_xaddr]
+    1:
+        mov x8, x12
+        .ifc \op,xor
+            eor x8, x8, _xaddr
+        .else N .ifc \op,sbb
+            # sbb is subtract with borrow - implement as subtract with carry
+            setf_a src=_xaddr, dst=x8
+            ldrb w10, [_cpu, CPU_cf]
+            mvn w10, w10
+            cmn w10, 1
+            do_add sbc, x8, _xaddr, x
+        .else N .ifc \op,or
+            orr x8, x8, _xaddr
+        .else N .ifc \op,and
+            and x8, x8, _xaddr
+        .else N .ifc \op,add
+            setf_a src=_xaddr, dst=x8
+            do_add add, x8, _xaddr, x
+        .else N .ifc \op,sub
+            setf_a src=_xaddr, dst=x8
+            do_add sub, x8, _xaddr, x
+        .else N .ifc \op,adc
+            setf_a src=_xaddr, dst=x8
+            ldrb w10, [_cpu, CPU_cf]
+            cmp w10, 1
+            do_add adc, x8, _xaddr, x
+        .else N .ifc \op,xadd
+            mov x9, x8
+            mov x8, _xaddr
+            setf_a src=x9, dst=x8
+            do_add add, x8, x9, x
+        .endif N .endif N .endif N .endif N .endif N .endif N .endif N .endif
+
+        .ifin(\op, add,sub,adc,sbb,and,or,xor,xadd)
+            setf_zsp x, val=x8
+        .endifin
+
+    2:
+        ldaxr x13, [_xaddr]
+        cmp x12, x13
+        b.ne 3f
+        stlxr w13, x8, [_xaddr]
+        cbnz w13, 2b
+        write_done 64, atomic_\op\()64_addr
+        gret
+        write_bullshit 64, atomic_\op\()64_addr
+    3:
+        dmb ish
+        mov x12, x13
+        b 1b
+
+    .gadget atomic_\op\()64_gs
+        write_prep 64, atomic_\op\()64_gs
+        ldr x8, [_cpu, #CPU_gs]
+        mov _xtmp, x8
+        ldr x12, [_cpu, #CPU_gs]
+    1:
+        mov x8, x12
+        .ifc \op,xor
+            eor x8, x8, _xtmp
+        .else N .ifc \op,sbb
+            setf_a src=_xtmp, dst=x8
+            ldrb w10, [_cpu, CPU_cf]
+            mvn w10, w10
+            cmn w10, 1
+            do_add sbc, x8, _xtmp, x
+        .else N .ifc \op,or
+            orr x8, x8, _xtmp
+        .else N .ifc \op,and
+            and x8, x8, _xtmp
+        .else N .ifc \op,add
+            setf_a src=_xtmp, dst=x8
+            do_add add, x8, _xtmp, x
+        .else N .ifc \op,sub
+            setf_a src=_xtmp, dst=x8
+            do_add sub, x8, _xtmp, x
+        .else N .ifc \op,adc
+            setf_a src=_xtmp, dst=x8
+            ldrb w10, [_cpu, CPU_cf]
+            cmp w10, 1
+            do_add adc, x8, _xtmp, x
+        .else N .ifc \op,xadd
+            mov x9, x8
+            mov x8, _xtmp
+            setf_a src=x9, dst=x8
+            do_add add, x8, x9, x
+        .endif N .endif N .endif N .endif N .endif N .endif N .endif N .endif
+
+        .ifin(\op, add,sub,adc,sbb,and,or,xor,xadd)
+            setf_zsp x, val=x8
+        .endifin
+
+        # Atomic update of gs register
+        add x9, _cpu, #CPU_gs
+    2:
+        ldaxr x13, [x9]
+        cmp x12, x13
+        b.ne 3f
+        stlxr w13, x8, [x9]
+        cbnz w13, 2b
+        write_done 64, atomic_\op\()64_gs
+        gret
+        write_bullshit 64, atomic_\op\()64_gs
+    3:
+        dmb ish
+        mov x12, x13
+        b 1b
+.endr
+
+# Add inc/dec addr and gs variants separately since they don't take operands
+.irp op, inc,dec
+    .gadget atomic_\op\()64_addr
+        write_prep 64, atomic_\op\()64_addr
+        ldr x12, [_xaddr]
+    1:
+        mov x8, x12
+        mov w10, 1
+        setf_a src=w10, dst=x8
+        .ifc \op,inc
+            adds x8, x8, 1
+        .else
+            subs x8, x8, 1
+        .endif
+        cset w9, vs
+        strb w9, [_cpu, CPU_of]
+        setf_zsp x, val=x8
+
+    2:
+        ldaxr x13, [_xaddr]
+        cmp x12, x13
+        b.ne 3f
+        stlxr w13, x8, [_xaddr]
+        cbnz w13, 2b
+        write_done 64, atomic_\op\()64_addr
+        gret
+        write_bullshit 64, atomic_\op\()64_addr
+    3:
+        dmb ish
+        mov x12, x13
+        b 1b
+
+    .gadget atomic_\op\()64_gs
+        write_prep 64, atomic_\op\()64_gs
+        ldr x12, [_cpu, #CPU_gs]
+    1:
+        mov x8, x12
+        mov w10, 1
+        setf_a src=w10, dst=x8
+        .ifc \op,inc
+            adds x8, x8, 1
+        .else
+            subs x8, x8, 1
+        .endif
+        cset w9, vs
+        strb w9, [_cpu, CPU_of]
+        setf_zsp x, val=x8
+
+        # Atomic update of gs register
+        add x9, _cpu, #CPU_gs
+    2:
+        ldaxr x13, [x9]
+        cmp x12, x13
+        b.ne 3f
+        stlxr w13, x8, [x9]
+        cbnz w13, 2b
+        write_done 64, atomic_\op\()64_gs
+        gret
+        write_bullshit 64, atomic_\op\()64_gs
+    3:
+        dmb ish
+        mov x12, x13
+        b 1b
 .endr
 
 # unary operations (well, only one explicit operand)

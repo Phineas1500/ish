@@ -96,32 +96,72 @@
                     .ifc \type,rol
                         neg w8, w8
                     .endif
-                    ror _tmp, _tmp, w8
+                    .if \size == 64
+                        ror _xtmp, _xtmp, w8
+                    .else
+                        ror _tmp, _tmp, w8
+                    .endif
                 .else
                     # kill me
                     .ifc \s,x
-                        uxtw _xtmp, _tmp
+                        .if \size == 64
+                            # _xtmp is already correct for 64-bit
+                        .else
+                            uxtw _xtmp, _tmp
+                        .endif
                     .else
-                        uxt\s _tmp, _tmp
+                        .if \size == 64
+                            # For 64-bit operations, work with x registers
+                            and w8, w8, \size-1
+                            neg w9, w8
+                            and w9, w9, \size-1
+                        .else
+                            uxt\s _tmp, _tmp
+                            and w8, w8, \size-1
+                            neg w9, w8
+                            and w9, w9, \size-1
+                        .endif
                     .endif
-                    neg w9, w8
-                    and w8, w8, \size-1
-                    and w9, w9, \size-1
-                    .ifc \type,rol
-                        lsl w8, _tmp, w8
-                        lsr w9, _tmp, w9
+                    .if \size == 64
+                        uxtw x8, w8
+                        uxtw x9, w9
+                        .ifc \type,rol
+                            lsl x8, _xtmp, x8
+                            lsr x9, _xtmp, x9
+                        .else
+                            lsr x8, _xtmp, x8
+                            lsl x9, _xtmp, x9
+                        .endif
+                        orr _xtmp, x8, x9
                     .else
-                        lsr w8, _tmp, w8
-                        lsl w9, _tmp, w9
+                        .ifc \type,rol
+                            lsl w8, _tmp, w8
+                            lsr w9, _tmp, w9
+                        .else
+                            lsr w8, _tmp, w8
+                            lsl w9, _tmp, w9
+                        .endif
+                        orr _tmp, w8, w9
                     .endif
-                    orr _tmp, w8, w9
                 .endif
-                .ifc \type,rol
-                    ubfx w9, _tmp, 0, 1
-                    ubfx w10, _tmp, \size-1, 1
+                .if \size == 64
+                    .ifc \type,rol
+                        ubfx x9, _xtmp, 0, 1
+                        ubfx x10, _xtmp, \size-1, 1
+                    .else
+                        ubfx x9, _xtmp, \size-1, 1
+                        ubfx x10, _xtmp, \size-2, 1
+                    .endif
+                    and w9, w9, 1
+                    and w10, w10, 1
                 .else
-                    ubfx w9, _tmp, \size-1, 1
-                    ubfx w10, _tmp, \size-2, 1
+                    .ifc \type,rol
+                        ubfx w9, _tmp, 0, 1
+                        ubfx w10, _tmp, \size-1, 1
+                    .else
+                        ubfx w9, _tmp, \size-1, 1
+                        ubfx w10, _tmp, \size-2, 1
+                    .endif
                 .endif
                 eor w10, w10, w9
                 strb w9, [_cpu, CPU_cf]
@@ -131,7 +171,12 @@
             # aaaaaaaaaaaaaa
             .ifin(\type, rcl,rcr)
                 .ifc \type,rcr
-                    ubfx w9, _tmp, \size-1, 1
+                    .if \size == 64
+                        ubfx x9, _xtmp, \size-1, 1
+                        and w9, w9, 1
+                    .else
+                        ubfx w9, _tmp, \size-1, 1
+                    .endif
                     ldrb w10, [_cpu, CPU_cf]
                     eor w9, w9, w10
                     strb w9, [_cpu, CPU_of]
@@ -151,9 +196,20 @@
                 .elseif \size == 16
                     subs w10, w8, \size+1
                     csel w8, w10, w8, gt
+                .elseif \size == 32
+                    subs w10, w8, \size+1
+                    csel w8, w10, w8, gt
+                .elseif \size == 64
+                    # For 64-bit, need to handle larger modulo
+                    .irpc _, 12
+                        subs w10, w8, \size+1
+                        csel w8, w10, w8, gt
+                    .endr
                 .endif
                 mov w9, \size+1
                 sub w9, w9, w8
+                uxtw x8, w8
+                uxtw x9, w9
                 .ifc \type,rcl
                     lsl x8, _xtmp, x8
                     lsr x9, _xtmp, x9
@@ -163,9 +219,15 @@
                 .endif
                 orr _xtmp, x8, x9
                 ubfx x9, _xtmp, \size, 1
+                and w9, w9, 1
                 strb w9, [_cpu, CPU_cf]
                 .ifc \type,rcl
-                    ubfx w10, _tmp, \size-1, 1
+                    .if \size == 64
+                        ubfx x10, _xtmp, \size-1, 1
+                        and w10, w10, 1
+                    .else
+                        ubfx w10, _tmp, \size-1, 1
+                    .endif
                     eor w10, w10, w9
                     strb w10, [_cpu, CPU_of]
                 .endif
@@ -554,6 +616,36 @@
         write_done \size, atomic_\op\size\()_mem
         gret 1
         write_bullshit \size, atomic_\op\size\()_mem
+
+    # Add missing register variants for atomic bit test operations
+    .macro x name, reg
+        .gadget atomic_\op\size\()_\name
+            .if \size == 64
+                # For 64-bit operations, need to use the 64-bit register names
+                .ifc \name,reg_a
+                    do_bt_op \op, rax, \size, \s
+                .else N .ifc \name,reg_b
+                    do_bt_op \op, rbx, \size, \s  
+                .else N .ifc \name,reg_c
+                    do_bt_op \op, rcx, \size, \s
+                .else N .ifc \name,reg_d
+                    do_bt_op \op, rdx, \size, \s
+                .else N .ifc \name,reg_si
+                    do_bt_op \op, rsi, \size, \s
+                .else N .ifc \name,reg_di
+                    do_bt_op \op, rdi, \size, \s
+                .else N .ifc \name,reg_sp
+                    do_bt_op \op, rsp, \size, \s
+                .else N .ifc \name,reg_bp
+                    do_bt_op \op, rbp, \size, \s
+                .endif N .endif N .endif N .endif N .endif N .endif N .endif N .endif
+            .else
+                do_bt_op \op, \reg, \size, \s
+            .endif
+            gret
+    .endm
+    .each_reg x
+    .purgem x
 .endm
 
 .irp op, btc,bts,btr
@@ -600,3 +692,46 @@
 .each_reg x
 .purgem x
 .gadget_list bswap, REG_LIST
+
+# Add missing addr and gs variants for smaller rotate operations manually
+.gadget rol32_addr
+    neg w8, ecx
+    ror _addr, _addr, w8
+    ubfx w9, _addr, 0, 1
+    ubfx w10, _addr, 31, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    gret
+
+.gadget ror32_addr
+    ror _addr, _addr, ecx
+    ubfx w9, _addr, 31, 1
+    ubfx w10, _addr, 30, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    gret
+
+.gadget rol32_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    neg w8, ecx
+    ror _tmp, _tmp, w8
+    ubfx w9, _tmp, 0, 1
+    ubfx w10, _tmp, 31, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget ror32_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    ror _tmp, _tmp, ecx
+    ubfx w9, _tmp, 31, 1
+    ubfx w10, _tmp, 30, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _tmp, [_cpu, #CPU_gs]
+    gret
