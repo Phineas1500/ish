@@ -1769,3 +1769,57 @@
     do_op imul1, 8, _tmp
     str _tmp, [_cpu, #CPU_gs]
     gret
+
+# Missing atomic immediate and register variants (360 gadgets)
+# These use regular CPU state operations since they don't access shared memory
+
+.macro do_atomic_op_size op, armop, size, s
+    # Immediate variant
+    .gadget atomic_\op\size\()_imm
+        .if \size == 64
+            ldr x8, [_ip]
+            do_op \armop, \size, x8
+        .else
+            ldr\s w8, [_ip]
+            do_op \armop, \size, w8
+        .endif
+        gret 1
+
+    # Register variants
+    .irp reg, a,b,c,d
+        do_reg_op atomic_\op, \armop, \size, \reg
+    .endr
+
+    .irp reg, si,di,sp,bp
+        .gadget atomic_\op\size\()_reg_\reg
+            .if \size == 8
+                .ifc \reg,sp N do_hi_op \armop, \size, a N .else
+                .ifc \reg,bp N do_hi_op \armop, \size, c N .else
+                .ifc \reg,si N do_hi_op \armop, \size, d N .else
+                .ifc \reg,di N do_hi_op \armop, \size, b
+                .endif N .endif N .endif N .endif
+            .elseif \size == 64
+                do_op \armop, \size, r\reg
+            .else
+                do_op \armop, \size, e\reg
+            .endif
+            gret
+    .endr
+.endm
+
+# Implement all 10 atomic operations × 4 sizes = 40 immediate + 320 register = 360 gadgets
+.irp op, add,sub,adc,sbb,and,or,xor,inc,dec,xadd
+    .irp size, SIZE_LIST
+        .ifc \op,xor
+            ss \size, do_atomic_op_size, \op, eor
+        .else N .ifc \op,sbb
+            ss \size, do_atomic_op_size, \op, sbc
+        .else N .ifc \op,or
+            ss \size, do_atomic_op_size, \op, orr
+        .else
+            ss \size, do_atomic_op_size, \op, \op
+        .endif N .endif N .endif
+    .endr
+.endr
+
+
