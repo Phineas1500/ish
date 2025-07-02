@@ -276,7 +276,605 @@
 
 # rcl/rcr addr/gs/mem variants need complex implementation - skip for now
 
+# Manual rcl addr/gs/mem variants implementation
 
+# RCL 8-bit variants
+.gadget rcl8_addr
+    ands w8, ecx, 31
+    b.eq 1f
+    # Get 8-bit value from addr and carry flag
+    ldrb w10, [_cpu, CPU_cf]
+    and w9, _addr, 0xff
+    lsl x10, x10, 8
+    orr x9, x9, x10
+    # Modulo 9 for 8-bit+carry
+    .irpc _, 123
+        subs w10, w8, 9
+        csel w8, w10, w8, gt
+    .endr
+    mov w10, 9
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation
+    lsl x8, x9, x8
+    lsr x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    and _addr, w8, 0xff
+    ubfx w9, w8, 8, 1
+    strb w9, [_cpu, CPU_cf]
+    ubfx w10, _addr, 7, 1
+    eor w10, w10, w9
+    strb w10, [_cpu, CPU_of]
+1:
+    gret
+
+.gadget rcl8_gs
+    ands w8, ecx, 31
+    b.eq 1f
+    # Get 8-bit value from gs and carry flag
+    ldr _tmp, [_cpu, #CPU_gs]
+    ldrb w10, [_cpu, CPU_cf]
+    and w9, _tmp, 0xff
+    lsl x10, x10, 8
+    orr x9, x9, x10
+    # Modulo 9 for 8-bit+carry
+    .irpc _, 123
+        subs w10, w8, 9
+        csel w8, w10, w8, gt
+    .endr
+    mov w10, 9
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation
+    lsl x8, x9, x8
+    lsr x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    and _tmp, w8, 0xff
+    str _tmp, [_cpu, #CPU_gs]
+    ubfx w9, w8, 8, 1
+    strb w9, [_cpu, CPU_cf]
+    ubfx w10, _tmp, 7, 1
+    eor w10, w10, w9
+    strb w10, [_cpu, CPU_of]
+1:
+    gret
+
+.gadget rcl8_mem
+    read_prep 8, rcl8_mem
+    ands w8, ecx, 31
+    b.eq 1f
+    # Get 8-bit value from memory and carry flag
+    ldrb w9, [_xaddr]
+    ldrb w10, [_cpu, CPU_cf]
+    lsl x10, x10, 8
+    orr x9, x9, x10
+    # Modulo 9 for 8-bit+carry
+    .irpc _, 123
+        subs w10, w8, 9
+        csel w8, w10, w8, gt
+    .endr
+    mov w10, 9
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation
+    lsl x8, x9, x8
+    lsr x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    and _tmp, w8, 0xff
+    strb _tmp, [_xaddr]
+    ubfx w9, w8, 8, 1
+    strb w9, [_cpu, CPU_cf]
+    ubfx w10, _tmp, 7, 1
+    eor w10, w10, w9
+    strb w10, [_cpu, CPU_of]
+1:
+    write_done 8, rcl8_mem
+    gret 1
+    write_bullshit 8, rcl8_mem
+
+# RCL 16-bit variants
+.gadget rcl16_addr
+    ands w8, ecx, 31
+    b.eq 1f
+    # Get 16-bit value from addr and carry flag
+    ldrb w10, [_cpu, CPU_cf]
+    and w9, _addr, 0xffff
+    lsl x10, x10, 16
+    orr x9, x9, x10
+    # Modulo 17 for 16-bit+carry
+    subs w10, w8, 17
+    csel w8, w10, w8, gt
+    mov w10, 17
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation
+    lsl x8, x9, x8
+    lsr x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    and _addr, w8, 0xffff
+    ubfx w9, w8, 16, 1
+    strb w9, [_cpu, CPU_cf]
+    ubfx w10, _addr, 15, 1
+    eor w10, w10, w9
+    strb w10, [_cpu, CPU_of]
+1:
+    gret
+
+.gadget rcl16_gs
+    ands w8, ecx, 31
+    b.eq 1f
+    # Get 16-bit value from gs and carry flag
+    ldr _tmp, [_cpu, #CPU_gs]
+    ldrb w10, [_cpu, CPU_cf]
+    and w9, _tmp, 0xffff
+    lsl x10, x10, 16
+    orr x9, x9, x10
+    # Modulo 17 for 16-bit+carry
+    subs w10, w8, 17
+    csel w8, w10, w8, gt
+    mov w10, 17
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation
+    lsl x8, x9, x8
+    lsr x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    and _tmp, w8, 0xffff
+    str _tmp, [_cpu, #CPU_gs]
+    ubfx w9, w8, 16, 1
+    strb w9, [_cpu, CPU_cf]
+    ubfx w10, _tmp, 15, 1
+    eor w10, w10, w9
+    strb w10, [_cpu, CPU_of]
+1:
+    gret
+
+.gadget rcl16_mem
+    read_prep 16, rcl16_mem
+    ands w8, ecx, 31
+    b.eq 1f
+    # Get 16-bit value from memory and carry flag
+    ldrh w9, [_xaddr]
+    ldrb w10, [_cpu, CPU_cf]
+    lsl x10, x10, 16
+    orr x9, x9, x10
+    # Modulo 17 for 16-bit+carry
+    subs w10, w8, 17
+    csel w8, w10, w8, gt
+    mov w10, 17
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation
+    lsl x8, x9, x8
+    lsr x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    and _tmp, w8, 0xffff
+    strh _tmp, [_xaddr]
+    ubfx w9, w8, 16, 1
+    strb w9, [_cpu, CPU_cf]
+    ubfx w10, _tmp, 15, 1
+    eor w10, w10, w9
+    strb w10, [_cpu, CPU_of]
+1:
+    write_done 16, rcl16_mem
+    gret 1
+    write_bullshit 16, rcl16_mem
+
+# RCL 32-bit variants
+.gadget rcl32_addr
+    ands w8, ecx, 31
+    b.eq 1f
+    # Get 32-bit value from addr and carry flag
+    ldrb w10, [_cpu, CPU_cf]
+    uxtw x9, _addr
+    lsl x10, x10, 32
+    orr x9, x9, x10
+    # Modulo 33 for 32-bit+carry
+    subs w10, w8, 33
+    csel w8, w10, w8, gt
+    mov w10, 33
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation
+    lsl x8, x9, x8
+    lsr x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    mov _addr, w8
+    ubfx x9, x8, 32, 1
+    strb w9, [_cpu, CPU_cf]
+    ubfx w10, _addr, 31, 1
+    eor w10, w10, w9
+    strb w10, [_cpu, CPU_of]
+1:
+    gret
+
+.gadget rcl32_gs
+    ands w8, ecx, 31
+    b.eq 1f
+    # Get 32-bit value from gs and carry flag
+    ldr _tmp, [_cpu, #CPU_gs]
+    ldrb w10, [_cpu, CPU_cf]
+    uxtw x9, _tmp
+    lsl x10, x10, 32
+    orr x9, x9, x10
+    # Modulo 33 for 32-bit+carry
+    subs w10, w8, 33
+    csel w8, w10, w8, gt
+    mov w10, 33
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation
+    lsl x8, x9, x8
+    lsr x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    mov _tmp, w8
+    str _tmp, [_cpu, #CPU_gs]
+    ubfx x9, x8, 32, 1
+    strb w9, [_cpu, CPU_cf]
+    ubfx w10, _tmp, 31, 1
+    eor w10, w10, w9
+    strb w10, [_cpu, CPU_of]
+1:
+    gret
+
+.gadget rcl32_mem
+    read_prep 32, rcl32_mem
+    ands w8, ecx, 31
+    b.eq 1f
+    # Get 32-bit value from memory and carry flag
+    ldr w9, [_xaddr]
+    ldrb w10, [_cpu, CPU_cf]
+    uxtw x9, w9
+    lsl x10, x10, 32
+    orr x9, x9, x10
+    # Modulo 33 for 32-bit+carry
+    subs w10, w8, 33
+    csel w8, w10, w8, gt
+    mov w10, 33
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation
+    lsl x8, x9, x8
+    lsr x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    mov _tmp, w8
+    str _tmp, [_xaddr]
+    ubfx x9, x8, 32, 1
+    strb w9, [_cpu, CPU_cf]
+    ubfx w10, _tmp, 31, 1
+    eor w10, w10, w9
+    strb w10, [_cpu, CPU_of]
+1:
+    write_done 32, rcl32_mem
+    gret 1
+    write_bullshit 32, rcl32_mem
+
+# Manual rcr addr/gs/mem variants implementation
+
+# RCR 8-bit variants
+.gadget rcr8_addr
+    ands w8, ecx, 31
+    b.eq 1f
+    # Pre-calculate OF flag for rcr
+    ubfx w9, _addr, 7, 1
+    ldrb w10, [_cpu, CPU_cf]
+    eor w9, w9, w10
+    strb w9, [_cpu, CPU_of]
+    # Get 8-bit value from addr and carry flag
+    ldrb w10, [_cpu, CPU_cf]
+    and w9, _addr, 0xff
+    lsl x10, x10, 8
+    orr x9, x9, x10
+    # Modulo 9 for 8-bit+carry
+    .irpc _, 123
+        subs w10, w8, 9
+        csel w8, w10, w8, gt
+    .endr
+    mov w10, 9
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation (rcr: right rotation)
+    lsr x8, x9, x8
+    lsl x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    and _addr, w8, 0xff
+    ubfx w9, w8, 8, 1
+    strb w9, [_cpu, CPU_cf]
+1:
+    gret
+
+.gadget rcr8_gs
+    ands w8, ecx, 31
+    b.eq 1f
+    # Pre-calculate OF flag for rcr
+    ldr _tmp, [_cpu, #CPU_gs]
+    ubfx w9, _tmp, 7, 1
+    ldrb w10, [_cpu, CPU_cf]
+    eor w9, w9, w10
+    strb w9, [_cpu, CPU_of]
+    # Get 8-bit value from gs and carry flag
+    ldrb w10, [_cpu, CPU_cf]
+    and w9, _tmp, 0xff
+    lsl x10, x10, 8
+    orr x9, x9, x10
+    # Modulo 9 for 8-bit+carry
+    .irpc _, 123
+        subs w10, w8, 9
+        csel w8, w10, w8, gt
+    .endr
+    mov w10, 9
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation (rcr: right rotation)
+    lsr x8, x9, x8
+    lsl x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    and _tmp, w8, 0xff
+    str _tmp, [_cpu, #CPU_gs]
+    ubfx w9, w8, 8, 1
+    strb w9, [_cpu, CPU_cf]
+1:
+    gret
+
+.gadget rcr8_mem
+    read_prep 8, rcr8_mem
+    ands w8, ecx, 31
+    b.eq 1f
+    # Pre-calculate OF flag for rcr
+    ldrb w9, [_xaddr]
+    ubfx w10, w9, 7, 1
+    ldrb w11, [_cpu, CPU_cf]
+    eor w10, w10, w11
+    strb w10, [_cpu, CPU_of]
+    # Get 8-bit value from memory and carry flag
+    ldrb w10, [_cpu, CPU_cf]
+    lsl x10, x10, 8
+    orr x9, x9, x10
+    # Modulo 9 for 8-bit+carry
+    .irpc _, 123
+        subs w10, w8, 9
+        csel w8, w10, w8, gt
+    .endr
+    mov w10, 9
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation (rcr: right rotation)
+    lsr x8, x9, x8
+    lsl x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    and _tmp, w8, 0xff
+    strb _tmp, [_xaddr]
+    ubfx w9, w8, 8, 1
+    strb w9, [_cpu, CPU_cf]
+1:
+    write_done 8, rcr8_mem
+    gret 1
+    write_bullshit 8, rcr8_mem
+
+# RCR 16-bit variants
+.gadget rcr16_addr
+    ands w8, ecx, 31
+    b.eq 1f
+    # Pre-calculate OF flag for rcr
+    ubfx w9, _addr, 15, 1
+    ldrb w10, [_cpu, CPU_cf]
+    eor w9, w9, w10
+    strb w9, [_cpu, CPU_of]
+    # Get 16-bit value from addr and carry flag
+    ldrb w10, [_cpu, CPU_cf]
+    and w9, _addr, 0xffff
+    lsl x10, x10, 16
+    orr x9, x9, x10
+    # Modulo 17 for 16-bit+carry
+    subs w10, w8, 17
+    csel w8, w10, w8, gt
+    mov w10, 17
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation (rcr: right rotation)
+    lsr x8, x9, x8
+    lsl x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    and _addr, w8, 0xffff
+    ubfx w9, w8, 16, 1
+    strb w9, [_cpu, CPU_cf]
+1:
+    gret
+
+.gadget rcr16_gs
+    ands w8, ecx, 31
+    b.eq 1f
+    # Pre-calculate OF flag for rcr
+    ldr _tmp, [_cpu, #CPU_gs]
+    ubfx w9, _tmp, 15, 1
+    ldrb w10, [_cpu, CPU_cf]
+    eor w9, w9, w10
+    strb w9, [_cpu, CPU_of]
+    # Get 16-bit value from gs and carry flag
+    ldrb w10, [_cpu, CPU_cf]
+    and w9, _tmp, 0xffff
+    lsl x10, x10, 16
+    orr x9, x9, x10
+    # Modulo 17 for 16-bit+carry
+    subs w10, w8, 17
+    csel w8, w10, w8, gt
+    mov w10, 17
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation (rcr: right rotation)
+    lsr x8, x9, x8
+    lsl x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    and _tmp, w8, 0xffff
+    str _tmp, [_cpu, #CPU_gs]
+    ubfx w9, w8, 16, 1
+    strb w9, [_cpu, CPU_cf]
+1:
+    gret
+
+.gadget rcr16_mem
+    read_prep 16, rcr16_mem
+    ands w8, ecx, 31
+    b.eq 1f
+    # Pre-calculate OF flag for rcr
+    ldrh w9, [_xaddr]
+    ubfx w10, w9, 15, 1
+    ldrb w11, [_cpu, CPU_cf]
+    eor w10, w10, w11
+    strb w10, [_cpu, CPU_of]
+    # Get 16-bit value from memory and carry flag
+    ldrb w10, [_cpu, CPU_cf]
+    lsl x10, x10, 16
+    orr x9, x9, x10
+    # Modulo 17 for 16-bit+carry
+    subs w10, w8, 17
+    csel w8, w10, w8, gt
+    mov w10, 17
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation (rcr: right rotation)
+    lsr x8, x9, x8
+    lsl x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    and _tmp, w8, 0xffff
+    strh _tmp, [_xaddr]
+    ubfx w9, w8, 16, 1
+    strb w9, [_cpu, CPU_cf]
+1:
+    write_done 16, rcr16_mem
+    gret 1
+    write_bullshit 16, rcr16_mem
+
+# RCR 32-bit variants
+.gadget rcr32_addr
+    ands w8, ecx, 31
+    b.eq 1f
+    # Pre-calculate OF flag for rcr
+    ubfx w9, _addr, 31, 1
+    ldrb w10, [_cpu, CPU_cf]
+    eor w9, w9, w10
+    strb w9, [_cpu, CPU_of]
+    # Get 32-bit value from addr and carry flag
+    ldrb w10, [_cpu, CPU_cf]
+    uxtw x9, _addr
+    lsl x10, x10, 32
+    orr x9, x9, x10
+    # Modulo 33 for 32-bit+carry
+    subs w10, w8, 33
+    csel w8, w10, w8, gt
+    mov w10, 33
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation (rcr: right rotation)
+    lsr x8, x9, x8
+    lsl x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    mov _addr, w8
+    ubfx x9, x8, 32, 1
+    strb w9, [_cpu, CPU_cf]
+1:
+    gret
+
+.gadget rcr32_gs
+    ands w8, ecx, 31
+    b.eq 1f
+    # Pre-calculate OF flag for rcr
+    ldr _tmp, [_cpu, #CPU_gs]
+    ubfx w9, _tmp, 31, 1
+    ldrb w10, [_cpu, CPU_cf]
+    eor w9, w9, w10
+    strb w9, [_cpu, CPU_of]
+    # Get 32-bit value from gs and carry flag
+    ldrb w10, [_cpu, CPU_cf]
+    uxtw x9, _tmp
+    lsl x10, x10, 32
+    orr x9, x9, x10
+    # Modulo 33 for 32-bit+carry
+    subs w10, w8, 33
+    csel w8, w10, w8, gt
+    mov w10, 33
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation (rcr: right rotation)
+    lsr x8, x9, x8
+    lsl x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    mov _tmp, w8
+    str _tmp, [_cpu, #CPU_gs]
+    ubfx x9, x8, 32, 1
+    strb w9, [_cpu, CPU_cf]
+1:
+    gret
+
+.gadget rcr32_mem
+    read_prep 32, rcr32_mem
+    ands w8, ecx, 31
+    b.eq 1f
+    # Pre-calculate OF flag for rcr
+    ldr w9, [_xaddr]
+    ubfx w10, w9, 31, 1
+    ldrb w11, [_cpu, CPU_cf]
+    eor w10, w10, w11
+    strb w10, [_cpu, CPU_of]
+    # Get 32-bit value from memory and carry flag
+    ldrb w10, [_cpu, CPU_cf]
+    uxtw x9, w9
+    lsl x10, x10, 32
+    orr x9, x9, x10
+    # Modulo 33 for 32-bit+carry
+    subs w10, w8, 33
+    csel w8, w10, w8, gt
+    mov w10, 33
+    sub w10, w10, w8
+    uxtw x8, w8
+    uxtw x10, x10
+    # Perform rotation (rcr: right rotation)
+    lsr x8, x9, x8
+    lsl x10, x9, x10
+    orr x8, x8, x10
+    # Extract result and flags
+    mov _tmp, w8
+    str _tmp, [_xaddr]
+    ubfx x9, x8, 32, 1
+    strb w9, [_cpu, CPU_cf]
+1:
+    write_done 32, rcr32_mem
+    gret 1
+    write_bullshit 32, rcr32_mem
 
 # Helper macro for the shift logic without the gadget wrapper
 .macro do_shift_logic type, size, target
