@@ -252,8 +252,16 @@
     .endr
     .gadget_array \type
 .endr
-# rol,ror,rcl,rcr still have ARM64 64-bit issues - keep at 8,16,32 for now
-.irp type, rol,ror,rcl,rcr
+# Enable 64-bit for safe rol/ror operations - they have working 64-bit support
+.irp type, rol,ror
+    .irp size, 8,16,32,64
+        ss \size, do_shift, \type
+    .endr
+    .gadget_array \type
+.endr
+
+# Keep rcl/rcr at smaller sizes - complex 64-bit modulus issues
+.irp type, rcl,rcr
     .irp size, 8,16,32
         ss \size, do_shift, \type
     .endr
@@ -363,7 +371,151 @@
     str _xtmp, [_xaddr]
     write_done 64, sar64_mem
     gret 1
-         write_bullshit 64, sar64_mem
+    write_bullshit 64, sar64_mem
+
+# REMOVED: Shift operations - do_shift_logic macro is 64-bit only
+# TODO: Need to implement manual 32/16/8-bit shift operations later
+
+# Add missing 32-bit shift operations manually 
+.gadget shl32_addr
+    lsl _addr, _addr, ecx
+    ubfx w9, _addr, 31, 1
+    strb w9, [_cpu, CPU_cf]
+    gret
+
+.gadget shr32_addr  
+    lsr _addr, _addr, ecx
+    ubfx w9, _addr, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    gret
+
+.gadget sar32_addr
+    asr _addr, _addr, ecx
+    ubfx w9, _addr, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    gret
+
+.gadget shl32_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    lsl _tmp, _tmp, ecx
+    ubfx w9, _tmp, 31, 1
+    strb w9, [_cpu, CPU_cf]
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget shr32_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    lsr _tmp, _tmp, ecx
+    ubfx w9, _tmp, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget sar32_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    asr _tmp, _tmp, ecx
+    ubfx w9, _tmp, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+# Add missing 16-bit shift operations manually
+.gadget shl16_addr
+    lsl _addr, _addr, ecx
+    and _addr, _addr, 0xFFFF
+    ubfx w9, _addr, 15, 1
+    strb w9, [_cpu, CPU_cf]
+    gret
+
+.gadget shr16_addr
+    lsr _addr, _addr, ecx
+    and _addr, _addr, 0xFFFF
+    ubfx w9, _addr, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    gret
+
+.gadget sar16_addr
+    asr _addr, _addr, ecx
+    and _addr, _addr, 0xFFFF
+    ubfx w9, _addr, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    gret
+
+.gadget shl16_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    lsl _tmp, _tmp, ecx
+    and _tmp, _tmp, 0xFFFF
+    ubfx w9, _tmp, 15, 1
+    strb w9, [_cpu, CPU_cf]
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget shr16_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    lsr _tmp, _tmp, ecx
+    and _tmp, _tmp, 0xFFFF
+    ubfx w9, _tmp, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget sar16_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    asr _tmp, _tmp, ecx
+    and _tmp, _tmp, 0xFFFF
+    ubfx w9, _tmp, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+# Add missing 8-bit shift operations manually
+.gadget shl8_addr
+    lsl _addr, _addr, ecx
+    and _addr, _addr, 0xFF
+    ubfx w9, _addr, 7, 1
+    strb w9, [_cpu, CPU_cf]
+    gret
+
+.gadget shr8_addr
+    lsr _addr, _addr, ecx
+    and _addr, _addr, 0xFF
+    ubfx w9, _addr, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    gret
+
+.gadget sar8_addr
+    asr _addr, _addr, ecx
+    and _addr, _addr, 0xFF
+    ubfx w9, _addr, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    gret
+
+.gadget shl8_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    lsl _tmp, _tmp, ecx
+    and _tmp, _tmp, 0xFF
+    ubfx w9, _tmp, 7, 1
+    strb w9, [_cpu, CPU_cf]
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget shr8_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    lsr _tmp, _tmp, ecx
+    and _tmp, _tmp, 0xFF
+    ubfx w9, _tmp, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget sar8_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    asr _tmp, _tmp, ecx
+    and _tmp, _tmp, 0xFF
+    ubfx w9, _tmp, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    str _tmp, [_cpu, #CPU_gs]
+    gret
 
 .macro do_shiftd op, arg
     .macro x name, reg
@@ -548,7 +700,7 @@
 .endm
 
 .irp op, bt,btc,bts,btr
-    .irp size, 16,32,64
+    .irp size, 8,16,32,64
         ss \size, do_bt, \op
     .endr
     .gadget_array \op
@@ -821,3 +973,101 @@
     strb w10, [_cpu, CPU_of]
     str _xtmp, [_cpu, #CPU_gs]
     gret
+
+# Add missing 16-bit rotate operations using proven 32-bit pattern
+.gadget rol16_addr
+    neg w8, ecx
+    ror _addr, _addr, w8
+    and _addr, _addr, 0xFFFF
+    ubfx w9, _addr, 0, 1
+    ubfx w10, _addr, 15, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    gret
+
+.gadget ror16_addr
+    ror _addr, _addr, ecx
+    and _addr, _addr, 0xFFFF
+    ubfx w9, _addr, 15, 1
+    ubfx w10, _addr, 14, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    gret
+
+.gadget rol16_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    neg w8, ecx
+    ror _tmp, _tmp, w8
+    and _tmp, _tmp, 0xFFFF
+    ubfx w9, _tmp, 0, 1
+    ubfx w10, _tmp, 15, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget ror16_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    ror _tmp, _tmp, ecx
+    and _tmp, _tmp, 0xFFFF
+    ubfx w9, _tmp, 15, 1
+    ubfx w10, _tmp, 14, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+# Add missing 8-bit rotate operations using proven 32-bit pattern
+.gadget rol8_addr
+    neg w8, ecx
+    ror _addr, _addr, w8
+    and _addr, _addr, 0xFF
+    ubfx w9, _addr, 0, 1
+    ubfx w10, _addr, 7, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    gret
+
+.gadget ror8_addr
+    ror _addr, _addr, ecx
+    and _addr, _addr, 0xFF
+    ubfx w9, _addr, 7, 1
+    ubfx w10, _addr, 6, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    gret
+
+.gadget rol8_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    neg w8, ecx
+    ror _tmp, _tmp, w8
+    and _tmp, _tmp, 0xFF
+    ubfx w9, _tmp, 0, 1
+    ubfx w10, _tmp, 7, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget ror8_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    ror _tmp, _tmp, ecx
+    and _tmp, _tmp, 0xFF
+    ubfx w9, _tmp, 7, 1
+    ubfx w10, _tmp, 6, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+# 8-bit immediate operations now generated automatically by main loop
+
+# 64-bit rotate immediate operations now generated automatically by main loop

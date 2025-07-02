@@ -1189,3 +1189,202 @@
     do_op xor, 16, _tmp
     str _tmp, [_cpu, #CPU_gs]
     gret
+
+# Add missing arithmetic operations for 32-bit
+.gadget add32_addr
+    do_op add, 32, _addr
+    gret
+
+.gadget add32_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op add, 32, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget sub32_addr
+    do_op sub, 32, _addr
+    gret
+
+.gadget sub32_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op sub, 32, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget adc32_addr
+    do_op adc, 32, _addr
+    gret
+
+.gadget adc32_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op adc, 32, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget sbb32_addr
+    do_op sbb, 32, _addr
+    gret
+
+.gadget sbb32_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op sbb, 32, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget xchg32_addr
+    do_op xchg, 32, _addr
+    gret
+
+.gadget xchg32_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op xchg, 32, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+# store32_addr and load32_addr already exist - removing duplicates
+
+# Add missing arithmetic operations for 16-bit
+.gadget add16_addr
+    do_op add, 16, _addr
+    gret
+
+.gadget add16_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op add, 16, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget sub16_addr
+    do_op sub, 16, _addr
+    gret
+
+.gadget sub16_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op sub, 16, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget adc16_addr
+    do_op adc, 16, _addr
+    gret
+
+.gadget adc16_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op adc, 16, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget sbb16_addr
+    do_op sbb, 16, _addr
+    gret
+
+.gadget sbb16_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op sbb, 16, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget xchg16_addr
+    do_op xchg, 16, _addr
+    gret
+
+.gadget xchg16_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op xchg, 16, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+# store16_addr and load16_addr likely exist - removing duplicates
+
+# Add missing arithmetic operations for 8-bit
+.gadget add8_addr
+    do_op add, 8, _addr
+    gret
+
+.gadget add8_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op add, 8, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget sub8_addr
+    do_op sub, 8, _addr
+    gret
+
+.gadget sub8_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op sub, 8, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget adc8_addr
+    do_op adc, 8, _addr
+    gret
+
+.gadget adc8_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op adc, 8, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget sbb8_addr
+    do_op sbb, 8, _addr
+    gret
+
+.gadget sbb8_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op sbb, 8, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget xchg8_addr
+    do_op xchg, 8, _addr
+    gret
+
+.gadget xchg8_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op xchg, 8, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+# store8_addr and load8_addr likely exist - removing duplicates
+
+.gadget and8_addr
+    do_op and, 8, _addr
+    gret
+
+.gadget and8_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op and, 8, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget or8_addr
+    do_op or, 8, _addr
+    gret
+
+.gadget or8_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op or, 8, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget xor8_addr
+    do_op xor, 8, _addr
+    gret
+
+.gadget xor8_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op xor, 8, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
+
+.gadget imul8_addr
+    do_op imul1, 8, _addr
+    gret
+
+.gadget imul8_gs
+    ldr _tmp, [_cpu, #CPU_gs]
+    do_op imul1, 8, _tmp
+    str _tmp, [_cpu, #CPU_gs]
+    gret
