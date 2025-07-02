@@ -349,9 +349,9 @@
     .endr
     .gadget_array \op
 .endr
-# imul now supports 64-bit with ARM64 fixes
+# imul now supports 64-bit with ARM64 fixes - including 8-bit
 .irp op, imul
-    .irp size, 16,32,64
+    .irp size, 8,16,32,64
         ss \size, do_op_size, \op, \op
     .endr
     .gadget_array \op
@@ -612,8 +612,9 @@
     .gadget_array atomic_\op
 .endr
 
-# Add missing addr and gs atomic gadgets for 64-bit support
+# Add missing addr and gs atomic gadgets for ALL sizes using systematic approach
 .irp op, add,sub,adc,sbb,and,or,xor,xadd
+    # 64-bit variants (keep existing complex implementation)
     .gadget atomic_\op\()64_addr
         write_prep 64, atomic_\op\()64_addr
         ldr x12, [_xaddr]
@@ -642,7 +643,7 @@
             setf_a src=_xaddr, dst=x8
             ldrb w10, [_cpu, CPU_cf]
             cmp w10, 1
-            do_add adc, x8, _xaddr, x
+            do_add adc, x8, _xtmp, x
         .else N .ifc \op,xadd
             mov x9, x8
             mov x8, _xaddr
@@ -724,10 +725,141 @@
         dmb ish
         mov x12, x13
         b 1b
+
+    # For smaller sizes (8,16,32), use simplified non-atomic fallback for now
+    # 32-bit variants
+    .gadget atomic_\op\()32_addr
+        .ifc \op,add
+            do_op add, 32, _addr
+        .else N .ifc \op,sub
+            do_op sub, 32, _addr
+        .else N .ifc \op,adc
+            do_op adc, 32, _addr
+        .else N .ifc \op,sbb
+            do_op sbb, 32, _addr
+        .else N .ifc \op,and
+            do_op and, 32, _addr
+        .else N .ifc \op,or
+            do_op or, 32, _addr
+        .else N .ifc \op,xor
+            do_op xor, 32, _addr
+        .else N .ifc \op,xadd
+            do_op xadd, 32, _addr
+        .endif N .endif N .endif N .endif N .endif N .endif N .endif N .endif
+        gret
+
+    .gadget atomic_\op\()32_gs
+        ldr _tmp, [_cpu, #CPU_gs]
+        .ifc \op,add
+            do_op add, 32, _tmp
+        .else N .ifc \op,sub
+            do_op sub, 32, _tmp
+        .else N .ifc \op,adc
+            do_op adc, 32, _tmp
+        .else N .ifc \op,sbb
+            do_op sbb, 32, _tmp
+        .else N .ifc \op,and
+            do_op and, 32, _tmp
+        .else N .ifc \op,or
+            do_op or, 32, _tmp
+        .else N .ifc \op,xor
+            do_op xor, 32, _tmp
+        .else N .ifc \op,xadd
+            do_op xadd, 32, _tmp
+        .endif N .endif N .endif N .endif N .endif N .endif N .endif N .endif
+        str _tmp, [_cpu, #CPU_gs]
+        gret
+
+    # 16-bit variants
+    .gadget atomic_\op\()16_addr
+        .ifc \op,add
+            do_op add, 16, _addr
+        .else N .ifc \op,sub
+            do_op sub, 16, _addr
+        .else N .ifc \op,adc
+            do_op adc, 16, _addr
+        .else N .ifc \op,sbb
+            do_op sbb, 16, _addr
+        .else N .ifc \op,and
+            do_op and, 16, _addr
+        .else N .ifc \op,or
+            do_op or, 16, _addr
+        .else N .ifc \op,xor
+            do_op xor, 16, _addr
+        .else N .ifc \op,xadd
+            do_op xadd, 16, _addr
+        .endif N .endif N .endif N .endif N .endif N .endif N .endif N .endif
+        gret
+
+    .gadget atomic_\op\()16_gs
+        ldr _tmp, [_cpu, #CPU_gs]
+        .ifc \op,add
+            do_op add, 16, _tmp
+        .else N .ifc \op,sub
+            do_op sub, 16, _tmp
+        .else N .ifc \op,adc
+            do_op adc, 16, _tmp
+        .else N .ifc \op,sbb
+            do_op sbb, 16, _tmp
+        .else N .ifc \op,and
+            do_op and, 16, _tmp
+        .else N .ifc \op,or
+            do_op or, 16, _tmp
+        .else N .ifc \op,xor
+            do_op xor, 16, _tmp
+        .else N .ifc \op,xadd
+            do_op xadd, 16, _tmp
+        .endif N .endif N .endif N .endif N .endif N .endif N .endif N .endif
+        str _tmp, [_cpu, #CPU_gs]
+        gret
+
+    # 8-bit variants
+    .gadget atomic_\op\()8_addr
+        .ifc \op,add
+            do_op add, 8, _addr
+        .else N .ifc \op,sub
+            do_op sub, 8, _addr
+        .else N .ifc \op,adc
+            do_op adc, 8, _addr
+        .else N .ifc \op,sbb
+            do_op sbb, 8, _addr
+        .else N .ifc \op,and
+            do_op and, 8, _addr
+        .else N .ifc \op,or
+            do_op or, 8, _addr
+        .else N .ifc \op,xor
+            do_op xor, 8, _addr
+        .else N .ifc \op,xadd
+            do_op xadd, 8, _addr
+        .endif N .endif N .endif N .endif N .endif N .endif N .endif N .endif
+        gret
+
+    .gadget atomic_\op\()8_gs
+        ldr _tmp, [_cpu, #CPU_gs]
+        .ifc \op,add
+            do_op add, 8, _tmp
+        .else N .ifc \op,sub
+            do_op sub, 8, _tmp
+        .else N .ifc \op,adc
+            do_op adc, 8, _tmp
+        .else N .ifc \op,sbb
+            do_op sbb, 8, _tmp
+        .else N .ifc \op,and
+            do_op and, 8, _tmp
+        .else N .ifc \op,or
+            do_op or, 8, _tmp
+        .else N .ifc \op,xor
+            do_op xor, 8, _tmp
+        .else N .ifc \op,xadd
+            do_op xadd, 8, _tmp
+        .endif N .endif N .endif N .endif N .endif N .endif N .endif N .endif
+        str _tmp, [_cpu, #CPU_gs]
+        gret
 .endr
 
-# Add inc/dec addr and gs variants separately since they don't take operands
+# Add inc/dec addr and gs variants for ALL sizes
 .irp op, inc,dec
+    # 64-bit variants (keep existing complex implementation)
     .gadget atomic_\op\()64_addr
         write_prep 64, atomic_\op\()64_addr
         ldr x12, [_xaddr]
@@ -789,6 +921,144 @@
         dmb ish
         mov x12, x13
         b 1b
+
+    # For smaller sizes, use simplified non-atomic fallback with manual implementation
+    # 32-bit variants
+    .gadget atomic_\op\()32_addr
+        .ifc \op,inc
+            # Manual inc implementation for _addr
+            mov w10, 1
+            setf_a src=w10, dst=_addr
+            adds _addr, _addr, 1
+            cset w8, vs
+            strb w8, [_cpu, CPU_of]
+            setf_zsp "", val=_addr
+        .else
+            # Manual dec implementation for _addr
+            mov w10, 1
+            setf_a src=w10, dst=_addr
+            subs _addr, _addr, 1
+            cset w8, vs
+            strb w8, [_cpu, CPU_of]
+            setf_zsp "", val=_addr
+        .endif
+        gret
+
+    .gadget atomic_\op\()32_gs
+        ldr _tmp, [_cpu, #CPU_gs]
+        .ifc \op,inc
+            # Manual inc implementation for _tmp
+            mov w10, 1
+            setf_a src=w10, dst=_tmp
+            adds _tmp, _tmp, 1
+            cset w8, vs
+            strb w8, [_cpu, CPU_of]
+            setf_zsp "", val=_tmp
+        .else
+            # Manual dec implementation for _tmp
+            mov w10, 1
+            setf_a src=w10, dst=_tmp
+            subs _tmp, _tmp, 1
+            cset w8, vs
+            strb w8, [_cpu, CPU_of]
+            setf_zsp "", val=_tmp
+        .endif
+        str _tmp, [_cpu, #CPU_gs]
+        gret
+
+    # 16-bit variants
+    .gadget atomic_\op\()16_addr
+        .ifc \op,inc
+            # Manual inc implementation for 16-bit _addr
+            mov w10, 1
+            setf_a src=w10, dst=_addr
+            add _addr, _addr, 1
+            and _addr, _addr, 0xFFFF
+            cset w8, vs
+            strb w8, [_cpu, CPU_of]
+            setf_zsp h, val=_addr
+        .else
+            # Manual dec implementation for 16-bit _addr
+            mov w10, 1
+            setf_a src=w10, dst=_addr
+            sub _addr, _addr, 1
+            and _addr, _addr, 0xFFFF
+            cset w8, vs
+            strb w8, [_cpu, CPU_of]
+            setf_zsp h, val=_addr
+        .endif
+        gret
+
+    .gadget atomic_\op\()16_gs
+        ldr _tmp, [_cpu, #CPU_gs]
+        .ifc \op,inc
+            # Manual inc implementation for 16-bit _tmp
+            mov w10, 1
+            setf_a src=w10, dst=_tmp
+            add _tmp, _tmp, 1
+            and _tmp, _tmp, 0xFFFF
+            cset w8, vs
+            strb w8, [_cpu, CPU_of]
+            setf_zsp h, val=_tmp
+        .else
+            # Manual dec implementation for 16-bit _tmp
+            mov w10, 1
+            setf_a src=w10, dst=_tmp
+            sub _tmp, _tmp, 1
+            and _tmp, _tmp, 0xFFFF
+            cset w8, vs
+            strb w8, [_cpu, CPU_of]
+            setf_zsp h, val=_tmp
+        .endif
+        str _tmp, [_cpu, #CPU_gs]
+        gret
+
+    # 8-bit variants
+    .gadget atomic_\op\()8_addr
+        .ifc \op,inc
+            # Manual inc implementation for 8-bit _addr
+            mov w10, 1
+            setf_a src=w10, dst=_addr
+            add _addr, _addr, 1
+            and _addr, _addr, 0xFF
+            cset w8, vs
+            strb w8, [_cpu, CPU_of]
+            setf_zsp b, val=_addr
+        .else
+            # Manual dec implementation for 8-bit _addr
+            mov w10, 1
+            setf_a src=w10, dst=_addr
+            sub _addr, _addr, 1
+            and _addr, _addr, 0xFF
+            cset w8, vs
+            strb w8, [_cpu, CPU_of]
+            setf_zsp b, val=_addr
+        .endif
+        gret
+
+    .gadget atomic_\op\()8_gs
+        ldr _tmp, [_cpu, #CPU_gs]
+        .ifc \op,inc
+            # Manual inc implementation for 8-bit _tmp
+            mov w10, 1
+            setf_a src=w10, dst=_tmp
+            add _tmp, _tmp, 1
+            and _tmp, _tmp, 0xFF
+            cset w8, vs
+            strb w8, [_cpu, CPU_of]
+            setf_zsp b, val=_tmp
+        .else
+            # Manual dec implementation for 8-bit _tmp
+            mov w10, 1
+            setf_a src=w10, dst=_tmp
+            sub _tmp, _tmp, 1
+            and _tmp, _tmp, 0xFF
+            cset w8, vs
+            strb w8, [_cpu, CPU_of]
+            setf_zsp b, val=_tmp
+        .endif
+        str _tmp, [_cpu, #CPU_gs]
+        gret
 .endr
 
 # unary operations (well, only one explicit operand)

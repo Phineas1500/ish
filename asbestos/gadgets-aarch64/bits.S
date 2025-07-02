@@ -807,8 +807,9 @@
     .gadget_array atomic_\op
 .endr
 
-# Add missing addr and gs bit test gadgets for 64-bit support
-.irp op, bt,btc,bts,btr
+# Add missing addr and gs atomic bit test gadgets for ALL sizes using systematic approach
+.irp op, btc,bts,btr
+    # 64-bit variants
     .gadget \op\()64_addr
         do_bt_op \op, _xaddr, 64, x
         gret
@@ -818,10 +819,8 @@
         do_bt_op \op, _xtmp, 64, x
         str _xtmp, [_cpu, #CPU_gs]
         gret
-.endr
 
-# Add missing addr and gs bit test gadgets for 32-bit support
-.irp op, bt,btc,bts,btr
+    # 32-bit variants
     .gadget \op\()32_addr
         do_bt_op \op, _addr, 32, ""
         gret
@@ -831,10 +830,8 @@
         do_bt_op \op, _tmp, 32, ""
         str _tmp, [_cpu, #CPU_gs]
         gret
-.endr
 
-# Add missing addr and gs bit test gadgets for 16-bit support
-.irp op, bt,btc,bts,btr
+    # 16-bit variants
     .gadget \op\()16_addr
         do_bt_op \op, _addr, 16, h
         gret
@@ -844,10 +841,8 @@
         do_bt_op \op, _tmp, 16, h
         str _tmp, [_cpu, #CPU_gs]
         gret
-.endr
 
-# Add missing addr and gs bit test gadgets for 8-bit support
-.irp op, bt,btc,bts,btr
+    # 8-bit variants
     .gadget \op\()8_addr
         do_bt_op \op, _addr, 8, b
         gret
@@ -859,8 +854,56 @@
         gret
 .endr
 
-# Add missing addr and gs atomic bit test gadgets for 64-bit support  
+# Add missing regular bt (bit test) operations for addr/gs variants
+.irp op, bt
+    # 64-bit variants
+    .gadget \op\()64_addr
+        do_bt_op \op, _xaddr, 64, x
+        gret
+
+    .gadget \op\()64_gs  
+        ldr _xtmp, [_cpu, #CPU_gs]
+        do_bt_op \op, _xtmp, 64, x
+        str _xtmp, [_cpu, #CPU_gs]
+        gret
+
+    # 32-bit variants
+    .gadget \op\()32_addr
+        do_bt_op \op, _addr, 32, ""
+        gret
+
+    .gadget \op\()32_gs  
+        ldr _tmp, [_cpu, #CPU_gs]
+        do_bt_op \op, _tmp, 32, ""
+        str _tmp, [_cpu, #CPU_gs]
+        gret
+
+    # 16-bit variants
+    .gadget \op\()16_addr
+        do_bt_op \op, _addr, 16, h
+        gret
+
+    .gadget \op\()16_gs  
+        ldr _tmp, [_cpu, #CPU_gs]
+        do_bt_op \op, _tmp, 16, h
+        str _tmp, [_cpu, #CPU_gs]
+        gret
+
+    # 8-bit variants
+    .gadget \op\()8_addr
+        do_bt_op \op, _addr, 8, b
+        gret
+
+    .gadget \op\()8_gs  
+        ldr _tmp, [_cpu, #CPU_gs]
+        do_bt_op \op, _tmp, 8, b
+        str _tmp, [_cpu, #CPU_gs]
+        gret
+.endr
+
+# Add missing atomic bit test gadgets for ALL sizes that were accidentally removed
 .irp op, btc,bts,btr
+    # 64-bit variants
     .gadget atomic_\op\()64_addr
         # For atomic operations on addr, we'd need memory at _xaddr
         # This is complex - for now, fall back to non-atomic version
@@ -872,6 +915,39 @@
         ldr _xtmp, [_cpu, #CPU_gs]
         do_bt_op \op, _xtmp, 64, x
         str _xtmp, [_cpu, #CPU_gs]
+        gret
+
+    # 32-bit variants
+    .gadget atomic_\op\()32_addr
+        do_bt_op \op, _addr, 32, ""
+        gret
+
+    .gadget atomic_\op\()32_gs
+        ldr _tmp, [_cpu, #CPU_gs]
+        do_bt_op \op, _tmp, 32, ""
+        str _tmp, [_cpu, #CPU_gs]
+        gret
+
+    # 16-bit variants  
+    .gadget atomic_\op\()16_addr
+        do_bt_op \op, _addr, 16, h
+        gret
+
+    .gadget atomic_\op\()16_gs
+        ldr _tmp, [_cpu, #CPU_gs]
+        do_bt_op \op, _tmp, 16, h
+        str _tmp, [_cpu, #CPU_gs]
+        gret
+
+    # 8-bit variants
+    .gadget atomic_\op\()8_addr
+        do_bt_op \op, _addr, 8, b
+        gret
+
+    .gadget atomic_\op\()8_gs
+        ldr _tmp, [_cpu, #CPU_gs]
+        do_bt_op \op, _tmp, 8, b
+        str _tmp, [_cpu, #CPU_gs]
         gret
 .endr
 
