@@ -1125,6 +1125,244 @@
     str _tmp, [_cpu, #CPU_gs]
     gret
 
+# Add missing memory variants for 32/16/8-bit shift operations
+
+# 32-bit memory shift operations
+.gadget shl32_mem
+    write_prep 32, shl32_mem
+    ldr w8, [_xaddr]
+    lsl w8, w8, ecx
+    ubfx w9, w8, 31, 1
+    strb w9, [_cpu, CPU_cf]
+    str w8, [_xaddr]
+    write_done 32, shl32_mem
+    gret 1
+    write_bullshit 32, shl32_mem
+
+.gadget shr32_mem  
+    write_prep 32, shr32_mem
+    ldr w8, [_xaddr]
+    lsr w8, w8, ecx
+    ubfx w9, w8, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    str w8, [_xaddr]
+    write_done 32, shr32_mem
+    gret 1
+    write_bullshit 32, shr32_mem
+
+.gadget sar32_mem
+    write_prep 32, sar32_mem
+    ldr w8, [_xaddr]
+    asr w8, w8, ecx
+    ubfx w9, w8, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    str w8, [_xaddr]
+    write_done 32, sar32_mem
+    gret 1
+    write_bullshit 32, sar32_mem
+
+# 16-bit memory shift operations  
+.gadget shl16_mem
+    write_prep 16, shl16_mem
+    ldrh w8, [_xaddr]
+    lsl w8, w8, ecx
+    and w8, w8, 0xFFFF
+    ubfx w9, w8, 15, 1
+    strb w9, [_cpu, CPU_cf]
+    strh w8, [_xaddr]
+    write_done 16, shl16_mem
+    gret 1
+    write_bullshit 16, shl16_mem
+
+.gadget shr16_mem
+    write_prep 16, shr16_mem
+    ldrh w8, [_xaddr]
+    lsr w8, w8, ecx
+    and w8, w8, 0xFFFF
+    ubfx w9, w8, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    strh w8, [_xaddr]
+    write_done 16, shr16_mem
+    gret 1
+    write_bullshit 16, shr16_mem
+
+.gadget sar16_mem
+    write_prep 16, sar16_mem
+    ldrh w8, [_xaddr]
+    asr w8, w8, ecx
+    and w8, w8, 0xFFFF
+    ubfx w9, w8, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    strh w8, [_xaddr]
+    write_done 16, sar16_mem
+    gret 1
+    write_bullshit 16, sar16_mem
+
+# 8-bit memory shift operations
+.gadget shl8_mem
+    write_prep 8, shl8_mem
+    ldrb w8, [_xaddr]
+    lsl w8, w8, ecx
+    and w8, w8, 0xFF
+    ubfx w9, w8, 7, 1
+    strb w9, [_cpu, CPU_cf]
+    strb w8, [_xaddr]
+    write_done 8, shl8_mem
+    gret 1
+    write_bullshit 8, shl8_mem
+
+.gadget shr8_mem
+    write_prep 8, shr8_mem
+    ldrb w8, [_xaddr]
+    lsr w8, w8, ecx
+    and w8, w8, 0xFF
+    ubfx w9, w8, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    strb w8, [_xaddr]
+    write_done 8, shr8_mem
+    gret 1
+    write_bullshit 8, shr8_mem
+
+.gadget sar8_mem
+    write_prep 8, sar8_mem
+    ldrb w8, [_xaddr]
+    asr w8, w8, ecx
+    and w8, w8, 0xFF
+    ubfx w9, w8, 0, 1
+    strb w9, [_cpu, CPU_cf]
+    strb w8, [_xaddr]
+    write_done 8, sar8_mem
+    gret 1
+    write_bullshit 8, sar8_mem
+
+# Missing rotate memory operations (8 operations)
+
+# 64-bit memory rotate operations
+.gadget rol64_mem
+    write_prep 64, rol64_mem
+    ldr x8, [_xaddr]
+    neg w9, ecx
+    uxtw x9, w9
+    ror x8, x8, x9
+    ubfx x10, x8, 0, 1
+    ubfx x11, x8, 63, 1
+    eor w11, w11, w10
+    strb w10, [_cpu, CPU_cf]
+    strb w11, [_cpu, CPU_of]
+    str x8, [_xaddr]
+    write_done 64, rol64_mem
+    gret 1
+    write_bullshit 64, rol64_mem
+
+.gadget ror64_mem
+    write_prep 64, ror64_mem
+    ldr x8, [_xaddr]
+    uxtw x9, ecx
+    ror x8, x8, x9
+    ubfx x10, x8, 63, 1
+    ubfx x11, x8, 62, 1
+    eor w11, w11, w10
+    strb w10, [_cpu, CPU_cf]
+    strb w11, [_cpu, CPU_of]
+    str x8, [_xaddr]
+    write_done 64, ror64_mem
+    gret 1
+    write_bullshit 64, ror64_mem
+
+# 32-bit memory rotate operations
+.gadget rol32_mem
+    write_prep 32, rol32_mem
+    ldr w8, [_xaddr]
+    neg w9, ecx
+    ror w8, w8, w9
+    ubfx w10, w8, 0, 1
+    ubfx w11, w8, 31, 1
+    eor w11, w11, w10
+    strb w10, [_cpu, CPU_cf]
+    strb w11, [_cpu, CPU_of]
+    str w8, [_xaddr]
+    write_done 32, rol32_mem
+    gret 1
+    write_bullshit 32, rol32_mem
+
+.gadget ror32_mem
+    write_prep 32, ror32_mem
+    ldr w8, [_xaddr]
+    ror w8, w8, ecx
+    ubfx w10, w8, 31, 1
+    ubfx w11, w8, 30, 1
+    eor w11, w11, w10
+    strb w10, [_cpu, CPU_cf]
+    strb w11, [_cpu, CPU_of]
+    str w8, [_xaddr]
+    write_done 32, ror32_mem
+    gret 1
+    write_bullshit 32, ror32_mem
+
+# 16-bit memory rotate operations  
+.gadget rol16_mem
+    write_prep 16, rol16_mem
+    ldrh w8, [_xaddr]
+    neg w9, ecx
+    ror w8, w8, w9
+    and w8, w8, 0xFFFF
+    ubfx w10, w8, 0, 1
+    ubfx w11, w8, 15, 1
+    eor w11, w11, w10
+    strb w10, [_cpu, CPU_cf]
+    strb w11, [_cpu, CPU_of]
+    strh w8, [_xaddr]
+    write_done 16, rol16_mem
+    gret 1
+    write_bullshit 16, rol16_mem
+
+.gadget ror16_mem
+    write_prep 16, ror16_mem
+    ldrh w8, [_xaddr]
+    ror w8, w8, ecx
+    and w8, w8, 0xFFFF
+    ubfx w10, w8, 15, 1
+    ubfx w11, w8, 14, 1
+    eor w11, w11, w10
+    strb w10, [_cpu, CPU_cf]
+    strb w11, [_cpu, CPU_of]
+    strh w8, [_xaddr]
+    write_done 16, ror16_mem
+    gret 1
+    write_bullshit 16, ror16_mem
+
+# 8-bit memory rotate operations
+.gadget rol8_mem
+    write_prep 8, rol8_mem
+    ldrb w8, [_xaddr]
+    neg w9, ecx
+    ror w8, w8, w9
+    and w8, w8, 0xFF
+    ubfx w10, w8, 0, 1
+    ubfx w11, w8, 7, 1
+    eor w11, w11, w10
+    strb w10, [_cpu, CPU_cf]
+    strb w11, [_cpu, CPU_of]
+    strb w8, [_xaddr]
+    write_done 8, rol8_mem
+    gret 1
+    write_bullshit 8, rol8_mem
+
+.gadget ror8_mem
+    write_prep 8, ror8_mem
+    ldrb w8, [_xaddr]
+    ror w8, w8, ecx
+    and w8, w8, 0xFF
+    ubfx w10, w8, 7, 1
+    ubfx w11, w8, 6, 1
+    eor w11, w11, w10
+    strb w10, [_cpu, CPU_cf]
+    strb w11, [_cpu, CPU_of]
+    strb w8, [_xaddr]
+    write_done 8, ror8_mem
+    gret 1
+    write_bullshit 8, ror8_mem
+
 # Comprehensive SHLD/SHRD implementation for all sizes and addressing modes
 # SHLD = Shift Left Double: Destination << count, fill from source  
 # SHRD = Shift Right Double: Destination >> count, fill from source
