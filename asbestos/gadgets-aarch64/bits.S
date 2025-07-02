@@ -801,7 +801,7 @@
 .endm
 
 .irp op, btc,bts,btr
-    .irp size, 16,32,64
+    .irp size, 8,16,32,64
         ss \size, do_bt_atomic, \op
     .endr
     .gadget_array atomic_\op
