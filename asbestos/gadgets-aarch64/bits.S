@@ -1125,50 +1125,236 @@
     str _tmp, [_cpu, #CPU_gs]
     gret
 
-.macro do_shiftd op, arg
+# Comprehensive SHLD/SHRD implementation for all sizes and addressing modes
+# SHLD = Shift Left Double: Destination << count, fill from source  
+# SHRD = Shift Right Double: Destination >> count, fill from source
+
+.macro do_shiftd_op op, size, arg
+    # Get shift count
+    .ifc \arg,imm
+        ldrb w8, [_ip]
+    .else
+        uxtb w8, ecx
+    .endif
+    
+    # Check if shift count is zero
+    .if \size == 64
+        tst w8, 63
+    .else
+        tst w8, 31
+    .endif
+    b.eq 2f
+    
+    # Prepare registers based on size
+    .if \size == 64
+        # Use 64-bit registers for 64-bit operations
+        mov x9, \size
+        sub x9, x9, x8
+        sub x8, x8, 1  /* shift by one less for flag extraction */
+        uxtw x8, w8
+        uxtw x9, w9
+        
+        .ifc \op,shrd
+            # SHRD: destination >> (count-1), get CF, then >> 1, fill with source << (64-count)
+            lsr x10, _xtmp, x8
+            and x11, x10, 1        /* CF = bit shifted out */
+            lsr x10, x10, 1        /* complete the shift */
+            lsl x12, x12, x9       /* source << (size-count) */
+        .else
+            # SHLD: destination << (count-1), get CF, then << 1, fill with source >> (64-count)  
+            lsl x10, _xtmp, x8
+            ubfx x11, x10, 63, 1   /* CF = bit shifted out */
+            lsl x10, x10, 1        /* complete the shift */
+            lsr x12, x12, x9       /* source >> (size-count) */
+        .endif
+        orr _xtmp, x10, x12
+        strb w11, [_cpu, CPU_cf]
+    .else
+        # Use 32-bit registers for smaller operations
+        mov w9, \size
+        sub w9, w9, w8
+        sub w8, w8, 1  /* shift by one less for flag extraction */
+        
+        .ifc \op,shrd
+            # SHRD: destination >> (count-1), get CF, then >> 1, fill with source << (size-count)
+            lsr w10, _tmp, w8
+            and w11, w10, 1        /* CF = bit shifted out */
+            lsr w10, w10, 1        /* complete the shift */
+            lsl w12, w12, w9       /* source << (size-count) */
+        .else
+            # SHLD: destination << (count-1), get CF, then << 1, fill with source >> (size-count)
+            lsl w10, _tmp, w8
+            .if \size == 32
+                ubfx w11, w10, 31, 1   /* CF = bit shifted out */
+            .else N .if \size == 16
+                ubfx w11, w10, 15, 1
+            .else
+                ubfx w11, w10, 7, 1
+            .endif N .endif
+            lsl w10, w10, 1        /* complete the shift */
+            lsr w12, w12, w9       /* source >> (size-count) */
+        .endif
+        orr _tmp, w10, w12
+        
+        # Mask result to correct size
+        .if \size == 16
+            and _tmp, _tmp, 0xFFFF
+        .else N .if \size == 8
+            and _tmp, _tmp, 0xFF
+        .endif N .endif
+        
+        strb w11, [_cpu, CPU_cf]
+    .endif
+    
+    # Set flags (ZF, SF, PF)
+    setf_zsp
+    
+2:
+    .ifc \arg,imm
+        gret 1
+    .else
+        gret
+    .endif
+.endm
+
+.macro do_shiftd op, size, s
+    # Register variants
     .macro x name, reg
-        .gadget \op\()_\arg\()32_\name
-            .ifc \arg,imm
-                ldrb w8, [_ip]
+        .gadget \op\()_cl\size\()_\name
+            .if \size == 64
+                # Load source register (second operand) 
+                .ifc \name,reg_a
+                    mov x12, rax
+                .else N .ifc \name,reg_b
+                    mov x12, rbx
+                .else N .ifc \name,reg_c
+                    mov x12, rcx
+                .else N .ifc \name,reg_d
+                    mov x12, rdx
+                .else N .ifc \name,reg_si
+                    mov x12, rsi
+                .else N .ifc \name,reg_di
+                    mov x12, rdi
+                .else N .ifc \name,reg_sp
+                    mov x12, rsp
+                .else N .ifc \name,reg_bp
+                    mov x12, rbp
+                .endif N .endif N .endif N .endif N .endif N .endif N .endif N .endif
             .else
-                uxtb w8, ecx
+                mov w12, \reg
             .endif
-            tst w8, 31
-            b.eq 1f
-            mov w9, 32
-            sub w9, w9, w8
-            sub w8, w8, 1 /* shift by one less */
-            .ifc \op,shrd
-                lsr w8, _tmp, w8
-                # and by one more
-                and w10, w8, 1
-                lsr w8, w8, 1
-                lsl w9, \reg, w9
+            do_shiftd_op \op, \size, cl
+            
+        .gadget \op\()_imm\size\()_\name
+            .if \size == 64
+                # Load source register (second operand)
+                .ifc \name,reg_a
+                    mov x12, rax
+                .else N .ifc \name,reg_b
+                    mov x12, rbx
+                .else N .ifc \name,reg_c
+                    mov x12, rcx
+                .else N .ifc \name,reg_d
+                    mov x12, rdx
+                .else N .ifc \name,reg_si
+                    mov x12, rsi
+                .else N .ifc \name,reg_di
+                    mov x12, rdi
+                .else N .ifc \name,reg_sp
+                    mov x12, rsp
+                .else N .ifc \name,reg_bp
+                    mov x12, rbp
+                .endif N .endif N .endif N .endif N .endif N .endif N .endif N .endif
             .else
-                lsl w8, _tmp, w8
-                # and by one more
-                ubfx w10, w8, 31, 1
-                lsl w8, w8, 1
-                lsr w9, \reg, w9
+                mov w12, \reg
             .endif
-            orr _tmp, w8, w9
-            strb w10, [_cpu, CPU_cf]
-            setf_zsp
-        1:
-            .ifc \arg,imm
-                gret 1
-            .else
-                gret
-            .endif
+            do_shiftd_op \op, \size, imm
     .endm
     .each_reg x
     .purgem x
-    .gadget_array \op\()_\arg
+    
+    # addr variants
+    .gadget \op\()_cl\size\()_addr
+        .if \size == 64
+            mov x12, _xaddr  /* source = addr */
+        .else
+            mov w12, _addr   /* source = addr */
+        .endif
+        do_shiftd_op \op, \size, cl
+        
+    .gadget \op\()_imm\size\()_addr  
+        .if \size == 64
+            mov x12, _xaddr  /* source = addr */
+        .else
+            mov w12, _addr   /* source = addr */
+        .endif
+        do_shiftd_op \op, \size, imm
+    
+    # gs variants
+    .gadget \op\()_cl\size\()_gs
+        .if \size == 64
+            ldr x12, [_cpu, #CPU_gs]  /* source = gs */
+        .else
+            ldr w12, [_cpu, #CPU_gs]  /* source = gs */
+        .endif
+        do_shiftd_op \op, \size, cl
+        
+    .gadget \op\()_imm\size\()_gs
+        .if \size == 64
+            ldr x12, [_cpu, #CPU_gs]  /* source = gs */
+        .else
+            ldr w12, [_cpu, #CPU_gs]  /* source = gs */
+        .endif
+        do_shiftd_op \op, \size, imm
+    
+    # mem variants  
+    .gadget \op\()_cl\size\()_mem
+        read_prep \size, \op\()_cl\size\()_mem
+        .if \size == 64
+            ldr x12, [_xaddr]  /* source = memory */
+        .else
+            ldr\s w12, [_xaddr] /* source = memory */
+        .endif
+        do_shiftd_op \op, \size, cl
+        read_bullshit \size, \op\()_cl\size\()_mem
+        
+    .gadget \op\()_imm\size\()_mem
+        read_prep \size, \op\()_imm\size\()_mem  
+        .if \size == 64
+            ldr x12, [_xaddr]  /* source = memory */
+        .else
+            ldr\s w12, [_xaddr] /* source = memory */
+        .endif
+        do_shiftd_op \op, \size, imm
+        read_bullshit \size, \op\()_imm\size\()_mem
+    
+    # imm variants (destination = immediate, source = register)
+    .gadget \op\()_cl\size\()_imm
+        .if \size == 64
+            ldr x12, [_ip]     /* source = immediate */
+        .else
+            ldr\s w12, [_ip]   /* source = immediate */ 
+        .endif
+        do_shiftd_op \op, \size, cl
+        gret 1
+        
+    .gadget \op\()_imm\size\()_imm
+        .if \size == 64
+            ldr x12, [_ip]     /* source = immediate */
+        .else
+            ldr\s w12, [_ip]   /* source = immediate */
+        .endif
+        do_shiftd_op \op, \size, imm
+        gret 1
 .endm
-.irp op, shrd,shld
-    .irp arg, imm,cl
-        do_shiftd \op, \arg
+
+# Generate all SHLD/SHRD variants for all sizes
+.irp op, shld,shrd
+    .irp size, 8,16,32,64
+        ss \size, do_shiftd, \op
     .endr
+    .gadget_array \op\()_cl
+    .gadget_array \op\()_imm  
 .endr
 
 .macro do_bt_op op, arg, size, s
