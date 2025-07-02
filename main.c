@@ -6,8 +6,10 @@
 
 int main(int argc, char *const argv[]) {
     char envp[100] = {0};
-    if (getenv("TERM"))
-        strcpy(envp, getenv("TERM") - strlen("TERM") - 1);
+    if (getenv("TERM")) {
+        const char *term = getenv("TERM");
+        snprintf(envp, sizeof(envp), "TERM=%s", term);
+    }
     int err = xX_main_Xx(argc, argv, envp);
     if (err < 0) {
         fprintf(stderr, "xX_main_Xx: %s\n", strerror(-err));
