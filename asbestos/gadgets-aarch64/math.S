@@ -1375,24 +1375,53 @@
     .gadget_list \op, SIZE_LIST
 .endr
 
+# Add missing cvt variants for all sizes
+.gadget cvt_8
+    tst eax, 0x80
+    cinv w8, wzr, ne
+    bfxil edx, w8, 0, 8
+    gret
+
 .gadget cvt_16
     tst eax, 0x8000
     cinv w8, wzr, ne
     bfxil edx, w8, 0, 16
     gret
+
 .gadget cvt_32
     tst eax, 0x80000000
     cinv edx, wzr, ne
     gret
+
+.gadget cvt_64
+    tst rax, 0x8000000000000000
+    cinv x8, xzr, ne
+    mov rdx, x8
+    gret
+
 .gadget_list cvt, SIZE_LIST
+
+# Add missing cvte variants for all sizes  
+.gadget cvte_8
+    # cvte_8 should sign-extend al into ax (8->16 bit)
+    sxtb w8, eax
+    bfxil eax, w8, 0, 16
+    gret
 
 .gadget cvte_16
     sxtb w8, eax
     bfxil eax, w8, 0, 16
     gret
+
 .gadget cvte_32
     sxth eax, eax
     gret
+
+.gadget cvte_64
+    # cvte_64 should sign-extend eax into rax (32->64 bit)
+    sxtw rax, eax
+    gret
+
 .gadget_list cvte, SIZE_LIST
 
 # Additional 64-bit addr and gs gadgets for basic operations
