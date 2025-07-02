@@ -1,7 +1,7 @@
 #include "gadgets.h"
 
 .macro do_shift type, size, s
-    .irp arg, reg_c,imm
+    .irp arg, reg_a,reg_b,reg_c,reg_d,reg_si,reg_di,reg_sp,reg_bp,imm
         .gadget \type\size\()_\arg
             .ifc \arg,imm
                 ldr w8, [_ip]
@@ -265,8 +265,18 @@
     .irp size, 8,16,32
         ss \size, do_shift, \type
     .endr
-    .gadget_array \type
+    # Manual array that excludes 64-bit due to complexity
+    _gadget_array_start \type
+        gadgets \type\()8, GADGET_LIST
+        gadgets \type\()16, GADGET_LIST
+        gadgets \type\()32, GADGET_LIST
+        # Exclude 64-bit - not implemented due to complex modulus issues
+    .popsection
 .endr
+
+# rcl/rcr addr/gs/mem variants need complex implementation - skip for now
+
+
 
 # Helper macro for the shift logic without the gadget wrapper
 .macro do_shift_logic type, size, target

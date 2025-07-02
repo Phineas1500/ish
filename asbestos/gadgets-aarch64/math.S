@@ -358,7 +358,7 @@
 .endr
 # bsf,bsr now support 64-bit with ARM64 fixes
 .irp op, bsf,bsr
-    .irp size, 16,32,64
+    .irp size, 8,16,32,64
         ss \size, do_op_size, \op, \op
     .endr
     .gadget_array \op

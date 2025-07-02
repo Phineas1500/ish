@@ -99,13 +99,218 @@
         mov w11, w10
         mov eax, w12
         b 1b
+
+    # Add missing addr variant - fall back to non-atomic for atomic version
+    .gadget cmpxchg\size\()_addr
+        .if \size == 64
+            ldr x8, [_xaddr]
+        .else
+            ldr\s w8, [_xaddr]
+        .endif
+        setf_a eax, w8
+        mov w9, eax
+        do_add sub, w9, w8, \s
+        setf_zsp \s, val=w9
+        .ifnb \s
+            cmp w9, 0
+            .if \size != 64
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
+        .endif
+        csel eax, w8, eax, ne
+        csel w8, _tmp, w8, eq
+        .if \size == 64
+            str x8, [_xaddr]
+        .else
+            str\s w8, [_xaddr]
+        .endif
+        gret
+
+    .gadget atomic_cmpxchg\size\()_addr
+        # Fall back to non-atomic for simplicity
+        .if \size == 64
+            ldr x8, [_xaddr]
+        .else
+            ldr\s w8, [_xaddr]
+        .endif
+        setf_a eax, w8
+        mov w9, eax
+        do_add sub, w9, w8, \s
+        setf_zsp \s, val=w9
+        .ifnb \s
+            cmp w9, 0
+            .if \size != 64
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
+        .endif
+        csel eax, w8, eax, ne
+        csel w8, _tmp, w8, eq
+        .if \size == 64
+            str x8, [_xaddr]
+        .else
+            str\s w8, [_xaddr]
+        .endif
+        gret
+
+    # Add missing gs variant
+    .gadget cmpxchg\size\()_gs
+        .if \size == 64
+            ldr x10, [_cpu, #CPU_gs]
+            ldr x8, [x10]
+            str x8, [_cpu, #CPU_gs]
+        .else
+            ldr w10, [_cpu, #CPU_gs]
+            ldr\s w8, [x10]
+            str w8, [_cpu, #CPU_gs]
+        .endif
+        setf_a eax, w8
+        mov w9, eax
+        do_add sub, w9, w8, \s
+        setf_zsp \s, val=w9
+        .ifnb \s
+            cmp w9, 0
+            .if \size != 64
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
+        .endif
+        csel eax, w8, eax, ne
+        csel w8, _tmp, w8, eq
+        gret
+
+    .gadget atomic_cmpxchg\size\()_gs
+        # Fall back to non-atomic gs variant
+        .if \size == 64
+            ldr x10, [_cpu, #CPU_gs]
+            ldr x8, [x10]
+            str x8, [_cpu, #CPU_gs]
+        .else
+            ldr w10, [_cpu, #CPU_gs]
+            ldr\s w8, [x10]
+            str w8, [_cpu, #CPU_gs]
+        .endif
+        setf_a eax, w8
+        mov w9, eax
+        do_add sub, w9, w8, \s
+        setf_zsp \s, val=w9
+        .ifnb \s
+            cmp w9, 0
+            .if \size != 64
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
+        .endif
+        csel eax, w8, eax, ne
+        csel w8, _tmp, w8, eq
+        gret
+
+    # Add missing imm variant
+    .gadget cmpxchg\size\()_imm
+        .if \size == 64
+            ldr x8, [_ip]
+        .else
+            ldr\s w8, [_ip]
+        .endif
+        setf_a eax, w8
+        mov w9, eax
+        do_add sub, w9, w8, \s
+        setf_zsp \s, val=w9
+        .ifnb \s
+            cmp w9, 0
+            .if \size != 64
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
+        .endif
+        csel eax, w8, eax, ne
+        csel w8, _tmp, w8, eq
+        gret 1
+
+    .gadget atomic_cmpxchg\size\()_imm
+        # Fall back to non-atomic imm variant
+        .if \size == 64
+            ldr x8, [_ip]
+        .else
+            ldr\s w8, [_ip]
+        .endif
+        setf_a eax, w8
+        mov w9, eax
+        do_add sub, w9, w8, \s
+        setf_zsp \s, val=w9
+        .ifnb \s
+            cmp w9, 0
+            .if \size != 64
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
+        .endif
+        csel eax, w8, eax, ne
+        csel w8, _tmp, w8, eq
+        gret 1
+
+    # Add missing register variants
+    .macro x name, reg
+        .gadget cmpxchg\size\()_\name
+            .if \size == 64
+                setf_a eax, \reg
+                mov w9, eax
+                do_add sub, w9, \reg, \s
+                setf_zsp \s, val=w9
+                csel eax, \reg, eax, ne
+                csel \reg, _tmp, \reg, eq
+            .else
+                setf_a eax, \reg
+                mov w9, eax
+                do_add sub, w9, \reg, \s
+                setf_zsp \s, val=w9
+                .ifnb \s
+                    cmp w9, 0
+                    .if \size != 64
+                        and w9, eax, (-1 << \size)
+                        orr \reg, \reg, w9
+                    .endif
+                .endif
+                csel eax, \reg, eax, ne
+                csel \reg, _tmp, \reg, eq
+            .endif
+            gret
+
+        .gadget atomic_cmpxchg\size\()_\name
+            # Fall back to non-atomic register variant
+            .if \size == 64
+                setf_a eax, \reg
+                mov w9, eax
+                do_add sub, w9, \reg, \s
+                setf_zsp \s, val=w9
+                csel eax, \reg, eax, ne
+                csel \reg, _tmp, \reg, eq
+            .else
+                setf_a eax, \reg
+                mov w9, eax
+                do_add sub, w9, \reg, \s
+                setf_zsp \s, val=w9
+                .ifnb \s
+                    cmp w9, 0
+                    .if \size != 64
+                        and w9, eax, (-1 << \size)
+                        orr \reg, \reg, w9
+                    .endif
+                .endif
+                csel eax, \reg, eax, ne
+                csel \reg, _tmp, \reg, eq
+            .endif
+            gret
+    .endm
+    .each_reg x
+    .purgem x
 .endm
 
 .irp size, SIZE_LIST
     ss \size, do_cmpxchg
 .endr
 .gadget_array cmpxchg
-.gadget_array atomic_cmpxchg
 
 .extern segfault_write
 
@@ -317,3 +522,5 @@ do_helper 2
     ldrh w10, [_cpu, CPU_fsw]
     mov eax, w10
     gret
+
+.gadget_array atomic_cmpxchg
