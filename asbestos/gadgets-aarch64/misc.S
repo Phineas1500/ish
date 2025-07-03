@@ -524,3 +524,79 @@ do_helper 2
     gret
 
 .gadget_array atomic_cmpxchg
+
+#ifdef ISH_64BIT
+/* R11 cmpxchg operations */
+.irp size, 8,16,32,64
+    .gadget cmpxchg\size\()_reg_r11
+        .if \size == 64
+            ldr x8, [_cpu, #CPU_r11]
+            setf_a eax, w8
+            mov w9, eax
+            do_add sub, w9, w8, x
+            setf_zsp x, val=w9
+            csel eax, w8, eax, ne
+            csel x8, _xtmp, x8, eq
+            str x8, [_cpu, #CPU_r11]
+        .else
+            ldr w8, [_cpu, #CPU_r11]
+            setf_a eax, w8
+            mov w9, eax
+            .if \size == 8
+                do_add sub, w9, w8, b
+                setf_zsp b, val=w9
+            .elseif \size == 16
+                do_add sub, w9, w8, h
+                setf_zsp h, val=w9
+            .else
+                do_add sub, w9, w8,
+                setf_zsp "", val=w9
+            .endif
+            .if \size != 32
+                cmp w9, 0
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
+            csel eax, w8, eax, ne
+            csel w8, _tmp, w8, eq
+            str w8, [_cpu, #CPU_r11]
+        .endif
+        gret
+
+    .gadget atomic_cmpxchg\size\()_reg_r11
+        # Fall back to non-atomic register variant
+        .if \size == 64
+            ldr x8, [_cpu, #CPU_r11]
+            setf_a eax, w8
+            mov w9, eax
+            do_add sub, w9, w8, x
+            setf_zsp x, val=w9
+            csel eax, w8, eax, ne
+            csel x8, _xtmp, x8, eq
+            str x8, [_cpu, #CPU_r11]
+        .else
+            ldr w8, [_cpu, #CPU_r11]
+            setf_a eax, w8
+            mov w9, eax
+            .if \size == 8
+                do_add sub, w9, w8, b
+                setf_zsp b, val=w9
+            .elseif \size == 16
+                do_add sub, w9, w8, h
+                setf_zsp h, val=w9
+            .else
+                do_add sub, w9, w8,
+                setf_zsp "", val=w9
+            .endif
+            .if \size != 32
+                cmp w9, 0
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
+            csel eax, w8, eax, ne
+            csel w8, _tmp, w8, eq
+            str w8, [_cpu, #CPU_r11]
+        .endif
+        gret
+.endr
+#endif /* ISH_64BIT */

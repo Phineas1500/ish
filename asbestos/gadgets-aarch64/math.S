@@ -1850,56 +1850,106 @@
         gret
 .endm
 
-/* Generate gadgets */
-.irp op, add,sub,and,or,xor,cmp,test
-    .irp size, 8,16,32,64
-        .ifc \op,or
-            do_r11_op \op, orr, \size
-        .else N .ifc \op,xor
-            do_r11_op \op, eor, \size
-        .else N .ifc \op,sbb
-            do_r11_op \op, sbc, \size
-        .else N .ifc \op,inc
-            do_r11_op \op, add, \size
-        .else N .ifc \op,dec
-            do_r11_op \op, sub, \size
-        .else
-            do_r11_op \op, \op, \size
-        .endif N .endif N .endif N .endif N .endif N .endif N .endif N .endif
-    .endr
-.endr
+/* Basic R11 arithmetic gadgets - simplified */
+.gadget add32_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op add, 32, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
 
-/* cmp & test (no write-back) */
-#if 0
-.irp op, cmp,test
-    .irp size, 8,16,32,64
-        .gadget \op\size\()_reg_r11
-            .if \size == 64
-                ldr x8, [_cpu, #CPU_r11]
-                do_op \op, \size, x8
-            .else
-                ldr w8, [_cpu, #CPU_r11]
-                do_op \op, \size, w8
-            .endif
-            gret
-    .endr
-.endr
-#endif
+.gadget sub32_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op sub, 32, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
 
-/* xchg – always writes back */
-.irp size, 8,16,32,64
-    .gadget xchg\size\()_reg_r11
-        .if \size == 64
-            ldr x8, [_cpu, #CPU_r11]
-            do_op xchg, \size, x8
-            str _xtmp, [_cpu, #CPU_r11]
-        .else
-            ldr w8, [_cpu, #CPU_r11]
-            do_op xchg, \size, w8
-            str _tmp, [_cpu, #CPU_r11]
-        .endif
-        gret
-.endr
+.gadget and32_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op and, 32, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget or32_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op or, 32, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget xor32_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op xor, 32, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget cmp32_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op cmp, 32, w8
+    gret
+
+.gadget test32_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op test, 32, w8
+    gret
+
+/* xchg for R11 */
+.gadget xchg32_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op xchg, 32, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+/* load/store for R11 */
+.gadget load32_reg_r11
+    ldr _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget store32_reg_r11
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget load64_reg_r11
+    ldr _xtmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget store64_reg_r11
+    str _xtmp, [_cpu, #CPU_r11]
+    gret
+
+/* adc and sbb for R11 */
+.gadget adc32_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op adc, 32, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget sbb32_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op sbb, 32, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+/* Basic inc and dec for R11 */
+.gadget inc32_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    adds w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp "", val=w8
+    str w8, [_cpu, #CPU_r11]
+    gret
+
+.gadget dec32_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    subs w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp "", val=w8
+    str w8, [_cpu, #CPU_r11]
+    gret
 
 #endif /* ISH_64BIT */
 

@@ -2179,3 +2179,63 @@
 # 8-bit immediate operations now generated automatically by main loop
 
 # 64-bit rotate immediate operations now generated automatically by main loop
+
+#ifdef ISH_64BIT
+/* Simple R11 bit operations - avoiding complex nested loops */
+
+/* Basic shift operations for R11 - shl32 */
+.gadget shl32_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    mov _tmp, w8
+    ands w8, ecx, 31
+    b.eq 1f
+    sub w8, w8, 1
+    lsl _tmp, _tmp, w8
+    ubfx w9, _tmp, 31, 1
+    ubfx w10, _tmp, 30, 1
+    lsl _tmp, _tmp, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _tmp, [_cpu, #CPU_r11]
+1:
+    gret
+
+/* Basic shift operations for R11 - shr32 */
+.gadget shr32_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    mov _tmp, w8
+    ands w8, ecx, 31
+    b.eq 1f
+    ubfx w10, _tmp, 31, 1
+    sub w8, w8, 1
+    lsr _tmp, _tmp, w8
+    and w9, _tmp, 1
+    lsr _tmp, _tmp, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _tmp, [_cpu, #CPU_r11]
+1:
+    gret
+
+/* Basic bit test for R11 - bt32 */
+.gadget bt32_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    and w9, ecx, 31
+    lsr w10, w8, w9
+    and w10, w10, 1
+    ldrb w9, [_cpu, CPU_eflags]
+    bic w9, w9, #1
+    orr w9, w9, w10
+    strb w9, [_cpu, CPU_eflags]
+    gret
+
+/* bswap for R11 */
+.gadget bswap_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    rev w8, w8
+    str w8, [_cpu, #CPU_r11]
+    gret
+
+#endif /* ISH_64BIT */
