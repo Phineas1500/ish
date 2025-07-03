@@ -2160,6 +2160,135 @@
     do_op test, 64, x8
     gret
 
+/* Additional size variants for R12 - adc/sbb/inc/dec/xchg */
+
+/* 8-bit adc/sbb operations for R12 */
+.gadget adc8_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    do_op adc, 8, w8
+    str _tmp, [_cpu, #CPU_r12]
+    gret
+
+.gadget sbb8_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    do_op sbb, 8, w8
+    str _tmp, [_cpu, #CPU_r12]
+    gret
+
+/* 16-bit adc/sbb operations for R12 */
+.gadget adc16_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    do_op adc, 16, w8
+    str _tmp, [_cpu, #CPU_r12]
+    gret
+
+.gadget sbb16_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    do_op sbb, 16, w8
+    str _tmp, [_cpu, #CPU_r12]
+    gret
+
+/* 64-bit adc/sbb operations for R12 */
+.gadget adc64_reg_r12
+    ldr x8, [_cpu, #CPU_r12]
+    do_op adc, 64, x8
+    str _xtmp, [_cpu, #CPU_r12]
+    gret
+
+.gadget sbb64_reg_r12
+    ldr x8, [_cpu, #CPU_r12]
+    do_op sbb, 64, x8
+    str _xtmp, [_cpu, #CPU_r12]
+    gret
+
+/* 8-bit inc/dec operations for R12 */
+.gadget inc8_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    adds w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp b, val=w8
+    str w8, [_cpu, #CPU_r12]
+    gret
+
+.gadget dec8_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    subs w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp b, val=w8
+    str w8, [_cpu, #CPU_r12]
+    gret
+
+/* 16-bit inc/dec operations for R12 */
+.gadget inc16_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    adds w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp h, val=w8
+    str w8, [_cpu, #CPU_r12]
+    gret
+
+.gadget dec16_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    subs w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp h, val=w8
+    str w8, [_cpu, #CPU_r12]
+    gret
+
+/* 64-bit inc/dec operations for R12 */
+.gadget inc64_reg_r12
+    ldr x8, [_cpu, #CPU_r12]
+    mov x10, 1
+    setf_a src=x10, dst=x8
+    adds x8, x8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp x, val=x8
+    str x8, [_cpu, #CPU_r12]
+    gret
+
+.gadget dec64_reg_r12
+    ldr x8, [_cpu, #CPU_r12]
+    mov x10, 1
+    setf_a src=x10, dst=x8
+    subs x8, x8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp x, val=x8
+    str x8, [_cpu, #CPU_r12]
+    gret
+
+/* 8-bit/16-bit/64-bit xchg operations for R12 */
+.gadget xchg8_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    do_op xchg, 8, w8
+    str _tmp, [_cpu, #CPU_r12]
+    gret
+
+.gadget xchg16_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    do_op xchg, 16, w8
+    str _tmp, [_cpu, #CPU_r12]
+    gret
+
+.gadget xchg64_reg_r12
+    ldr x8, [_cpu, #CPU_r12]
+    do_op xchg, 64, x8
+    str _xtmp, [_cpu, #CPU_r12]
+    gret
+
 /* Load/Store operations for R12 */
 .gadget load8_reg_r12
     ldrb _tmp, [_cpu, #CPU_r12]
@@ -2400,6 +2529,135 @@
 .gadget test64_reg_r13
     ldr x8, [_cpu, #CPU_r13]
     do_op test, 64, x8
+    gret
+
+/* Additional size variants for R13 - adc/sbb/inc/dec/xchg */
+
+/* 8-bit adc/sbb operations for R13 */
+.gadget adc8_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    do_op adc, 8, w8
+    str _tmp, [_cpu, #CPU_r13]
+    gret
+
+.gadget sbb8_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    do_op sbb, 8, w8
+    str _tmp, [_cpu, #CPU_r13]
+    gret
+
+/* 16-bit adc/sbb operations for R13 */
+.gadget adc16_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    do_op adc, 16, w8
+    str _tmp, [_cpu, #CPU_r13]
+    gret
+
+.gadget sbb16_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    do_op sbb, 16, w8
+    str _tmp, [_cpu, #CPU_r13]
+    gret
+
+/* 64-bit adc/sbb operations for R13 */
+.gadget adc64_reg_r13
+    ldr x8, [_cpu, #CPU_r13]
+    do_op adc, 64, x8
+    str _xtmp, [_cpu, #CPU_r13]
+    gret
+
+.gadget sbb64_reg_r13
+    ldr x8, [_cpu, #CPU_r13]
+    do_op sbb, 64, x8
+    str _xtmp, [_cpu, #CPU_r13]
+    gret
+
+/* 8-bit inc/dec operations for R13 */
+.gadget inc8_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    adds w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp b, val=w8
+    str w8, [_cpu, #CPU_r13]
+    gret
+
+.gadget dec8_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    subs w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp b, val=w8
+    str w8, [_cpu, #CPU_r13]
+    gret
+
+/* 16-bit inc/dec operations for R13 */
+.gadget inc16_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    adds w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp h, val=w8
+    str w8, [_cpu, #CPU_r13]
+    gret
+
+.gadget dec16_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    subs w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp h, val=w8
+    str w8, [_cpu, #CPU_r13]
+    gret
+
+/* 64-bit inc/dec operations for R13 */
+.gadget inc64_reg_r13
+    ldr x8, [_cpu, #CPU_r13]
+    mov x10, 1
+    setf_a src=x10, dst=x8
+    adds x8, x8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp x, val=x8
+    str x8, [_cpu, #CPU_r13]
+    gret
+
+.gadget dec64_reg_r13
+    ldr x8, [_cpu, #CPU_r13]
+    mov x10, 1
+    setf_a src=x10, dst=x8
+    subs x8, x8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp x, val=x8
+    str x8, [_cpu, #CPU_r13]
+    gret
+
+/* 8-bit/16-bit/64-bit xchg operations for R13 */
+.gadget xchg8_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    do_op xchg, 8, w8
+    str _tmp, [_cpu, #CPU_r13]
+    gret
+
+.gadget xchg16_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    do_op xchg, 16, w8
+    str _tmp, [_cpu, #CPU_r13]
+    gret
+
+.gadget xchg64_reg_r13
+    ldr x8, [_cpu, #CPU_r13]
+    do_op xchg, 64, x8
+    str _xtmp, [_cpu, #CPU_r13]
     gret
 
 /* Load/Store operations for R13 */
@@ -2644,6 +2902,135 @@
     do_op test, 64, x8
     gret
 
+/* Additional size variants for R14 - adc/sbb/inc/dec/xchg */
+
+/* 8-bit adc/sbb operations for R14 */
+.gadget adc8_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    do_op adc, 8, w8
+    str _tmp, [_cpu, #CPU_r14]
+    gret
+
+.gadget sbb8_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    do_op sbb, 8, w8
+    str _tmp, [_cpu, #CPU_r14]
+    gret
+
+/* 16-bit adc/sbb operations for R14 */
+.gadget adc16_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    do_op adc, 16, w8
+    str _tmp, [_cpu, #CPU_r14]
+    gret
+
+.gadget sbb16_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    do_op sbb, 16, w8
+    str _tmp, [_cpu, #CPU_r14]
+    gret
+
+/* 64-bit adc/sbb operations for R14 */
+.gadget adc64_reg_r14
+    ldr x8, [_cpu, #CPU_r14]
+    do_op adc, 64, x8
+    str _xtmp, [_cpu, #CPU_r14]
+    gret
+
+.gadget sbb64_reg_r14
+    ldr x8, [_cpu, #CPU_r14]
+    do_op sbb, 64, x8
+    str _xtmp, [_cpu, #CPU_r14]
+    gret
+
+/* 8-bit inc/dec operations for R14 */
+.gadget inc8_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    adds w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp b, val=w8
+    str w8, [_cpu, #CPU_r14]
+    gret
+
+.gadget dec8_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    subs w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp b, val=w8
+    str w8, [_cpu, #CPU_r14]
+    gret
+
+/* 16-bit inc/dec operations for R14 */
+.gadget inc16_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    adds w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp h, val=w8
+    str w8, [_cpu, #CPU_r14]
+    gret
+
+.gadget dec16_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    subs w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp h, val=w8
+    str w8, [_cpu, #CPU_r14]
+    gret
+
+/* 64-bit inc/dec operations for R14 */
+.gadget inc64_reg_r14
+    ldr x8, [_cpu, #CPU_r14]
+    mov x10, 1
+    setf_a src=x10, dst=x8
+    adds x8, x8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp x, val=x8
+    str x8, [_cpu, #CPU_r14]
+    gret
+
+.gadget dec64_reg_r14
+    ldr x8, [_cpu, #CPU_r14]
+    mov x10, 1
+    setf_a src=x10, dst=x8
+    subs x8, x8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp x, val=x8
+    str x8, [_cpu, #CPU_r14]
+    gret
+
+/* 8-bit/16-bit/64-bit xchg operations for R14 */
+.gadget xchg8_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    do_op xchg, 8, w8
+    str _tmp, [_cpu, #CPU_r14]
+    gret
+
+.gadget xchg16_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    do_op xchg, 16, w8
+    str _tmp, [_cpu, #CPU_r14]
+    gret
+
+.gadget xchg64_reg_r14
+    ldr x8, [_cpu, #CPU_r14]
+    do_op xchg, 64, x8
+    str _xtmp, [_cpu, #CPU_r14]
+    gret
+
 /* Load/Store operations for R14 */
 .gadget load8_reg_r14
     ldrb _tmp, [_cpu, #CPU_r14]
@@ -2884,6 +3271,135 @@
 .gadget test64_reg_r15
     ldr x8, [_cpu, #CPU_r15]
     do_op test, 64, x8
+    gret
+
+/* Additional size variants for R15 - adc/sbb/inc/dec/xchg */
+
+/* 8-bit adc/sbb operations for R15 */
+.gadget adc8_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    do_op adc, 8, w8
+    str _tmp, [_cpu, #CPU_r15]
+    gret
+
+.gadget sbb8_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    do_op sbb, 8, w8
+    str _tmp, [_cpu, #CPU_r15]
+    gret
+
+/* 16-bit adc/sbb operations for R15 */
+.gadget adc16_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    do_op adc, 16, w8
+    str _tmp, [_cpu, #CPU_r15]
+    gret
+
+.gadget sbb16_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    do_op sbb, 16, w8
+    str _tmp, [_cpu, #CPU_r15]
+    gret
+
+/* 64-bit adc/sbb operations for R15 */
+.gadget adc64_reg_r15
+    ldr x8, [_cpu, #CPU_r15]
+    do_op adc, 64, x8
+    str _xtmp, [_cpu, #CPU_r15]
+    gret
+
+.gadget sbb64_reg_r15
+    ldr x8, [_cpu, #CPU_r15]
+    do_op sbb, 64, x8
+    str _xtmp, [_cpu, #CPU_r15]
+    gret
+
+/* 8-bit inc/dec operations for R15 */
+.gadget inc8_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    adds w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp b, val=w8
+    str w8, [_cpu, #CPU_r15]
+    gret
+
+.gadget dec8_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    subs w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp b, val=w8
+    str w8, [_cpu, #CPU_r15]
+    gret
+
+/* 16-bit inc/dec operations for R15 */
+.gadget inc16_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    adds w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp h, val=w8
+    str w8, [_cpu, #CPU_r15]
+    gret
+
+.gadget dec16_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    subs w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp h, val=w8
+    str w8, [_cpu, #CPU_r15]
+    gret
+
+/* 64-bit inc/dec operations for R15 */
+.gadget inc64_reg_r15
+    ldr x8, [_cpu, #CPU_r15]
+    mov x10, 1
+    setf_a src=x10, dst=x8
+    adds x8, x8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp x, val=x8
+    str x8, [_cpu, #CPU_r15]
+    gret
+
+.gadget dec64_reg_r15
+    ldr x8, [_cpu, #CPU_r15]
+    mov x10, 1
+    setf_a src=x10, dst=x8
+    subs x8, x8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp x, val=x8
+    str x8, [_cpu, #CPU_r15]
+    gret
+
+/* 8-bit/16-bit/64-bit xchg operations for R15 */
+.gadget xchg8_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    do_op xchg, 8, w8
+    str _tmp, [_cpu, #CPU_r15]
+    gret
+
+.gadget xchg16_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    do_op xchg, 16, w8
+    str _tmp, [_cpu, #CPU_r15]
+    gret
+
+.gadget xchg64_reg_r15
+    ldr x8, [_cpu, #CPU_r15]
+    do_op xchg, 64, x8
+    str _xtmp, [_cpu, #CPU_r15]
     gret
 
 /* Load/Store operations for R15 */

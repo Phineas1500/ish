@@ -2295,6 +2295,8 @@
     str w8, [_cpu, #CPU_r12]
     gret
 
+/* R12 bit operations match R11 - 32-bit only (no additional size variants needed) */
+
 /* Simple R13 bit operations - avoiding complex nested loops */
 
 /* Basic shift operations for R13 - shl32 */
