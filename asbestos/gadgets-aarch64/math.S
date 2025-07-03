@@ -1899,6 +1899,22 @@
     gret
 
 /* load/store for R11 */
+.gadget load8_reg_r11
+    ldrb _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget store8_reg_r11
+    strb _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget load16_reg_r11
+    ldrh _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget store16_reg_r11
+    strh _tmp, [_cpu, #CPU_r11]
+    gret
+
 .gadget load32_reg_r11
     ldr _tmp, [_cpu, #CPU_r11]
     gret
@@ -1949,6 +1965,260 @@
     strb w9, [_cpu, CPU_of]
     setf_zsp "", val=w8
     str w8, [_cpu, #CPU_r11]
+    gret
+
+/* 8-bit arithmetic operations for R11 */
+.gadget add8_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op add, 8, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget sub8_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op sub, 8, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget and8_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op and, 8, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget or8_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op or, 8, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget xor8_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op xor, 8, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget cmp8_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op cmp, 8, w8
+    gret
+
+.gadget test8_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op test, 8, w8
+    gret
+
+/* 16-bit arithmetic operations for R11 */
+.gadget add16_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op add, 16, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget sub16_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op sub, 16, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget and16_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op and, 16, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget or16_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op or, 16, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget xor16_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op xor, 16, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget cmp16_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op cmp, 16, w8
+    gret
+
+.gadget test16_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op test, 16, w8
+    gret
+
+/* 64-bit arithmetic operations for R11 */
+.gadget add64_reg_r11
+    ldr x8, [_cpu, #CPU_r11]
+    do_op add, 64, x8
+    str _xtmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget sub64_reg_r11
+    ldr x8, [_cpu, #CPU_r11]
+    do_op sub, 64, x8
+    str _xtmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget and64_reg_r11
+    ldr x8, [_cpu, #CPU_r11]
+    do_op and, 64, x8
+    str _xtmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget or64_reg_r11
+    ldr x8, [_cpu, #CPU_r11]
+    do_op or, 64, x8
+    str _xtmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget xor64_reg_r11
+    ldr x8, [_cpu, #CPU_r11]
+    do_op xor, 64, x8
+    str _xtmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget cmp64_reg_r11
+    ldr x8, [_cpu, #CPU_r11]
+    do_op cmp, 64, x8
+    gret
+
+.gadget test64_reg_r11
+    ldr x8, [_cpu, #CPU_r11]
+    do_op test, 64, x8
+    gret
+
+/* Additional size variants for R11 - adc/sbb/inc/dec/xchg */
+
+/* 8-bit adc/sbb operations for R11 */
+.gadget adc8_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op adc, 8, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget sbb8_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op sbb, 8, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+/* 16-bit adc/sbb operations for R11 */
+.gadget adc16_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op adc, 16, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget sbb16_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op sbb, 16, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+/* 64-bit adc/sbb operations for R11 */
+.gadget adc64_reg_r11
+    ldr x8, [_cpu, #CPU_r11]
+    do_op adc, 64, x8
+    str _xtmp, [_cpu, #CPU_r11]
+    gret
+
+.gadget sbb64_reg_r11
+    ldr x8, [_cpu, #CPU_r11]
+    do_op sbb, 64, x8
+    str _xtmp, [_cpu, #CPU_r11]
+    gret
+
+/* 8-bit inc/dec operations for R11 */
+.gadget inc8_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    adds w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp b, val=w8
+    str w8, [_cpu, #CPU_r11]
+    gret
+
+.gadget dec8_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    subs w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp b, val=w8
+    str w8, [_cpu, #CPU_r11]
+    gret
+
+/* 16-bit inc/dec operations for R11 */
+.gadget inc16_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    adds w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp h, val=w8
+    str w8, [_cpu, #CPU_r11]
+    gret
+
+.gadget dec16_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    subs w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp h, val=w8
+    str w8, [_cpu, #CPU_r11]
+    gret
+
+/* 64-bit inc/dec operations for R11 */
+.gadget inc64_reg_r11
+    ldr x8, [_cpu, #CPU_r11]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    adds x8, x8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp x, val=x8
+    str x8, [_cpu, #CPU_r11]
+    gret
+
+.gadget dec64_reg_r11
+    ldr x8, [_cpu, #CPU_r11]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    subs x8, x8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp x, val=x8
+    str x8, [_cpu, #CPU_r11]
+    gret
+
+/* 8-bit xchg operations for R11 */
+.gadget xchg8_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op xchg, 8, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+/* 16-bit xchg operations for R11 */
+.gadget xchg16_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    do_op xchg, 16, w8
+    str _tmp, [_cpu, #CPU_r11]
+    gret
+
+/* 64-bit xchg operations for R11 */
+.gadget xchg64_reg_r11
+    ldr x8, [_cpu, #CPU_r11]
+    do_op xchg, 64, x8
+    str _xtmp, [_cpu, #CPU_r11]
     gret
 
 /* Basic R12 arithmetic gadgets - simplified */
