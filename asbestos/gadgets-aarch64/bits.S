@@ -2238,4 +2238,232 @@
     str w8, [_cpu, #CPU_r11]
     gret
 
+/* Simple R12 bit operations - avoiding complex nested loops */
+
+/* Basic shift operations for R12 - shl32 */
+.gadget shl32_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    mov _tmp, w8
+    ands w8, ecx, 31
+    b.eq 1f
+    sub w8, w8, 1
+    lsl _tmp, _tmp, w8
+    ubfx w9, _tmp, 31, 1
+    ubfx w10, _tmp, 30, 1
+    lsl _tmp, _tmp, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _tmp, [_cpu, #CPU_r12]
+1:
+    gret
+
+/* Basic shift operations for R12 - shr32 */
+.gadget shr32_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    mov _tmp, w8
+    ands w8, ecx, 31
+    b.eq 1f
+    ubfx w10, _tmp, 31, 1
+    sub w8, w8, 1
+    lsr _tmp, _tmp, w8
+    and w9, _tmp, 1
+    lsr _tmp, _tmp, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _tmp, [_cpu, #CPU_r12]
+1:
+    gret
+
+/* Basic bit test for R12 - bt32 */
+.gadget bt32_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    and w9, ecx, 31
+    lsr w10, w8, w9
+    and w10, w10, 1
+    ldrb w9, [_cpu, CPU_eflags]
+    bic w9, w9, #1
+    orr w9, w9, w10
+    strb w9, [_cpu, CPU_eflags]
+    gret
+
+/* bswap for R12 */
+.gadget bswap_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    rev w8, w8
+    str w8, [_cpu, #CPU_r12]
+    gret
+
+/* Simple R13 bit operations - avoiding complex nested loops */
+
+/* Basic shift operations for R13 - shl32 */
+.gadget shl32_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    mov _tmp, w8
+    ands w8, ecx, 31
+    b.eq 1f
+    sub w8, w8, 1
+    lsl _tmp, _tmp, w8
+    ubfx w9, _tmp, 31, 1
+    ubfx w10, _tmp, 30, 1
+    lsl _tmp, _tmp, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _tmp, [_cpu, #CPU_r13]
+1:
+    gret
+
+/* Basic shift operations for R13 - shr32 */
+.gadget shr32_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    mov _tmp, w8
+    ands w8, ecx, 31
+    b.eq 1f
+    ubfx w10, _tmp, 31, 1
+    sub w8, w8, 1
+    lsr _tmp, _tmp, w8
+    and w9, _tmp, 1
+    lsr _tmp, _tmp, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _tmp, [_cpu, #CPU_r13]
+1:
+    gret
+
+/* Basic bit test for R13 - bt32 */
+.gadget bt32_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    and w9, ecx, 31
+    lsr w10, w8, w9
+    and w10, w10, 1
+    ldrb w9, [_cpu, CPU_eflags]
+    bic w9, w9, #1
+    orr w9, w9, w10
+    strb w9, [_cpu, CPU_eflags]
+    gret
+
+/* bswap for R13 */
+.gadget bswap_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    rev w8, w8
+    str w8, [_cpu, #CPU_r13]
+    gret
+
+/* Simple R14 bit operations - avoiding complex nested loops */
+
+/* Basic shift operations for R14 - shl32 */
+.gadget shl32_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    mov _tmp, w8
+    ands w8, ecx, 31
+    b.eq 1f
+    sub w8, w8, 1
+    lsl _tmp, _tmp, w8
+    ubfx w9, _tmp, 31, 1
+    ubfx w10, _tmp, 30, 1
+    lsl _tmp, _tmp, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _tmp, [_cpu, #CPU_r14]
+1:
+    gret
+
+/* Basic shift operations for R14 - shr32 */
+.gadget shr32_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    mov _tmp, w8
+    ands w8, ecx, 31
+    b.eq 1f
+    ubfx w10, _tmp, 31, 1
+    sub w8, w8, 1
+    lsr _tmp, _tmp, w8
+    and w9, _tmp, 1
+    lsr _tmp, _tmp, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _tmp, [_cpu, #CPU_r14]
+1:
+    gret
+
+/* Basic bit test for R14 - bt32 */
+.gadget bt32_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    and w9, ecx, 31
+    lsr w10, w8, w9
+    and w10, w10, 1
+    ldrb w9, [_cpu, CPU_eflags]
+    bic w9, w9, #1
+    orr w9, w9, w10
+    strb w9, [_cpu, CPU_eflags]
+    gret
+
+/* bswap for R14 */
+.gadget bswap_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    rev w8, w8
+    str w8, [_cpu, #CPU_r14]
+    gret
+
+/* Simple R15 bit operations - avoiding complex nested loops */
+
+/* Basic shift operations for R15 - shl32 */
+.gadget shl32_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    mov _tmp, w8
+    ands w8, ecx, 31
+    b.eq 1f
+    sub w8, w8, 1
+    lsl _tmp, _tmp, w8
+    ubfx w9, _tmp, 31, 1
+    ubfx w10, _tmp, 30, 1
+    lsl _tmp, _tmp, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _tmp, [_cpu, #CPU_r15]
+1:
+    gret
+
+/* Basic shift operations for R15 - shr32 */
+.gadget shr32_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    mov _tmp, w8
+    ands w8, ecx, 31
+    b.eq 1f
+    ubfx w10, _tmp, 31, 1
+    sub w8, w8, 1
+    lsr _tmp, _tmp, w8
+    and w9, _tmp, 1
+    lsr _tmp, _tmp, 1
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    str _tmp, [_cpu, #CPU_r15]
+1:
+    gret
+
+/* Basic bit test for R15 - bt32 */
+.gadget bt32_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    and w9, ecx, 31
+    lsr w10, w8, w9
+    and w10, w10, 1
+    ldrb w9, [_cpu, CPU_eflags]
+    bic w9, w9, #1
+    orr w9, w9, w10
+    strb w9, [_cpu, CPU_eflags]
+    gret
+
+/* bswap for R15 */
+.gadget bswap_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    rev w8, w8
+    str w8, [_cpu, #CPU_r15]
+    gret
+
 #endif /* ISH_64BIT */

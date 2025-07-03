@@ -1951,6 +1951,342 @@
     str w8, [_cpu, #CPU_r11]
     gret
 
+/* Basic R12 arithmetic gadgets - simplified */
+.gadget add32_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    do_op add, 32, w8
+    str _tmp, [_cpu, #CPU_r12]
+    gret
+
+.gadget sub32_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    do_op sub, 32, w8
+    str _tmp, [_cpu, #CPU_r12]
+    gret
+
+.gadget and32_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    do_op and, 32, w8
+    str _tmp, [_cpu, #CPU_r12]
+    gret
+
+.gadget or32_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    do_op or, 32, w8
+    str _tmp, [_cpu, #CPU_r12]
+    gret
+
+.gadget xor32_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    do_op xor, 32, w8
+    str _tmp, [_cpu, #CPU_r12]
+    gret
+
+.gadget cmp32_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    do_op cmp, 32, w8
+    gret
+
+.gadget test32_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    do_op test, 32, w8
+    gret
+
+/* xchg for R12 */
+.gadget xchg32_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    do_op xchg, 32, w8
+    str _tmp, [_cpu, #CPU_r12]
+    gret
+
+/* adc/sbb for R12 */
+.gadget adc32_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    do_op adc, 32, w8
+    str _tmp, [_cpu, #CPU_r12]
+    gret
+
+.gadget sbb32_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    do_op sbb, 32, w8
+    str _tmp, [_cpu, #CPU_r12]
+    gret
+
+/* inc32/dec32 for R12 */
+.gadget inc32_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    adds w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp "", val=w8
+    str w8, [_cpu, #CPU_r12]
+    gret
+
+.gadget dec32_reg_r12
+    ldr w8, [_cpu, #CPU_r12]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    subs w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp "", val=w8
+    str w8, [_cpu, #CPU_r12]
+    gret
+
+/* Basic R13 arithmetic gadgets - simplified */
+.gadget add32_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    do_op add, 32, w8
+    str _tmp, [_cpu, #CPU_r13]
+    gret
+
+.gadget sub32_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    do_op sub, 32, w8
+    str _tmp, [_cpu, #CPU_r13]
+    gret
+
+.gadget and32_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    do_op and, 32, w8
+    str _tmp, [_cpu, #CPU_r13]
+    gret
+
+.gadget or32_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    do_op or, 32, w8
+    str _tmp, [_cpu, #CPU_r13]
+    gret
+
+.gadget xor32_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    do_op xor, 32, w8
+    str _tmp, [_cpu, #CPU_r13]
+    gret
+
+.gadget cmp32_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    do_op cmp, 32, w8
+    gret
+
+.gadget test32_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    do_op test, 32, w8
+    gret
+
+/* xchg for R13 */
+.gadget xchg32_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    do_op xchg, 32, w8
+    str _tmp, [_cpu, #CPU_r13]
+    gret
+
+/* adc/sbb for R13 */
+.gadget adc32_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    do_op adc, 32, w8
+    str _tmp, [_cpu, #CPU_r13]
+    gret
+
+.gadget sbb32_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    do_op sbb, 32, w8
+    str _tmp, [_cpu, #CPU_r13]
+    gret
+
+/* inc32/dec32 for R13 */
+.gadget inc32_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    adds w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp "", val=w8
+    str w8, [_cpu, #CPU_r13]
+    gret
+
+.gadget dec32_reg_r13
+    ldr w8, [_cpu, #CPU_r13]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    subs w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp "", val=w8
+    str w8, [_cpu, #CPU_r13]
+    gret
+
+/* Basic R14 arithmetic gadgets - simplified */
+.gadget add32_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    do_op add, 32, w8
+    str _tmp, [_cpu, #CPU_r14]
+    gret
+
+.gadget sub32_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    do_op sub, 32, w8
+    str _tmp, [_cpu, #CPU_r14]
+    gret
+
+.gadget and32_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    do_op and, 32, w8
+    str _tmp, [_cpu, #CPU_r14]
+    gret
+
+.gadget or32_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    do_op or, 32, w8
+    str _tmp, [_cpu, #CPU_r14]
+    gret
+
+.gadget xor32_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    do_op xor, 32, w8
+    str _tmp, [_cpu, #CPU_r14]
+    gret
+
+.gadget cmp32_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    do_op cmp, 32, w8
+    gret
+
+.gadget test32_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    do_op test, 32, w8
+    gret
+
+/* xchg for R14 */
+.gadget xchg32_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    do_op xchg, 32, w8
+    str _tmp, [_cpu, #CPU_r14]
+    gret
+
+/* adc/sbb for R14 */
+.gadget adc32_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    do_op adc, 32, w8
+    str _tmp, [_cpu, #CPU_r14]
+    gret
+
+.gadget sbb32_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    do_op sbb, 32, w8
+    str _tmp, [_cpu, #CPU_r14]
+    gret
+
+/* inc32/dec32 for R14 */
+.gadget inc32_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    adds w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp "", val=w8
+    str w8, [_cpu, #CPU_r14]
+    gret
+
+.gadget dec32_reg_r14
+    ldr w8, [_cpu, #CPU_r14]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    subs w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp "", val=w8
+    str w8, [_cpu, #CPU_r14]
+    gret
+
+/* Basic R15 arithmetic gadgets - simplified */
+.gadget add32_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    do_op add, 32, w8
+    str _tmp, [_cpu, #CPU_r15]
+    gret
+
+.gadget sub32_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    do_op sub, 32, w8
+    str _tmp, [_cpu, #CPU_r15]
+    gret
+
+.gadget and32_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    do_op and, 32, w8
+    str _tmp, [_cpu, #CPU_r15]
+    gret
+
+.gadget or32_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    do_op or, 32, w8
+    str _tmp, [_cpu, #CPU_r15]
+    gret
+
+.gadget xor32_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    do_op xor, 32, w8
+    str _tmp, [_cpu, #CPU_r15]
+    gret
+
+.gadget cmp32_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    do_op cmp, 32, w8
+    gret
+
+.gadget test32_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    do_op test, 32, w8
+    gret
+
+/* xchg for R15 */
+.gadget xchg32_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    do_op xchg, 32, w8
+    str _tmp, [_cpu, #CPU_r15]
+    gret
+
+/* adc/sbb for R15 */
+.gadget adc32_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    do_op adc, 32, w8
+    str _tmp, [_cpu, #CPU_r15]
+    gret
+
+.gadget sbb32_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    do_op sbb, 32, w8
+    str _tmp, [_cpu, #CPU_r15]
+    gret
+
+/* inc32/dec32 for R15 */
+.gadget inc32_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    adds w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp "", val=w8
+    str w8, [_cpu, #CPU_r15]
+    gret
+
+.gadget dec32_reg_r15
+    ldr w8, [_cpu, #CPU_r15]
+    mov w10, 1
+    setf_a src=w10, dst=w8
+    subs w8, w8, 1
+    cset w9, vs
+    strb w9, [_cpu, CPU_of]
+    setf_zsp "", val=w8
+    str w8, [_cpu, #CPU_r15]
+    gret
+
 #endif /* ISH_64BIT */
 
 

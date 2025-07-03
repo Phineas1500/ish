@@ -599,4 +599,296 @@ do_helper 2
         .endif
         gret
 .endr
+
+.irp size, 8,16,32,64
+    .gadget cmpxchg\size\()_reg_r12
+        .if \size == 64
+            ldr x8, [_cpu, #CPU_r12]
+            setf_a eax, w8
+            mov w9, eax
+            do_add sub, w9, w8, x
+            setf_zsp x, val=w9
+            csel eax, w8, eax, ne
+            csel x8, _xtmp, x8, eq
+            str x8, [_cpu, #CPU_r12]
+        .else
+            ldr w8, [_cpu, #CPU_r12]
+            setf_a eax, w8
+            mov w9, eax
+            .if \size == 8
+                do_add sub, w9, w8, b
+                setf_zsp b, val=w9
+            .elseif \size == 16
+                do_add sub, w9, w8, h
+                setf_zsp h, val=w9
+            .else
+                do_add sub, w9, w8,
+                setf_zsp "", val=w9
+            .endif
+            .if \size != 32
+                cmp w9, 0
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
+            csel eax, w8, eax, ne
+            csel w8, _tmp, w8, eq
+            str w8, [_cpu, #CPU_r12]
+        .endif
+        gret
+
+    .gadget atomic_cmpxchg\size\()_reg_r12
+        # Fall back to non-atomic register variant
+        .if \size == 64
+            ldr x8, [_cpu, #CPU_r12]
+            setf_a eax, w8
+            mov w9, eax
+            do_add sub, w9, w8, x
+            setf_zsp x, val=w9
+            csel eax, w8, eax, ne
+            csel x8, _xtmp, x8, eq
+            str x8, [_cpu, #CPU_r12]
+        .else
+            ldr w8, [_cpu, #CPU_r12]
+            setf_a eax, w8
+            mov w9, eax
+            .if \size == 8
+                do_add sub, w9, w8, b
+                setf_zsp b, val=w9
+            .elseif \size == 16
+                do_add sub, w9, w8, h
+                setf_zsp h, val=w9
+            .else
+                do_add sub, w9, w8,
+                setf_zsp "", val=w9
+            .endif
+            .if \size != 32
+                cmp w9, 0
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
+            csel eax, w8, eax, ne
+            csel w8, _tmp, w8, eq
+            str w8, [_cpu, #CPU_r12]
+        .endif
+        gret
+.endr
+
+.irp size, 8,16,32,64
+    .gadget cmpxchg\size\()_reg_r13
+        .if \size == 64
+            ldr x8, [_cpu, #CPU_r13]
+            setf_a eax, w8
+            mov w9, eax
+            do_add sub, w9, w8, x
+            setf_zsp x, val=w9
+            csel eax, w8, eax, ne
+            csel x8, _xtmp, x8, eq
+            str x8, [_cpu, #CPU_r13]
+        .else
+            ldr w8, [_cpu, #CPU_r13]
+            setf_a eax, w8
+            mov w9, eax
+            .if \size == 8
+                do_add sub, w9, w8, b
+                setf_zsp b, val=w9
+            .elseif \size == 16
+                do_add sub, w9, w8, h
+                setf_zsp h, val=w9
+            .else
+                do_add sub, w9, w8,
+                setf_zsp "", val=w9
+            .endif
+            .if \size != 32
+                cmp w9, 0
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
+            csel eax, w8, eax, ne
+            csel w8, _tmp, w8, eq
+            str w8, [_cpu, #CPU_r13]
+        .endif
+        gret
+
+    .gadget atomic_cmpxchg\size\()_reg_r13
+        # Fall back to non-atomic register variant
+        .if \size == 64
+            ldr x8, [_cpu, #CPU_r13]
+            setf_a eax, w8
+            mov w9, eax
+            do_add sub, w9, w8, x
+            setf_zsp x, val=w9
+            csel eax, w8, eax, ne
+            csel x8, _xtmp, x8, eq
+            str x8, [_cpu, #CPU_r13]
+        .else
+            ldr w8, [_cpu, #CPU_r13]
+            setf_a eax, w8
+            mov w9, eax
+            .if \size == 8
+                do_add sub, w9, w8, b
+                setf_zsp b, val=w9
+            .elseif \size == 16
+                do_add sub, w9, w8, h
+                setf_zsp h, val=w9
+            .else
+                do_add sub, w9, w8,
+                setf_zsp "", val=w9
+            .endif
+            .if \size != 32
+                cmp w9, 0
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
+            csel eax, w8, eax, ne
+            csel w8, _tmp, w8, eq
+            str w8, [_cpu, #CPU_r13]
+        .endif
+        gret
+.endr
+
+.irp size, 8,16,32,64
+    .gadget cmpxchg\size\()_reg_r14
+        .if \size == 64
+            ldr x8, [_cpu, #CPU_r14]
+            setf_a eax, w8
+            mov w9, eax
+            do_add sub, w9, w8, x
+            setf_zsp x, val=w9
+            csel eax, w8, eax, ne
+            csel x8, _xtmp, x8, eq
+            str x8, [_cpu, #CPU_r14]
+        .else
+            ldr w8, [_cpu, #CPU_r14]
+            setf_a eax, w8
+            mov w9, eax
+            .if \size == 8
+                do_add sub, w9, w8, b
+                setf_zsp b, val=w9
+            .elseif \size == 16
+                do_add sub, w9, w8, h
+                setf_zsp h, val=w9
+            .else
+                do_add sub, w9, w8,
+                setf_zsp "", val=w9
+            .endif
+            .if \size != 32
+                cmp w9, 0
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
+            csel eax, w8, eax, ne
+            csel w8, _tmp, w8, eq
+            str w8, [_cpu, #CPU_r14]
+        .endif
+        gret
+
+    .gadget atomic_cmpxchg\size\()_reg_r14
+        # Fall back to non-atomic register variant
+        .if \size == 64
+            ldr x8, [_cpu, #CPU_r14]
+            setf_a eax, w8
+            mov w9, eax
+            do_add sub, w9, w8, x
+            setf_zsp x, val=w9
+            csel eax, w8, eax, ne
+            csel x8, _xtmp, x8, eq
+            str x8, [_cpu, #CPU_r14]
+        .else
+            ldr w8, [_cpu, #CPU_r14]
+            setf_a eax, w8
+            mov w9, eax
+            .if \size == 8
+                do_add sub, w9, w8, b
+                setf_zsp b, val=w9
+            .elseif \size == 16
+                do_add sub, w9, w8, h
+                setf_zsp h, val=w9
+            .else
+                do_add sub, w9, w8,
+                setf_zsp "", val=w9
+            .endif
+            .if \size != 32
+                cmp w9, 0
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
+            csel eax, w8, eax, ne
+            csel w8, _tmp, w8, eq
+            str w8, [_cpu, #CPU_r14]
+        .endif
+        gret
+.endr
+
+.irp size, 8,16,32,64
+    .gadget cmpxchg\size\()_reg_r15
+        .if \size == 64
+            ldr x8, [_cpu, #CPU_r15]
+            setf_a eax, w8
+            mov w9, eax
+            do_add sub, w9, w8, x
+            setf_zsp x, val=w9
+            csel eax, w8, eax, ne
+            csel x8, _xtmp, x8, eq
+            str x8, [_cpu, #CPU_r15]
+        .else
+            ldr w8, [_cpu, #CPU_r15]
+            setf_a eax, w8
+            mov w9, eax
+            .if \size == 8
+                do_add sub, w9, w8, b
+                setf_zsp b, val=w9
+            .elseif \size == 16
+                do_add sub, w9, w8, h
+                setf_zsp h, val=w9
+            .else
+                do_add sub, w9, w8,
+                setf_zsp "", val=w9
+            .endif
+            .if \size != 32
+                cmp w9, 0
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
+            csel eax, w8, eax, ne
+            csel w8, _tmp, w8, eq
+            str w8, [_cpu, #CPU_r15]
+        .endif
+        gret
+
+    .gadget atomic_cmpxchg\size\()_reg_r15
+        # Fall back to non-atomic register variant
+        .if \size == 64
+            ldr x8, [_cpu, #CPU_r15]
+            setf_a eax, w8
+            mov w9, eax
+            do_add sub, w9, w8, x
+            setf_zsp x, val=w9
+            csel eax, w8, eax, ne
+            csel x8, _xtmp, x8, eq
+            str x8, [_cpu, #CPU_r15]
+        .else
+            ldr w8, [_cpu, #CPU_r15]
+            setf_a eax, w8
+            mov w9, eax
+            .if \size == 8
+                do_add sub, w9, w8, b
+                setf_zsp b, val=w9
+            .elseif \size == 16
+                do_add sub, w9, w8, h
+                setf_zsp h, val=w9
+            .else
+                do_add sub, w9, w8,
+                setf_zsp "", val=w9
+            .endif
+            .if \size != 32
+                cmp w9, 0
+                and w9, eax, (-1 << \size)
+                orr w8, w8, w9
+            .endif
+            csel eax, w8, eax, ne
+            csel w8, _tmp, w8, eq
+            str w8, [_cpu, #CPU_r15]
+        .endif
+        gret
+.endr
 #endif /* ISH_64BIT */
