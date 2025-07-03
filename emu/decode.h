@@ -40,6 +40,7 @@ __no_instrument DECODER_RET glue(DECODER_NAME, OP_SIZE)(DECODER_ARGS) {
 #define READINSN _READIMM(insn, 8); TRACE("%02x ", insn)
 #define READIMM READIMM_(imm, OP_SIZE)
 #define READIMMoz READIMM // there's nothing more permanent than a temporary hack
+#define READIMMEFFECTIVE_OZ READIMM // Support for token concatenation in macros
 #define READIMM8 READIMM_(imm, 8); imm = (int8_t) (uint8_t) imm
 #define READIMM16 READIMM_(imm, 16)
 #define READMODRM_MEM READMODRM; if (modrm.type == modrm_reg) UNDEFINED
@@ -107,37 +108,37 @@ restart:
                            RDTSC; break;
 
                 case 0x40: TRACEI("cmovo modrm, reg");
-                           READMODRM; CMOV(O, modrm_val, modrm_reg,oz); break;
+                           READMODRM; CMOV(O, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                 case 0x41: TRACEI("cmovno modrm, reg");
-                           READMODRM; CMOVN(O, modrm_val, modrm_reg,oz); break;
+                           READMODRM; CMOVN(O, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                 case 0x42: TRACEI("cmovb modrm, reg");
-                           READMODRM; CMOV(B, modrm_val, modrm_reg,oz); break;
+                           READMODRM; CMOV(B, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                 case 0x43: TRACEI("cmovnb modrm, reg");
-                           READMODRM; CMOVN(B, modrm_val, modrm_reg,oz); break;
+                           READMODRM; CMOVN(B, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                 case 0x44: TRACEI("cmove modrm, reg");
-                           READMODRM; CMOV(E, modrm_val, modrm_reg,oz); break;
+                           READMODRM; CMOV(E, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                 case 0x45: TRACEI("cmovne modrm, reg");
-                           READMODRM; CMOVN(E, modrm_val, modrm_reg,oz); break;
+                           READMODRM; CMOVN(E, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                 case 0x46: TRACEI("cmovbe modrm, reg");
-                           READMODRM; CMOV(BE, modrm_val, modrm_reg,oz); break;
+                           READMODRM; CMOV(BE, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                 case 0x47: TRACEI("cmova modrm, reg");
-                           READMODRM; CMOVN(BE, modrm_val, modrm_reg,oz); break;
+                           READMODRM; CMOVN(BE, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                 case 0x48: TRACEI("cmovs modrm, reg");
-                           READMODRM; CMOV(S, modrm_val, modrm_reg,oz); break;
+                           READMODRM; CMOV(S, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                 case 0x49: TRACEI("cmovns modrm, reg");
-                           READMODRM; CMOVN(S, modrm_val, modrm_reg,oz); break;
+                           READMODRM; CMOVN(S, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                 case 0x4a: TRACEI("cmovp modrm, reg");
-                           READMODRM; CMOV(P, modrm_val, modrm_reg,oz); break;
+                           READMODRM; CMOV(P, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                 case 0x4b: TRACEI("cmovnp modrm, reg");
-                           READMODRM; CMOVN(P, modrm_val, modrm_reg,oz); break;
+                           READMODRM; CMOVN(P, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                 case 0x4c: TRACEI("cmovl modrm, reg");
-                           READMODRM; CMOV(L, modrm_val, modrm_reg,oz); break;
+                           READMODRM; CMOV(L, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                 case 0x4d: TRACEI("cmovnl modrm, reg");
-                           READMODRM; CMOVN(L, modrm_val, modrm_reg,oz); break;
+                           READMODRM; CMOVN(L, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                 case 0x4e: TRACEI("cmovle modrm, reg");
-                           READMODRM; CMOV(LE, modrm_val, modrm_reg,oz); break;
+                           READMODRM; CMOV(LE, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                 case 0x4f: TRACEI("cmovnle modrm, reg");
-                           READMODRM; CMOVN(LE, modrm_val, modrm_reg,oz); break;
+                           READMODRM; CMOVN(LE, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
 
                 case 0x77: TRACEI("emms (ignored because there is no mmx)"); break;
 
@@ -210,38 +211,38 @@ restart:
                 case 0xa2: TRACEI("cpuid"); CPUID(); break;
 
                 case 0xa3: TRACEI("bt reg, modrm");
-                           READMODRM; BT(modrm_reg, modrm_val,oz); break;
+                           READMODRM; BT(modrm_reg, modrm_val,EFFECTIVE_OZ); break;
 
                 case 0xa4: TRACEI("shld imm8, reg, modrm");
-                           READMODRM; READIMM8; SHLD(imm, modrm_reg, modrm_val,oz); break;
+                           READMODRM; READIMM8; SHLD(imm, modrm_reg, modrm_val,EFFECTIVE_OZ); break;
                 case 0xa5: TRACEI("shld cl, reg, modrm");
-                           READMODRM; SHLD(reg_c, modrm_reg, modrm_val,oz); break;
+                           READMODRM; SHLD(reg_c, modrm_reg, modrm_val,EFFECTIVE_OZ); break;
 
                 case 0xab: TRACEI("bts reg, modrm");
-                           READMODRM; BTS(modrm_reg, modrm_val,oz); break;
+                           READMODRM; BTS(modrm_reg, modrm_val,EFFECTIVE_OZ); break;
 
                 case 0xac: TRACEI("shrd imm8, reg, modrm");
-                           READMODRM; READIMM8; SHRD(imm, modrm_reg, modrm_val,oz); break;
+                           READMODRM; READIMM8; SHRD(imm, modrm_reg, modrm_val,EFFECTIVE_OZ); break;
                 case 0xad: TRACEI("shrd cl, reg, modrm");
-                           READMODRM; SHRD(reg_c, modrm_reg, modrm_val,oz); break;
+                           READMODRM; SHRD(reg_c, modrm_reg, modrm_val,EFFECTIVE_OZ); break;
 
                 case 0xae: TRACEI("fence"); READMODRM; break;
 
                 case 0xaf: TRACEI("imul modrm, reg");
-                           READMODRM; IMUL2(modrm_val, modrm_reg,oz); break;
+                           READMODRM; IMUL2(modrm_val, modrm_reg,EFFECTIVE_OZ); break;
 
                 case 0xb0: TRACEI("cmpxchg reg8, modrm8");
                            READMODRM_MEM; CMPXCHG(modrm_reg, modrm_val,8); break;
                 case 0xb1: TRACEI("cmpxchg reg, modrm");
-                           READMODRM_MEM; CMPXCHG(modrm_reg, modrm_val,oz); break;
+                           READMODRM_MEM; CMPXCHG(modrm_reg, modrm_val,EFFECTIVE_OZ); break;
 
                 case 0xb3: TRACEI("btr reg, modrm");
-                           READMODRM; BTR(modrm_reg, modrm_val,oz); break;
+                           READMODRM; BTR(modrm_reg, modrm_val,EFFECTIVE_OZ); break;
 
                 case 0xb6: TRACEI("movz modrm8, reg");
-                           READMODRM; MOVZX(modrm_val, modrm_reg,8,oz); break;
+                           READMODRM; MOVZX(modrm_val, modrm_reg,8,EFFECTIVE_OZ); break;
                 case 0xb7: TRACEI("movz modrm16, reg");
-                           READMODRM; MOVZX(modrm_val, modrm_reg,16,oz); break;
+                           READMODRM; MOVZX(modrm_val, modrm_reg,16,EFFECTIVE_OZ); break;
 
 #define GRP8(bit, val,z) \
     switch (modrm.opcode) { \
@@ -253,26 +254,26 @@ restart:
     }
 
                 case 0xba: TRACEI("grp8 imm8, modrm");
-                           READMODRM; READIMM8; GRP8(imm, modrm_val,oz); break;
+                           READMODRM; READIMM8; GRP8(imm, modrm_val,EFFECTIVE_OZ); break;
 
 #undef GRP8
 
                 case 0xbb: TRACEI("btc reg, modrm");
-                           READMODRM; BTC(modrm_reg, modrm_val,oz); break;
+                           READMODRM; BTC(modrm_reg, modrm_val,EFFECTIVE_OZ); break;
                 case 0xbc: TRACEI("bsf modrm, reg");
-                           READMODRM; BSF(modrm_val, modrm_reg,oz); break;
+                           READMODRM; BSF(modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                 case 0xbd: TRACEI("bsr modrm, reg");
-                           READMODRM; BSR(modrm_val, modrm_reg,oz); break;
+                           READMODRM; BSR(modrm_val, modrm_reg,EFFECTIVE_OZ); break;
 
                 case 0xbe: TRACEI("movs modrm8, reg");
-                           READMODRM; MOVSX(modrm_val, modrm_reg,8,oz); break;
+                           READMODRM; MOVSX(modrm_val, modrm_reg,8,EFFECTIVE_OZ); break;
                 case 0xbf: TRACEI("movs modrm16, reg");
-                           READMODRM; MOVSX(modrm_val, modrm_reg,16,oz); break;
+                           READMODRM; MOVSX(modrm_val, modrm_reg,16,EFFECTIVE_OZ); break;
 
                 case 0xc0: TRACEI("xadd reg8, modrm8");
                            READMODRM; XADD(modrm_reg, modrm_val,8); break;
                 case 0xc1: TRACEI("xadd reg, modrm");
-                           READMODRM; XADD(modrm_reg, modrm_val,oz); break;
+                           READMODRM; XADD(modrm_reg, modrm_val,EFFECTIVE_OZ); break;
                 case 0xc2: TRACEI("cmppd xmm:modrm, xmm, imm8");
                            READMODRM; READIMM8; V_OP_IMM(fcmp_p, xmm_modrm_val, xmm_modrm_reg,64); break;
 
@@ -688,22 +689,22 @@ restart:
 
 #ifndef ISH_64BIT
         // In 32-bit mode, 0x40-0x4F are INC/DEC instructions
-        case 0x40: TRACEI("inc oax"); INC(reg_a,oz); break;
-        case 0x41: TRACEI("inc ocx"); INC(reg_c,oz); break;
-        case 0x42: TRACEI("inc odx"); INC(reg_d,oz); break;
-        case 0x43: TRACEI("inc obx"); INC(reg_b,oz); break;
-        case 0x44: TRACEI("inc osp"); INC(reg_sp,oz); break;
-        case 0x45: TRACEI("inc obp"); INC(reg_bp,oz); break;
-        case 0x46: TRACEI("inc osi"); INC(reg_si,oz); break;
-        case 0x47: TRACEI("inc odi"); INC(reg_di,oz); break;
-        case 0x48: TRACEI("dec oax"); DEC(reg_a,oz); break;
-        case 0x49: TRACEI("dec ocx"); DEC(reg_c,oz); break;
-        case 0x4a: TRACEI("dec odx"); DEC(reg_d,oz); break;
-        case 0x4b: TRACEI("dec obx"); DEC(reg_b,oz); break;
-        case 0x4c: TRACEI("dec osp"); DEC(reg_sp,oz); break;
-        case 0x4d: TRACEI("dec obp"); DEC(reg_bp,oz); break;
-        case 0x4e: TRACEI("dec osi"); DEC(reg_si,oz); break;
-        case 0x4f: TRACEI("dec odi"); DEC(reg_di,oz); break;
+        case 0x40: TRACEI("inc oax"); INC(reg_a,EFFECTIVE_OZ); break;
+        case 0x41: TRACEI("inc ocx"); INC(reg_c,EFFECTIVE_OZ); break;
+        case 0x42: TRACEI("inc odx"); INC(reg_d,EFFECTIVE_OZ); break;
+        case 0x43: TRACEI("inc obx"); INC(reg_b,EFFECTIVE_OZ); break;
+        case 0x44: TRACEI("inc osp"); INC(reg_sp,EFFECTIVE_OZ); break;
+        case 0x45: TRACEI("inc obp"); INC(reg_bp,EFFECTIVE_OZ); break;
+        case 0x46: TRACEI("inc osi"); INC(reg_si,EFFECTIVE_OZ); break;
+        case 0x47: TRACEI("inc odi"); INC(reg_di,EFFECTIVE_OZ); break;
+        case 0x48: TRACEI("dec oax"); DEC(reg_a,EFFECTIVE_OZ); break;
+        case 0x49: TRACEI("dec ocx"); DEC(reg_c,EFFECTIVE_OZ); break;
+        case 0x4a: TRACEI("dec odx"); DEC(reg_d,EFFECTIVE_OZ); break;
+        case 0x4b: TRACEI("dec obx"); DEC(reg_b,EFFECTIVE_OZ); break;
+        case 0x4c: TRACEI("dec osp"); DEC(reg_sp,EFFECTIVE_OZ); break;
+        case 0x4d: TRACEI("dec obp"); DEC(reg_bp,EFFECTIVE_OZ); break;
+        case 0x4e: TRACEI("dec osi"); DEC(reg_si,EFFECTIVE_OZ); break;
+        case 0x4f: TRACEI("dec odi"); DEC(reg_di,EFFECTIVE_OZ); break;
 #else
         // In 64-bit mode, 0x40-0x4F are REX prefixes, handled earlier in decode
         case 0x40: case 0x41: case 0x42: case 0x43:
@@ -716,38 +717,38 @@ restart:
             break;
 #endif
 
-        case 0x50: TRACEI("push oax"); PUSH(reg_a,oz); break;
-        case 0x51: TRACEI("push ocx"); PUSH(reg_c,oz); break;
-        case 0x52: TRACEI("push odx"); PUSH(reg_d,oz); break;
-        case 0x53: TRACEI("push obx"); PUSH(reg_b,oz); break;
-        case 0x54: TRACEI("push osp"); PUSH(reg_sp,oz); break;
-        case 0x55: TRACEI("push obp"); PUSH(reg_bp,oz); break;
-        case 0x56: TRACEI("push osi"); PUSH(reg_si,oz); break;
-        case 0x57: TRACEI("push odi"); PUSH(reg_di,oz); break;
+        case 0x50: TRACEI("push oax"); PUSH(reg_a,EFFECTIVE_OZ); break;
+        case 0x51: TRACEI("push ocx"); PUSH(reg_c,EFFECTIVE_OZ); break;
+        case 0x52: TRACEI("push odx"); PUSH(reg_d,EFFECTIVE_OZ); break;
+        case 0x53: TRACEI("push obx"); PUSH(reg_b,EFFECTIVE_OZ); break;
+        case 0x54: TRACEI("push osp"); PUSH(reg_sp,EFFECTIVE_OZ); break;
+        case 0x55: TRACEI("push obp"); PUSH(reg_bp,EFFECTIVE_OZ); break;
+        case 0x56: TRACEI("push osi"); PUSH(reg_si,EFFECTIVE_OZ); break;
+        case 0x57: TRACEI("push odi"); PUSH(reg_di,EFFECTIVE_OZ); break;
 
-        case 0x58: TRACEI("pop oax"); POP(reg_a,oz); break;
-        case 0x59: TRACEI("pop ocx"); POP(reg_c,oz); break;
-        case 0x5a: TRACEI("pop odx"); POP(reg_d,oz); break;
-        case 0x5b: TRACEI("pop obx"); POP(reg_b,oz); break;
-        case 0x5c: TRACEI("pop osp"); POP(reg_sp,oz); break;
-        case 0x5d: TRACEI("pop obp"); POP(reg_bp,oz); break;
-        case 0x5e: TRACEI("pop osi"); POP(reg_si,oz); break;
-        case 0x5f: TRACEI("pop odi"); POP(reg_di,oz); break;
+        case 0x58: TRACEI("pop oax"); POP(reg_a,EFFECTIVE_OZ); break;
+        case 0x59: TRACEI("pop ocx"); POP(reg_c,EFFECTIVE_OZ); break;
+        case 0x5a: TRACEI("pop odx"); POP(reg_d,EFFECTIVE_OZ); break;
+        case 0x5b: TRACEI("pop obx"); POP(reg_b,EFFECTIVE_OZ); break;
+        case 0x5c: TRACEI("pop osp"); POP(reg_sp,EFFECTIVE_OZ); break;
+        case 0x5d: TRACEI("pop obp"); POP(reg_bp,EFFECTIVE_OZ); break;
+        case 0x5e: TRACEI("pop osi"); POP(reg_si,EFFECTIVE_OZ); break;
+        case 0x5f: TRACEI("pop odi"); POP(reg_di,EFFECTIVE_OZ); break;
 
         case 0x65: TRACE("segment gs\n"); SEG_GS(); goto restart;
 
         case 0x60: TRACE("pusha");
-                   PUSH(reg_a,oz); PUSH(reg_c,oz);
-                   PUSH(reg_d,oz); PUSH(reg_b,oz);
-                   PUSH(reg_sp,oz); PUSH(reg_bp,oz); // TODO this is the wrong sp
-                   PUSH(reg_si,oz); PUSH(reg_di,oz);
+                   PUSH(reg_a,EFFECTIVE_OZ); PUSH(reg_c,EFFECTIVE_OZ);
+                   PUSH(reg_d,EFFECTIVE_OZ); PUSH(reg_b,EFFECTIVE_OZ);
+                   PUSH(reg_sp,EFFECTIVE_OZ); PUSH(reg_bp,EFFECTIVE_OZ); // TODO this is the wrong sp
+                   PUSH(reg_si,EFFECTIVE_OZ); PUSH(reg_di,EFFECTIVE_OZ);
                    break;
         case 0x61: TRACE("popa");
-                   POP(reg_di,oz); POP(reg_si,oz);
+                   POP(reg_di,EFFECTIVE_OZ); POP(reg_si,EFFECTIVE_OZ);
                    // pop reg_sp into reg_b as an easy way to ignore it
-                   POP(reg_bp,oz); POP(reg_b,oz);
-                   POP(reg_b,oz); POP(reg_d,oz);
-                   POP(reg_c,oz); POP(reg_a,oz);
+                   POP(reg_bp,EFFECTIVE_OZ); POP(reg_b,EFFECTIVE_OZ);
+                   POP(reg_b,EFFECTIVE_OZ); POP(reg_d,EFFECTIVE_OZ);
+                   POP(reg_c,EFFECTIVE_OZ); POP(reg_a,EFFECTIVE_OZ);
                    break;
 
 #ifdef ISH_64BIT
@@ -767,13 +768,13 @@ restart:
         case 0x67: TRACEI("address size prefix (ignored)"); goto restart;
 
         case 0x68: TRACEI("push imm\t");
-                   READIMM; PUSH(imm,oz); break;
+                   READIMM; PUSH(imm,EFFECTIVE_OZ); break;
         case 0x69: TRACEI("imul imm\t");
-                   READMODRM; READIMM; IMUL3(imm, modrm_val, modrm_reg,oz); break;
+                   READMODRM; READIMM; IMUL3(imm, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
         case 0x6a: TRACEI("push imm8\t");
-                   READIMM8; PUSH(imm,oz); break;
+                   READIMM8; PUSH(imm,EFFECTIVE_OZ); break;
         case 0x6b: TRACEI("imul imm8\t");
-                   READMODRM; READIMM8; IMUL3(imm, modrm_val, modrm_reg,oz); break;
+                   READMODRM; READIMM8; IMUL3(imm, modrm_val, modrm_reg,EFFECTIVE_OZ); break;
 
         case 0x70: TRACEI("jo rel8\t");
                    READIMM8; J_REL(O, imm); break;
@@ -833,21 +834,21 @@ restart:
         case 0x80: TRACEI("grp1 imm8, modrm8");
                    READMODRM; READIMM8; GRP1(imm, modrm_val,8); break;
         case 0x81: TRACEI("grp1 imm, modrm");
-                   READMODRM; READIMM; GRP1(imm, modrm_val,oz); break;
+                   READMODRM; READIMM; GRP1(imm, modrm_val,EFFECTIVE_OZ); break;
         case 0x83: TRACEI("grp1 imm8, modrm");
-                   READMODRM; READIMM8; GRP1(imm, modrm_val,oz); break;
+                   READMODRM; READIMM8; GRP1(imm, modrm_val,EFFECTIVE_OZ); break;
 
 #undef GRP1
 
         case 0x84: TRACEI("test reg8, modrm8");
                    READMODRM; TEST(modrm_reg, modrm_val,8); break;
         case 0x85: TRACEI("test reg, modrm");
-                   READMODRM; TEST(modrm_reg, modrm_val,oz); break;
+                   READMODRM; TEST(modrm_reg, modrm_val,EFFECTIVE_OZ); break;
 
         case 0x86: TRACEI("xchg reg8, modrm8");
                    READMODRM; XCHG(modrm_reg, modrm_val,8); break;
         case 0x87: TRACEI("xchg reg, modrm");
-                   READMODRM; XCHG(modrm_reg, modrm_val,oz); break;
+                   READMODRM; XCHG(modrm_reg, modrm_val,EFFECTIVE_OZ); break;
 
         case 0x88: TRACEI("mov reg8, modrm8");
                    READMODRM; MOV(modrm_reg, modrm_val,8); break;
@@ -859,7 +860,7 @@ restart:
                    READMODRM; MOV(modrm_val, modrm_reg,EFFECTIVE_OZ); break;
 
         case 0x8d: TRACEI("lea\t\t"); READMODRM_MEM;
-                   MOV(addr, modrm_reg,oz); break;
+                   MOV(addr, modrm_reg,EFFECTIVE_OZ); break;
 
         // we only support fs and gs, and that too not very well.
         // gs does nothing: see comment in sys/tls.c
@@ -877,23 +878,23 @@ restart:
             }
 
         case 0x8f: TRACEI("pop modrm");
-                   READMODRM; POP(modrm_val,oz); break;
+                   READMODRM; POP(modrm_val,EFFECTIVE_OZ); break;
 
         case 0x90: TRACEI("nop"); break;
         case 0x91: TRACEI("xchg ocx, oax");
-                   XCHG(reg_c, reg_a,oz); break;
+                   XCHG(reg_c, reg_a,EFFECTIVE_OZ); break;
         case 0x92: TRACEI("xchg odx, oax");
-                   XCHG(reg_d, reg_a,oz); break;
+                   XCHG(reg_d, reg_a,EFFECTIVE_OZ); break;
         case 0x93: TRACEI("xchg obx, oax");
-                   XCHG(reg_b, reg_a,oz); break;
+                   XCHG(reg_b, reg_a,EFFECTIVE_OZ); break;
         case 0x94: TRACEI("xchg osp, oax");
-                   XCHG(reg_sp, reg_a,oz); break;
+                   XCHG(reg_sp, reg_a,EFFECTIVE_OZ); break;
         case 0x95: TRACEI("xchg obp, oax");
-                   XCHG(reg_bp, reg_a,oz); break;
+                   XCHG(reg_bp, reg_a,EFFECTIVE_OZ); break;
         case 0x96: TRACEI("xchg osi, oax");
-                   XCHG(reg_si, reg_a,oz); break;
+                   XCHG(reg_si, reg_a,EFFECTIVE_OZ); break;
         case 0x97: TRACEI("xchg odi, oax");
-                   XCHG(reg_di, reg_a,oz); break;
+                   XCHG(reg_di, reg_a,EFFECTIVE_OZ); break;
 
         case 0x98: TRACEI("cvte"); CVTE; break;
         case 0x99: TRACEI("cvt"); CVT; break;
@@ -907,11 +908,11 @@ restart:
         case 0xa0: TRACEI("mov mem, al\t");
                    READADDR; MOV(mem_addr, reg_a,8); break;
         case 0xa1: TRACEI("mov mem, eax\t");
-                   READADDR; MOV(mem_addr, reg_a,oz); break;
+                   READADDR; MOV(mem_addr, reg_a,EFFECTIVE_OZ); break;
         case 0xa2: TRACEI("mov al, mem\t");
                    READADDR; MOV(reg_a, mem_addr,8); break;
         case 0xa3: TRACEI("mov oax, mem\t");
-                   READADDR; MOV(reg_a, mem_addr,oz); break;
+                   READADDR; MOV(reg_a, mem_addr,EFFECTIVE_OZ); break;
 
         case 0xa4: TRACEI("movsb"); STR(movs, 8); break;
         case 0xa5: TRACEI("movs"); STR(movs, oz); break;
@@ -921,7 +922,7 @@ restart:
         case 0xa8: TRACEI("test imm8, al");
                    READIMM8; TEST(imm, reg_a,8); break;
         case 0xa9: TRACEI("test imm, oax");
-                   READIMM; TEST(imm, reg_a,oz); break;
+                   READIMM; TEST(imm, reg_a,EFFECTIVE_OZ); break;
 
         case 0xaa: TRACEI("stosb"); STR(stos, 8); break;
         case 0xab: TRACEI("stos"); STR(stos, oz); break;
@@ -956,13 +957,13 @@ restart:
         case 0xbb: TRACEI("mov imm, obx\t");
                    READIMM; MOV(imm, reg_b,EFFECTIVE_OZ); break;
         case 0xbc: TRACEI("mov imm, osp\t");
-                   READIMM; MOV(imm, reg_sp,oz); break;
+                   READIMM; MOV(imm, reg_sp,EFFECTIVE_OZ); break;
         case 0xbd: TRACEI("mov imm, obp\t");
-                   READIMM; MOV(imm, reg_bp,oz); break;
+                   READIMM; MOV(imm, reg_bp,EFFECTIVE_OZ); break;
         case 0xbe: TRACEI("mov imm, osi\t");
-                   READIMM; MOV(imm, reg_si,oz); break;
+                   READIMM; MOV(imm, reg_si,EFFECTIVE_OZ); break;
         case 0xbf: TRACEI("mov imm, odi\t");
-                   READIMM; MOV(imm, reg_di,oz); break;
+                   READIMM; MOV(imm, reg_di,EFFECTIVE_OZ); break;
 
 #define GRP2(count, val,z) \
     switch (modrm.opcode) { \
@@ -979,7 +980,7 @@ restart:
         case 0xc0: TRACEI("grp2 imm8, modrm8");
                    READMODRM; READIMM8; GRP2(imm, modrm_val,8); break;
         case 0xc1: TRACEI("grp2 imm8, modrm");
-                   READMODRM; READIMM8; GRP2(imm, modrm_val,oz); break;
+                   READMODRM; READIMM8; GRP2(imm, modrm_val,EFFECTIVE_OZ); break;
 
         case 0xc2: TRACEI("ret near imm\t");
                    READIMM16; RET_NEAR(imm); break;
@@ -987,7 +988,7 @@ restart:
                    RET_NEAR(0); break;
 
         case 0xc9: TRACEI("leave");
-                   MOV(reg_bp, reg_sp,oz); POP(reg_bp,oz); break;
+                   MOV(reg_bp, reg_sp,EFFECTIVE_OZ); POP(reg_bp,EFFECTIVE_OZ); break;
 
         case 0xcc: TRACEI("int3");
                    INT(INT_BREAKPOINT); break;
@@ -997,16 +998,16 @@ restart:
         case 0xc6: TRACEI("mov imm8, modrm8");
                    READMODRM; READIMM8; MOV(imm, modrm_val,8); break;
         case 0xc7: TRACEI("mov imm, modrm");
-                   READMODRM; READIMM; MOV(imm, modrm_val,oz); break;
+                   READMODRM; READIMM; MOV(imm, modrm_val,EFFECTIVE_OZ); break;
 
         case 0xd0: TRACEI("grp2 1, modrm8");
                    READMODRM; GRP2(1, modrm_val,8); break;
         case 0xd1: TRACEI("grp2 1, modrm");
-                   READMODRM; GRP2(1, modrm_val,oz); break;
+                   READMODRM; GRP2(1, modrm_val,EFFECTIVE_OZ); break;
         case 0xd2: TRACEI("grp2 cl, modrm8");
                    READMODRM; GRP2(reg_c, modrm_val,8); break;
         case 0xd3: TRACEI("grp2 cl, modrm");
-                   READMODRM; GRP2(reg_c, modrm_val,oz); break;
+                   READMODRM; GRP2(reg_c, modrm_val,EFFECTIVE_OZ); break;
 
 #undef GRP2
 
@@ -1182,7 +1183,7 @@ restart:
         case x+0x0: TRACEI("lock " op " reg8, modrm8"); \
                    READMODRM_MEM; ATOMIC_##OP(modrm_reg, modrm_val,8); break; \
         case x+0x1: TRACEI("lock " op " reg, modrm"); \
-                   READMODRM_MEM; ATOMIC_##OP(modrm_reg, modrm_val,oz); break; \
+                   READMODRM_MEM; ATOMIC_##OP(modrm_reg, modrm_val,EFFECTIVE_OZ); break; \
 
                 MAKE_OP_ATOMIC(0x00, ADD, "add");
                 MAKE_OP_ATOMIC(0x08, OR, "or");
@@ -1209,9 +1210,9 @@ restart:
                 case 0x80: TRACEI("lock grp1 imm8, modrm8");
                            READMODRM_MEM; READIMM8; GRP1_ATOMIC(imm, modrm_val,8); break;
                 case 0x81: TRACEI("lock grp1 imm, modrm");
-                           READMODRM_MEM; READIMM; GRP1_ATOMIC(imm, modrm_val,oz); break;
+                           READMODRM_MEM; READIMM; GRP1_ATOMIC(imm, modrm_val,EFFECTIVE_OZ); break;
                 case 0x83: TRACEI("lock grp1 imm8, modrm");
-                           READMODRM_MEM; READIMM8; GRP1_ATOMIC(imm, modrm_val,oz); break;
+                           READMODRM_MEM; READIMM8; GRP1_ATOMIC(imm, modrm_val,EFFECTIVE_OZ); break;
 
 #undef GRP1_ATOMIC
 
@@ -1219,11 +1220,11 @@ restart:
                     READINSN;
                     switch (insn) {
                         case 0xab: TRACEI("lock bts reg, modrm");
-                                   READMODRM; ATOMIC_BTS(modrm_reg, modrm_val,oz); break;
+                                   READMODRM; ATOMIC_BTS(modrm_reg, modrm_val,EFFECTIVE_OZ); break;
                         case 0xb3: TRACEI("lock btr reg, modrm");
-                                   READMODRM; ATOMIC_BTR(modrm_reg, modrm_val,oz); break;
+                                   READMODRM; ATOMIC_BTR(modrm_reg, modrm_val,EFFECTIVE_OZ); break;
                         case 0xbb: TRACEI("lock btc reg, modrm");
-                                   READMODRM; ATOMIC_BTC(modrm_reg, modrm_val,oz); break;
+                                   READMODRM; ATOMIC_BTC(modrm_reg, modrm_val,EFFECTIVE_OZ); break;
 
 #define GRP8_ATOMIC(bit, val,z) \
     switch (modrm.opcode) { \
@@ -1233,18 +1234,18 @@ restart:
         default: UNDEFINED; \
     }
                         case 0xba: TRACEI("lock grp8 imm8, modrm");
-                                   READMODRM; READIMM8; GRP8_ATOMIC(imm, modrm_val,oz); break;
+                                   READMODRM; READIMM8; GRP8_ATOMIC(imm, modrm_val,EFFECTIVE_OZ); break;
 #undef GRP8_ATOMIC
 
                         case 0xb0: TRACEI("lock cmpxchg reg8, modrm8");
                                    READMODRM_MEM; ATOMIC_CMPXCHG(modrm_reg, modrm_val,8); break;
                         case 0xb1: TRACEI("lock cmpxchg reg, modrm");
-                                   READMODRM_MEM; ATOMIC_CMPXCHG(modrm_reg, modrm_val,oz); break;
+                                   READMODRM_MEM; ATOMIC_CMPXCHG(modrm_reg, modrm_val,EFFECTIVE_OZ); break;
 
                         case 0xc0: TRACEI("lock xadd reg8, modrm8");
                                    READMODRM_MEM; ATOMIC_XADD(modrm_reg, modrm_val,8); break;
                         case 0xc1: TRACEI("lock xadd reg, modrm");
-                                   READMODRM_MEM; ATOMIC_XADD(modrm_reg, modrm_val,oz); break;
+                                   READMODRM_MEM; ATOMIC_XADD(modrm_reg, modrm_val,EFFECTIVE_OZ); break;
 
                         case 0xc7: READMODRM_MEM; switch (modrm.opcode) {
                                        case 1: TRACEI("lock cmpxchg8b modrm");
@@ -1266,7 +1267,7 @@ restart:
                 case 0xfe: TRACEI("lock grp5 modrm8\t");
                            READMODRM_MEM; GRP5_ATOMIC(modrm_val,8); break;
                 case 0xff: TRACEI("lock grp5 modrm\t");
-                           READMODRM_MEM; GRP5_ATOMIC(modrm_val,oz); break;
+                           READMODRM_MEM; GRP5_ATOMIC(modrm_val,EFFECTIVE_OZ); break;
 
                 default: TRACE("undefined"); UNDEFINED;
             }
@@ -1377,9 +1378,9 @@ restart:
                         // tzcnt is like bsf but the result when the input is zero is defined as the operand size
                         // for now, it can just be an alias
                         case 0xbc: TRACEI("~~tzcnt~~ bsf modrm, reg");
-                                   READMODRM; BSF(modrm_val, modrm_reg,oz); break;
+                                   READMODRM; BSF(modrm_val, modrm_reg,EFFECTIVE_OZ); break;
                         case 0xbd: TRACEI("~~lzcnt~~ bsr modrm, reg");
-                                   READMODRM; BSR(modrm_val, modrm_reg,oz); break;
+                                   READMODRM; BSR(modrm_val, modrm_reg,EFFECTIVE_OZ); break;
 
                         case 0xc2: TRACEI("cmpss xmm:modrm, xmm, imm8");
                                    READMODRM; READIMM8; V_OP_IMM(single_fcmp, xmm_modrm_val, xmm_modrm_reg,32); break;
@@ -1433,7 +1434,7 @@ restart:
         case 0xf6: TRACEI("grp3 modrm8\t");
                    READMODRM; GRP3(modrm_val,8); break;
         case 0xf7: TRACEI("grp3 modrm\t");
-                   READMODRM; GRP3(modrm_val,oz); break;
+                   READMODRM; GRP3(modrm_val,EFFECTIVE_OZ); break;
 
 #undef GRP3
 
@@ -1460,7 +1461,7 @@ restart:
         case 0xfe: TRACEI("grp5 modrm8\t");
                    READMODRM; GRP5(modrm_val,8); break;
         case 0xff: TRACEI("grp5 modrm\t");
-                   READMODRM; GRP5(modrm_val,oz); break;
+                   READMODRM; GRP5(modrm_val,EFFECTIVE_OZ); break;
 
 #undef GRP5
 
