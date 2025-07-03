@@ -1822,4 +1822,85 @@
     .endr
 .endr
 
+#ifdef ISH_64BIT
+
+/******************************************************************************
+ * R11 gadgets (memory-based) – arithmetic/logic + cmp/test + xchg
+ ******************************************************************************/
+
+.macro do_r11_op op, armop, size
+    .gadget \op\size\()_reg_r11
+        .if \size == 64
+            ldr x8, [_cpu, #CPU_r11]
+            do_op \armop, \size, x8
+            .ifnc \op,cmp
+            .ifnc \op,test
+                str _xtmp, [_cpu, #CPU_r11]
+            .endif
+            .endif
+        .else
+            ldr w8, [_cpu, #CPU_r11]
+            do_op \armop, \size, w8
+            .ifnc \op,cmp
+            .ifnc \op,test
+                str _tmp, [_cpu, #CPU_r11]
+            .endif
+            .endif
+        .endif
+        gret
+.endm
+
+/* Generate gadgets */
+.irp op, add,sub,and,or,xor,cmp,test
+    .irp size, 8,16,32,64
+        .ifc \op,or
+            do_r11_op \op, orr, \size
+        .else N .ifc \op,xor
+            do_r11_op \op, eor, \size
+        .else N .ifc \op,sbb
+            do_r11_op \op, sbc, \size
+        .else N .ifc \op,inc
+            do_r11_op \op, add, \size
+        .else N .ifc \op,dec
+            do_r11_op \op, sub, \size
+        .else
+            do_r11_op \op, \op, \size
+        .endif N .endif N .endif N .endif N .endif N .endif N .endif N .endif
+    .endr
+.endr
+
+/* cmp & test (no write-back) */
+#if 0
+.irp op, cmp,test
+    .irp size, 8,16,32,64
+        .gadget \op\size\()_reg_r11
+            .if \size == 64
+                ldr x8, [_cpu, #CPU_r11]
+                do_op \op, \size, x8
+            .else
+                ldr w8, [_cpu, #CPU_r11]
+                do_op \op, \size, w8
+            .endif
+            gret
+    .endr
+.endr
+#endif
+
+/* xchg – always writes back */
+.irp size, 8,16,32,64
+    .gadget xchg\size\()_reg_r11
+        .if \size == 64
+            ldr x8, [_cpu, #CPU_r11]
+            do_op xchg, \size, x8
+            str _xtmp, [_cpu, #CPU_r11]
+        .else
+            ldr w8, [_cpu, #CPU_r11]
+            do_op xchg, \size, w8
+            str _tmp, [_cpu, #CPU_r11]
+        .endif
+        gret
+.endr
+
+#endif /* ISH_64BIT */
+
 
