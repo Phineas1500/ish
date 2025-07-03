@@ -6,7 +6,11 @@
 #define endifin endif N .endr
 
 # sync with enum reg
+#ifdef ISH_64BIT
+#define REG_LIST reg_a,reg_c,reg_d,reg_b,reg_sp,reg_bp,reg_si,reg_di,reg_r8,reg_r9,reg_r10,reg_r11,reg_r12,reg_r13,reg_r14,reg_r15
+#else
 #define REG_LIST reg_a,reg_c,reg_d,reg_b,reg_sp,reg_bp,reg_si,reg_di
+#endif
 # sync with enum arg
 #define GADGET_LIST REG_LIST,imm,mem,addr,gs
 # sync with enum size

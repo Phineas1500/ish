@@ -117,8 +117,8 @@ enum arg {
 #ifdef ISH_64BIT
     // R8-R10 confirmed working (ARM64 x4-x6), x7 has conflicts
     arg_reg_r8, arg_reg_r9, arg_reg_r10,
-    // R11-R15 temporarily disabled until memory-based gadgets are implemented
-    // arg_reg_r11, arg_reg_r12, arg_reg_r13, arg_reg_r14, arg_reg_r15,
+    // R11-R15 memory-based gadgets are now implemented
+    arg_reg_r11, arg_reg_r12, arg_reg_r13, arg_reg_r14, arg_reg_r15,
 #endif
     arg_imm, arg_mem, arg_addr, arg_gs,
     arg_count, arg_invalid,

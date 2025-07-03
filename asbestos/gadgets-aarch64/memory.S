@@ -74,6 +74,93 @@
 .each_reg x
 .purgem x
 
+#ifdef ISH_64BIT
+# Add missing si gadgets for R11-R15 (memory-based registers)
+.gadget si_reg_r11_1
+    ldr w8, [_cpu, #CPU_r11]
+    add _addr, _addr, w8
+    gret
+.gadget si_reg_r11_2
+    ldr w8, [_cpu, #CPU_r11]
+    add _addr, _addr, w8, lsl 1
+    gret
+.gadget si_reg_r11_4
+    ldr w8, [_cpu, #CPU_r11]
+    add _addr, _addr, w8, lsl 2
+    gret
+.gadget si_reg_r11_8
+    ldr w8, [_cpu, #CPU_r11]
+    add _addr, _addr, w8, lsl 3
+    gret
+
+.gadget si_reg_r12_1
+    ldr w8, [_cpu, #CPU_r12]
+    add _addr, _addr, w8
+    gret
+.gadget si_reg_r12_2
+    ldr w8, [_cpu, #CPU_r12]
+    add _addr, _addr, w8, lsl 1
+    gret
+.gadget si_reg_r12_4
+    ldr w8, [_cpu, #CPU_r12]
+    add _addr, _addr, w8, lsl 2
+    gret
+.gadget si_reg_r12_8
+    ldr w8, [_cpu, #CPU_r12]
+    add _addr, _addr, w8, lsl 3
+    gret
+
+.gadget si_reg_r13_1
+    ldr w8, [_cpu, #CPU_r13]
+    add _addr, _addr, w8
+    gret
+.gadget si_reg_r13_2
+    ldr w8, [_cpu, #CPU_r13]
+    add _addr, _addr, w8, lsl 1
+    gret
+.gadget si_reg_r13_4
+    ldr w8, [_cpu, #CPU_r13]
+    add _addr, _addr, w8, lsl 2
+    gret
+.gadget si_reg_r13_8
+    ldr w8, [_cpu, #CPU_r13]
+    add _addr, _addr, w8, lsl 3
+    gret
+
+.gadget si_reg_r14_1
+    ldr w8, [_cpu, #CPU_r14]
+    add _addr, _addr, w8
+    gret
+.gadget si_reg_r14_2
+    ldr w8, [_cpu, #CPU_r14]
+    add _addr, _addr, w8, lsl 1
+    gret
+.gadget si_reg_r14_4
+    ldr w8, [_cpu, #CPU_r14]
+    add _addr, _addr, w8, lsl 2
+    gret
+.gadget si_reg_r14_8
+    ldr w8, [_cpu, #CPU_r14]
+    add _addr, _addr, w8, lsl 3
+    gret
+
+.gadget si_reg_r15_1
+    ldr w8, [_cpu, #CPU_r15]
+    add _addr, _addr, w8
+    gret
+.gadget si_reg_r15_2
+    ldr w8, [_cpu, #CPU_r15]
+    add _addr, _addr, w8, lsl 1
+    gret
+.gadget si_reg_r15_4
+    ldr w8, [_cpu, #CPU_r15]
+    add _addr, _addr, w8, lsl 2
+    gret
+.gadget si_reg_r15_8
+    ldr w8, [_cpu, #CPU_r15]
+    add _addr, _addr, w8, lsl 3
+    gret
+#endif
 
 .pushsection_rodata
 .global NAME(si_gadgets)
