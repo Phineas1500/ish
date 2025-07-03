@@ -50,6 +50,23 @@ r9b .req w5
 r10b .req w6
 # r11b-R15b will be memory-based
 
+# Memory-based register macros for R11 (use safe temporaries)
+.macro load_r11_to_temp size
+    .if \size == 64
+        ldr _xtmp, [_cpu, CPU_r11]
+    .else
+        ldr _tmp, [_cpu, CPU_r11]
+    .endif
+.endm
+
+.macro store_temp_to_r11 size
+    .if \size == 64
+        str _xtmp, [_cpu, CPU_r11]
+    .else
+        str _tmp, [_cpu, CPU_r11]
+    .endif
+.endm
+
 # Memory-based register macros for R12-R15 (use safe temporaries)
 .macro load_r12_to_temp size
     .if \size == 64

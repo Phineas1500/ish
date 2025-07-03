@@ -154,3 +154,27 @@ crosspage_store:
     restore_c
     cbz x19, segfault_write
     ret
+
+# R11 addressing gadgets (memory-based) – incremental rollout
+#ifdef ISH_64BIT
+.gadget addr_reg_r11
+    ldr w8, [_cpu, #CPU_r11]
+    ldr _addr, [_ip]
+    add _addr, _addr, w8
+    gret 1
+
+.irp times, 1,2,4,8
+    .gadget si_reg_r11_\times
+        ldr w8, [_cpu, #CPU_r11]
+        .ifc \times,1
+            add _addr, _addr, w8
+        .else N .ifc \times,2
+            add _addr, _addr, w8, lsl 1
+        .else N .ifc \times,4
+            add _addr, _addr, w8, lsl 2
+        .else N .ifc \times,8
+            add _addr, _addr, w8, lsl 3
+        .endif N .endif N .endif N .endif
+        gret
+.endr
+#endif
