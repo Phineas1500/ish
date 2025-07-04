@@ -439,6 +439,11 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     // allocate in high memory for 64-bit (around 0x7fffff000)
     if ((err = pt_map_nothing(current->mem, 0x7fffff, 1, P_WRITE | P_GROWSDOWN)) < 0)
         goto beyond_hope;
+    // ALSO map 32-bit stack region for ESP compatibility
+    // This prevents segfault when 32-bit instructions use ESP instead of RSP
+    // Map at 0xfffff000 (where the actual failure occurs)
+    if ((err = pt_map_nothing(current->mem, 0xfffff, 1, P_WRITE | P_GROWSDOWN)) < 0)
+        goto beyond_hope;
     addr_t sp = 0x7fffffff8;  // Start 8 bytes from the top of the page
     // on 64-bit linux, there's 8 empty bytes at the very bottom of the stack
     // (these are already accounted for by starting at 0x7fffffff8)
@@ -559,12 +564,18 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     if (header.bitness == ELF_64BIT) {
         // 64-bit program initialization
 #ifdef ISH_64BIT
+        // Debug: Log 64-bit program initialization
+        FILE *f = fopen("/tmp/debug_exec.txt", "a");
+        if (f) { fprintf(f, "64-bit program: sp=0x%llx, entry=0x%llx\n", (unsigned long long)sp, (unsigned long long)entry); fclose(f); }
         // Initialize all 16 registers (RAX-RDI + R8-R15) for 64-bit programs
         for (int i = 0; i < 16; i++) {
             current->cpu.regs[i] = 0;
         }
         current->cpu.rsp = sp;   // Set 64-bit stack pointer
         current->cpu.rip = entry; // Set 64-bit instruction pointer
+        // Debug: Log final register values
+        f = fopen("/tmp/debug_exec.txt", "a");
+        if (f) { fprintf(f, "Final RSP=0x%llx, ESP=0x%x, RIP=0x%llx\n", (unsigned long long)current->cpu.rsp, current->cpu.esp, (unsigned long long)current->cpu.rip); fclose(f); }
 #else
         // 32-bit iSH build cannot run 64-bit programs - this should have been caught earlier
         // But handle gracefully just in case
@@ -583,6 +594,9 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
         current->cpu.edi = 0;
         current->cpu.ebp = 0;
 #ifdef ISH_64BIT
+        // Debug: Log 32-bit program initialization  
+        FILE *f = fopen("/tmp/debug_exec.txt", "a");
+        if (f) { fprintf(f, "32-bit program: sp=0x%llx, entry=0x%llx\n", (unsigned long long)sp, (unsigned long long)entry); fclose(f); }
         // Clear the upper 32 bits of registers for 32-bit programs on 64-bit iSH
         current->cpu.rsp = sp;   // This sets both rsp and esp due to union
         current->cpu.rip = entry; // This sets both rip and eip due to union

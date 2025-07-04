@@ -1,5 +1,6 @@
 #include "emu/cpu.h"
 #include "emu/tlb.h"
+#include <stdio.h>
 
 void tlb_refresh(struct tlb *tlb, struct mmu *mmu) {
     if (tlb->mmu == mmu && tlb->mem_changes == mmu->changes)
@@ -54,6 +55,15 @@ __no_instrument void *tlb_handle_miss(struct tlb *tlb, addr_t addr, int type) {
         tlb_flush(tlb);
     if (ptr == NULL) {
         tlb->segfault_addr = addr;
+        // Debug: Log the failing address with more context
+        FILE *f = fopen("/tmp/debug_tlb.txt", "a");
+        if (f) {
+            fprintf(f, "TLB miss: addr=0x%llx, type=%s, page=0x%llx\n", 
+                    (unsigned long long)addr, 
+                    type == 0 ? "READ" : type == 1 ? "WRITE" : "OTHER",
+                    (unsigned long long)TLB_PAGE(addr));
+            fclose(f);
+        }
         return NULL;
     }
     tlb->dirty_page = TLB_PAGE(addr);
