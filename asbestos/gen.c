@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdint.h>
+#include <stdio.h>
 #include "asbestos/gen.h"
 #include "emu/modrm.h"
 #include "emu/cpuid.h"
@@ -130,9 +131,9 @@ enum arg {
 };
 
 enum size {
-    size_8, size_16, size_32,
+    size_8, size_16, size_32, size_64,
     size_count,
-    size_64, size_80, size_128, // bonus sizes
+    size_80, size_128, // bonus sizes
 };
 
 // sync with COND_LIST in control.S
