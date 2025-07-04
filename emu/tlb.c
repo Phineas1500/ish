@@ -1,5 +1,6 @@
 #include "emu/cpu.h"
 #include "emu/tlb.h"
+#include "kernel/calls.h"
 #include <stdio.h>
 
 void tlb_refresh(struct tlb *tlb, struct mmu *mmu) {
@@ -55,13 +56,58 @@ __no_instrument void *tlb_handle_miss(struct tlb *tlb, addr_t addr, int type) {
         tlb_flush(tlb);
     if (ptr == NULL) {
         tlb->segfault_addr = addr;
-        // Debug: Log the failing address with more context
+        // Enhanced debug: Log the failing address with CPU context
         FILE *f = fopen("/tmp/debug_tlb.txt", "a");
         if (f) {
-            fprintf(f, "TLB miss: addr=0x%llx, type=%s, page=0x%llx\n", 
-                    (unsigned long long)addr, 
-                    type == 0 ? "READ" : type == 1 ? "WRITE" : "OTHER",
-                    (unsigned long long)TLB_PAGE(addr));
+            // Get current task and CPU state
+            if (current && current->cpu.rip) {
+                fprintf(f, "TLB miss: addr=0x%llx, type=%s, page=0x%llx, ip=0x%llx, pid=%d\n", 
+                        (unsigned long long)addr, 
+                        type == 0 ? "READ" : type == 1 ? "WRITE" : "OTHER",
+                        (unsigned long long)TLB_PAGE(addr),
+                        (unsigned long long)current->cpu.rip,
+                        current->pid);
+                
+                // Dump first few bytes of instruction for context
+                fprintf(f, "  Instruction bytes at 0x%llx: ", (unsigned long long)current->cpu.rip);
+                for (int i = 0; i < 8; i++) {
+                    uint8_t byte;
+                    if (!user_read_task(current, current->cpu.rip + i, &byte, 1)) {
+                        fprintf(f, "%02x ", byte);
+                    } else {
+                        fprintf(f, "?? ");
+                    }
+                }
+                fprintf(f, "\n");
+                
+                // Dump register state for problematic address
+                if (addr == 0xa8478b49f7f8e544ULL) {
+                    fprintf(f, "  PROBLEM ADDR ACCESSED - Register dump:\n");
+                    fprintf(f, "    RAX=0x%llx RBX=0x%llx RCX=0x%llx RDX=0x%llx\n",
+                            (unsigned long long)current->cpu.rax, (unsigned long long)current->cpu.rbx,
+                            (unsigned long long)current->cpu.rcx, (unsigned long long)current->cpu.rdx);
+                    fprintf(f, "    RSI=0x%llx RDI=0x%llx RSP=0x%llx RBP=0x%llx\n",
+                            (unsigned long long)current->cpu.rsi, (unsigned long long)current->cpu.rdi,
+                            (unsigned long long)current->cpu.rsp, (unsigned long long)current->cpu.rbp);
+                    
+                    // Check if this address is anywhere on the stack
+                    fprintf(f, "  Checking stack for this address pattern:\n");
+                    for (int i = 0; i < 64; i += 8) {
+                        uint64_t stack_val;
+                        if (!user_read_task(current, current->cpu.rsp + i, &stack_val, 8)) {
+                            if (stack_val == 0xa8478b49f7f8e544ULL) {
+                                fprintf(f, "    FOUND problematic addr at RSP+%d!\n", i);
+                            }
+                            fprintf(f, "    RSP+%02d: 0x%llx\n", i, (unsigned long long)stack_val);
+                        }
+                    }
+                }
+            } else {
+                fprintf(f, "TLB miss: addr=0x%llx, type=%s, page=0x%llx (no CPU context)\n", 
+                        (unsigned long long)addr, 
+                        type == 0 ? "READ" : type == 1 ? "WRITE" : "OTHER",
+                        (unsigned long long)TLB_PAGE(addr));
+            }
             fclose(f);
         }
         return NULL;

@@ -486,6 +486,17 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     char random[16] = {};
     get_random(random, sizeof(random)); // if this fails, eh, no one's really using it
     addr_t random_addr = sp -= sizeof(random);
+    // Debug: Log the random bytes
+    FILE *rf = fopen("/tmp/debug_exec.txt", "a");
+    if (rf) { 
+        fprintf(rf, "Random bytes at 0x%llx: ", (unsigned long long)random_addr);
+        for (int i = 0; i < 16; i++) fprintf(rf, "%02x", (unsigned char)random[i]);
+        fprintf(rf, "\n");
+        // Also check if these bytes contain our problematic address
+        uint64_t *p64 = (uint64_t*)random;
+        fprintf(rf, "As 64-bit values: 0x%llx 0x%llx\n", (unsigned long long)p64[0], (unsigned long long)p64[1]);
+        fclose(rf); 
+    }
     if (user_put(sp, random)) {
         goto beyond_hope_unlocked;
     }
@@ -495,68 +506,159 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     // that from sp, then align, then copy argv/envp/auxv from that down
 
     // declare elf aux now so we can know how big it is
-    struct aux_ent aux[] = {
-        {AX_SYSINFO, vdso_entry},
-        {AX_SYSINFO_EHDR, current->mm->vdso},
-        {AX_HWCAP, 0x00000000}, // suck that
-        {AX_PAGESZ, PAGE_SIZE},
-        {AX_CLKTCK, 0x64},
-        {AX_PHDR, load_addr + header.prghead_off},
-        {AX_PHENT, header.bitness == ELF_32BIT ? sizeof(struct prg_header) : sizeof(struct prg_header_64)},
-        {AX_PHNUM, header.phent_count},
-        {AX_BASE, interp_base},
-        {AX_FLAGS, 0},
-        {AX_ENTRY, bias + header.entry_point},
-        {AX_UID, 0},
-        {AX_EUID, 0},
-        {AX_GID, 0},
-        {AX_EGID, 0},
-        {AX_SECURE, 0},
-        {AX_RANDOM, random_addr},
-        {AX_HWCAP2, 0}, // suck that too
-        {AX_EXECFN, file_addr},
-        {AX_PLATFORM, platform_addr},
-        {0, 0}
-    };
-    sp -= ((argv.count + 1) + (envp.count + 1) + 1) * sizeof(addr_t);
-    sp -= sizeof(aux);
-    sp &=~ 0xf;
+    // Use different aux vector structures for 32-bit vs 64-bit programs
+    size_t aux_size;
+    // Debug: Log which path we're taking
+    FILE *f = fopen("/tmp/debug_exec.txt", "a");
+    if (f) { fprintf(f, "Program bitness: %d (ELF_64BIT=%d)\n", header.bitness, ELF_64BIT); fclose(f); }
+    
+    if (header.bitness == ELF_64BIT) {
+        // 64-bit auxiliary vector
+        f = fopen("/tmp/debug_exec.txt", "a");
+        if (f) { fprintf(f, "Using 64-bit auxiliary vector\n"); fclose(f); }
+        struct aux_ent_64 aux[] = {
+            {AX_SYSINFO, vdso_entry},
+            {AX_SYSINFO_EHDR, current->mm->vdso},
+            {AX_HWCAP, 0x00000000}, // suck that
+            {AX_PAGESZ, PAGE_SIZE},
+            {AX_CLKTCK, 0x64},
+            {AX_PHDR, load_addr + header.prghead_off},
+            {AX_PHENT, sizeof(struct prg_header_64)},
+            {AX_PHNUM, header.phent_count},
+            {AX_BASE, interp_base},
+            {AX_FLAGS, 0},
+            {AX_ENTRY, bias + header.entry_point},
+            {AX_UID, 0},
+            {AX_EUID, 0},
+            {AX_GID, 0},
+            {AX_EGID, 0},
+            {AX_SECURE, 0},
+            {AX_RANDOM, random_addr},
+            {AX_HWCAP2, 0}, // suck that too
+            {AX_EXECFN, file_addr},
+            {AX_PLATFORM, platform_addr},
+            {0, 0}
+        };
+        aux_size = sizeof(aux);
+        sp -= ((argv.count + 1) + (envp.count + 1) + 1) * sizeof(addr_t);
+        sp -= aux_size;
+        sp &=~ 0xf;
+        
+        // now copy down, start using p so sp is preserved
+        addr_t p = sp;
 
-    // now copy down, start using p so sp is preserved
-    addr_t p = sp;
-
-    // argc
-    if (user_put(p, argv.count)) {
-        return _EFAULT;
-    }
-    p += sizeof(addr_t);
-
-    // argv
-    size_t argc = argv.count;
-    while (argc-- > 0) {
-        if (user_put(p, argv_addr))
+        // argc
+        if (user_put(p, argv.count)) {
             return _EFAULT;
-        argv_addr += user_strlen(argv_addr) + 1;
-        p += sizeof(addr_t); // move to next pointer slot
-    }
-    p += sizeof(addr_t); // null terminator
-
-    // envp
-    size_t envc = envp.count;
-    while (envc-- > 0) {
-        if (user_put(p, envp_addr))
-            return _EFAULT;
-        envp_addr += user_strlen(envp_addr) + 1;
+        }
         p += sizeof(addr_t);
-    }
-    p += sizeof(addr_t); // null terminator
 
-    // copy auxv
-    current->mm->auxv_start = p;
-    if (user_put(p, aux))
-        goto beyond_hope_unlocked;
-    p += sizeof(aux);
-    current->mm->auxv_end = p;
+        // argv
+        size_t argc = argv.count;
+        while (argc-- > 0) {
+            if (user_put(p, argv_addr))
+                return _EFAULT;
+            argv_addr += user_strlen(argv_addr) + 1;
+            p += sizeof(addr_t); // move to next pointer slot
+        }
+        p += sizeof(addr_t); // null terminator
+
+        // envp
+        size_t envc = envp.count;
+        while (envc-- > 0) {
+            if (user_put(p, envp_addr))
+                return _EFAULT;
+            envp_addr += user_strlen(envp_addr) + 1;
+            p += sizeof(addr_t);
+        }
+        p += sizeof(addr_t); // null terminator
+
+        // copy auxv (64-bit version)
+        current->mm->auxv_start = p;
+        if (user_put(p, aux))
+            goto beyond_hope_unlocked;
+        p += aux_size;
+        current->mm->auxv_end = p;
+        
+        // Debug: Log auxiliary vector contents
+        FILE *af = fopen("/tmp/debug_exec.txt", "a");
+        if (af) {
+            fprintf(af, "64-bit auxiliary vector at 0x%llx:\n", (unsigned long long)current->mm->auxv_start);
+            for (size_t i = 0; i < sizeof(aux)/sizeof(aux[0]); i++) {
+                fprintf(af, "  aux[%zu]: type=0x%llx, value=0x%llx\n", i, 
+                        (unsigned long long)aux[i].type, (unsigned long long)aux[i].value);
+            }
+            fclose(af);
+        }
+        
+    } else {
+        // 32-bit auxiliary vector (original)
+        f = fopen("/tmp/debug_exec.txt", "a");
+        if (f) { fprintf(f, "Using 32-bit auxiliary vector\n"); fclose(f); }
+        struct aux_ent aux[] = {
+            {AX_SYSINFO, vdso_entry},
+            {AX_SYSINFO_EHDR, current->mm->vdso},
+            {AX_HWCAP, 0x00000000}, // suck that
+            {AX_PAGESZ, PAGE_SIZE},
+            {AX_CLKTCK, 0x64},
+            {AX_PHDR, load_addr + header.prghead_off},
+            {AX_PHENT, sizeof(struct prg_header)},
+            {AX_PHNUM, header.phent_count},
+            {AX_BASE, interp_base},
+            {AX_FLAGS, 0},
+            {AX_ENTRY, bias + header.entry_point},
+            {AX_UID, 0},
+            {AX_EUID, 0},
+            {AX_GID, 0},
+            {AX_EGID, 0},
+            {AX_SECURE, 0},
+            {AX_RANDOM, random_addr},
+            {AX_HWCAP2, 0}, // suck that too
+            {AX_EXECFN, file_addr},
+            {AX_PLATFORM, platform_addr},
+            {0, 0}
+        };
+        aux_size = sizeof(aux);
+        sp -= ((argv.count + 1) + (envp.count + 1) + 1) * sizeof(addr_t);
+        sp -= aux_size;
+        sp &=~ 0xf;
+        
+        // now copy down, start using p so sp is preserved
+        addr_t p = sp;
+
+        // argc
+        if (user_put(p, argv.count)) {
+            return _EFAULT;
+        }
+        p += sizeof(addr_t);
+
+        // argv
+        size_t argc = argv.count;
+        while (argc-- > 0) {
+            if (user_put(p, argv_addr))
+                return _EFAULT;
+            argv_addr += user_strlen(argv_addr) + 1;
+            p += sizeof(addr_t); // move to next pointer slot
+        }
+        p += sizeof(addr_t); // null terminator
+
+        // envp
+        size_t envc = envp.count;
+        while (envc-- > 0) {
+            if (user_put(p, envp_addr))
+                return _EFAULT;
+            envp_addr += user_strlen(envp_addr) + 1;
+            p += sizeof(addr_t);
+        }
+        p += sizeof(addr_t); // null terminator
+
+        // copy auxv (32-bit version)
+        current->mm->auxv_start = p;
+        if (user_put(p, aux))
+            goto beyond_hope_unlocked;
+        p += aux_size;
+        current->mm->auxv_end = p;
+    }
 
     current->mm->stack_start = sp;
     

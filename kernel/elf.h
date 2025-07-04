@@ -151,6 +151,12 @@ struct aux_ent {
     uint32_t value;
 };
 
+// 64-bit auxiliary vector entry structure
+struct aux_ent_64 {
+    uint64_t type;
+    uint64_t value;
+};
+
 #define AX_PHDR 3
 #define AX_PHENT 4
 #define AX_PHNUM 5
