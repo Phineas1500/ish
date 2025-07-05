@@ -104,9 +104,13 @@ void gen_exit(struct gen_state *state) {
 #ifdef ISH_64BIT
 // Use REX-aware decoder in 64-bit mode, passing REX bits from decoder context
 #define READMODRM if (!modrm_decode64(&state->ip, tlb, &modrm, rex_r, rex_x, rex_b)) SEGFAULT
+// 64-bit call instructions should use call64 gadget for proper 64-bit return address handling
+#define CALL_GADGET call64
 #else
 // Use traditional 32-bit decoder in 32-bit mode
 #define READMODRM if (!modrm_decode32(&state->ip, tlb, &modrm)) SEGFAULT
+// 32-bit call instructions use standard call gadget
+#define CALL_GADGET call
 #endif
 #define READADDR _READIMM(addr_offset, 32)
 #define SEG_GS() seg_gs = true
@@ -309,7 +313,7 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
 // the first four arguments are the same with CALL,
 // the last one is the call target, patchable by return chaining.
 #define CALL_REL(off) do { \
-    gggggg(call, state->orig_ip, -1, fake_ip, fake_ip, fake_ip + off); \
+    gggggg(CALL_GADGET, state->orig_ip, -1, fake_ip, fake_ip, fake_ip + off); \
     state->block_patch_ip = state->size - 4; \
     jump_ips(-2, -1); \
     end_block = true; \

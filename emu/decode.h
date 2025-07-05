@@ -43,6 +43,7 @@ __no_instrument DECODER_RET glue(DECODER_NAME, OP_SIZE)(DECODER_ARGS) {
 #define READIMMEFFECTIVE_OZ READIMM // Support for token concatenation in macros
 #define READIMM8 READIMM_(imm, 8); imm = (int8_t) (uint8_t) imm
 #define READIMM16 READIMM_(imm, 16)
+#define READIMM32 READIMM_(imm, 32); imm = (int32_t) (uint32_t) imm
 #define READMODRM_MEM READMODRM; if (modrm.type == modrm_reg) UNDEFINED
 #define READMODRM_NOMEM READMODRM; if (modrm.type != modrm_reg) UNDEFINED
 
@@ -1153,10 +1154,10 @@ restart:
                    READIMM8; JCXZ_REL(imm); break;
 
         case 0xe8: TRACEI("call near\t");
-                   READIMM; CALL_REL(imm); break;
+                   READIMM32; CALL_REL(imm); break;
 
         case 0xe9: TRACEI("jmp rel\t");
-                   READIMM; JMP_REL(imm); break;
+                   READIMM32; JMP_REL(imm); break;
         case 0xeb: TRACEI("jmp rel8\t");
                    READIMM8; JMP_REL(imm); break;
 
