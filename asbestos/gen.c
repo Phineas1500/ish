@@ -328,6 +328,7 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
 } while (0)
 // the first four arguments are the same with CALL,
 // the last one is the call target, patchable by return chaining.
+#ifdef ISH_64BIT
 #define CALL_REL(off) do { \
     addr_t target_addr = fake_ip + off; \
     TRACE_debug("CALL_REL: target offset=%d, fake_ip=0x%lx, target addr=0x%lx, orig_ip=0x%lx\n", \
@@ -337,6 +338,14 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
     jump_ips(-1, 0); \
     end_block = true; \
 } while (0)
+#else
+#define CALL_REL(off) do { \
+    gggggg(call, state->orig_ip, -1, fake_ip, fake_ip, fake_ip + off); \
+    state->block_patch_ip = state->size - 4; \
+    jump_ips(-2, -1); \
+    end_block = true; \
+} while (0)
+#endif
 #ifdef ISH_64BIT
 #define RET_NEAR(imm) do { \
     TRACE_debug("RET_NEAR: using ret64 gadget, stack adjustment=%d\n", imm); \

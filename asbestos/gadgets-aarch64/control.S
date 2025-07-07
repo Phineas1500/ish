@@ -91,6 +91,7 @@
     b fiber_ret
     read_bullshit 32, ret
 
+#ifdef ISH_64BIT
 .gadget ret64
     mov _xaddr, rsp
     // load return address and save to _xtmp (64-bit)
@@ -125,6 +126,7 @@
     mov rip, _xtmp
     b fiber_ret
     read_bullshit 64, ret64
+#endif
 
 .gadget jmp_indir
     mov eip, _tmp
