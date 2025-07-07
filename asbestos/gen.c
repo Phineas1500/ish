@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
+#include "debug.h"
 #include "asbestos/gen.h"
 #include "emu/modrm.h"
 #include "emu/cpuid.h"
@@ -161,6 +162,7 @@ typedef void (*gadget_t)(void);
 #define gggg(_g, a, b, c) do { g(_g); GEN(a); GEN(b); GEN(c); } while (0)
 #define ggggg(_g, a, b, c, d) do { g(_g); GEN(a); GEN(b); GEN(c); GEN(d); } while (0)
 #define gggggg(_g, a, b, c, d, e) do { g(_g); GEN(a); GEN(b); GEN(c); GEN(d); GEN(e); } while (0)
+#define ggggggg(_g, a, b, c, d, e, f, h) do { g(_g); GEN(a); GEN(b); GEN(c); GEN(d); GEN(e); GEN(f); GEN(h); } while (0)
 #define ga(g, i) do { extern gadget_t g##_gadgets[]; if (g##_gadgets[i] == NULL) UNDEFINED; GEN(g##_gadgets[i]); } while (0)
 #define gag(g, i, a) do { ga(g, i); GEN(a); } while (0)
 #define gagg(g, i, a, b) do { ga(g, i); GEN(a); GEN(b); } while (0)
@@ -277,11 +279,25 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
 #define NOT(val,z) load(val,z); gz(not, z); store(val,z)
 #define NEG(val,z) imm = 0; load(imm,z); op(sub, val,z); store(val,z)
 
+#ifdef ISH_64BIT
 #define POP(thing,z) \
+    TRACE_debug("POP: using pop64 gadget, size=%d\n", z); \
+    gg(pop64, state->orig_ip); \
+    state->orig_ip_extra = 1ul << 62; /* marks that on segfault the stack pointer should be adjusted */\
+    store(thing, z)
+#define PUSH(thing,z) \
+    TRACE_debug("PUSH: using push64 gadget, size=%d\n", z); \
+    load(thing, z); gg(push64, state->orig_ip)
+#else
+#define POP(thing,z) \
+    TRACE_debug("POP: using pop gadget, size=%d\n", z); \
     gg(pop, state->orig_ip); \
     state->orig_ip_extra = 1ul << 62; /* marks that on segfault the stack pointer should be adjusted */\
     store(thing, z)
-#define PUSH(thing,z) load(thing, z); gg(push, state->orig_ip)
+#define PUSH(thing,z) \
+    TRACE_debug("PUSH: using push gadget, size=%d\n", z); \
+    load(thing, z); gg(push, state->orig_ip)
+#endif
 
 #define INC(val,z) load(val, z); gz(inc, z); store(val, z)
 #define DEC(val,z) load(val, z); gz(dec, z); store(val, z)
@@ -313,12 +329,27 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
 // the first four arguments are the same with CALL,
 // the last one is the call target, patchable by return chaining.
 #define CALL_REL(off) do { \
-    gggggg(CALL_GADGET, state->orig_ip, -1, fake_ip, fake_ip, fake_ip + off); \
-    state->block_patch_ip = state->size - 4; \
-    jump_ips(-2, -1); \
+    addr_t target_addr = fake_ip + off; \
+    TRACE_debug("CALL_REL: target offset=%d, fake_ip=0x%lx, target addr=0x%lx, orig_ip=0x%lx\n", \
+        off, fake_ip, target_addr, state->orig_ip); \
+    ggggg(CALL_GADGET, state->orig_ip, -1, fake_ip, target_addr); \
+    state->block_patch_ip = state->size - 2; \
+    jump_ips(-1, 0); \
     end_block = true; \
 } while (0)
-#define RET_NEAR(imm) ggg(ret, state->orig_ip, 4 + imm); end_block = true
+#ifdef ISH_64BIT
+#define RET_NEAR(imm) do { \
+    TRACE_debug("RET_NEAR: using ret64 gadget, stack adjustment=%d\n", imm); \
+    ggg(ret64, state->orig_ip, 8 + imm); \
+    end_block = true; \
+} while (0)
+#else
+#define RET_NEAR(imm) do { \
+    TRACE_debug("RET_NEAR: using ret gadget, stack adjustment=%d\n", imm); \
+    ggg(ret, state->orig_ip, 4 + imm); \
+    end_block = true; \
+} while (0)
+#endif
 #define INT(code) gggg(interrupt, (uint8_t) code, state->ip, 0); end_block = true
 
 #define SET(cc, dst) ga(set, cond_##cc); store(dst, 8)

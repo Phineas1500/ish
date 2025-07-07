@@ -20,21 +20,22 @@
 
 #ifdef ISH_64BIT
 .gadget call64
-    // save return address
+    // save return address to 64-bit stack
     sub _xaddr, rsp, 8
     write_prep 64, call64
-    ldr x8, [_ip, 32]
+    ldr x8, [_ip, 16]  // load 64-bit return address
     str x8, [_xaddr]
-    // push stack pointer
+    // push stack pointer (8 bytes for 64-bit)
     sub rsp, rsp, 8
-    // save ip-to-arguments to return cache
-    ubfx w12, w8, 4, 12
+    // save ip-to-arguments to return cache (use lower 32 bits)
+    mov w9, w8  // w9 = lower 32 bits of return address
+    ubfx w12, w9, 4, 12
     write_done 64, call64 // clobbers w8
     add x13, _cpu, LOCAL_ret_cache
     str _ip, [x13, x12, lsl 3]
-    // jump to target
-    ldr _ip, [_ip, 64]
-    b fiber_ret_chain
+    // jump to target x86 address (like call_indir)
+    ldr rip, [_ip, 32]  // load 64-bit target address into RIP
+    b fiber_ret
     write_bullshit 64, call64
 #endif
 
@@ -89,6 +90,41 @@
     mov eip, _tmp
     b fiber_ret
     read_bullshit 32, ret
+
+.gadget ret64
+    mov _xaddr, rsp
+    // load return address and save to _xtmp (64-bit)
+    read_prep 64, ret64
+    ldr _xtmp, [_xaddr]
+    // pop stack pointer (8 bytes for 64-bit)
+    ldr x8, [_ip, 8]
+    add rsp, rsp, x8
+    // load saved ip in return cache (use lower 32 bits of 64-bit return address)
+    mov w9, w0  // w0 is the 32-bit view of _xtmp (x0)
+    ubfx w12, w9, 4, 12
+    add x13, _cpu, LOCAL_ret_cache
+    ldr _ip, [x13, x12, lsl 3]
+    // found?
+    cbz _ip, 2f
+    // check if we jumped to the correct CALL instruction
+    ldr w10, [_ip, 16]
+    ldr x8, [_ip, 8]
+    cmp w9, w10
+    b.ne 1f
+    // good, now do return chaining, the logic is similar to `fiber_ret_chain`
+    ldr _ip, [_ip, 24]
+    cmp _ip, 0
+    b.lt 1f
+    sub x8, _ip, FIBER_BLOCK_code
+    str x8, [_cpu, LOCAL_last_block]
+    gret
+1:
+    str x8, [_cpu, LOCAL_last_block]
+    // fallthrough
+2:
+    mov rip, _xtmp
+    b fiber_ret
+    read_bullshit 64, ret64
 
 .gadget jmp_indir
     mov eip, _tmp

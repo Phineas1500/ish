@@ -13,3 +13,4 @@
 #define INT_GPF 13
 #define INT_TIMER 32
 #define INT_SYSCALL 0x80
+#define INT_SYSCALL64 0x81

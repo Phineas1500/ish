@@ -60,6 +60,7 @@ __no_instrument void *tlb_handle_miss(struct tlb *tlb, addr_t addr, int type) {
         FILE *f = fopen("/tmp/debug_tlb.txt", "a");
         if (f) {
             // Get current task and CPU state
+#ifdef ISH_64BIT
             if (current && current->cpu.rip) {
                 fprintf(f, "TLB miss: addr=0x%llx, type=%s, page=0x%llx, ip=0x%llx, pid=%d\n", 
                         (unsigned long long)addr, 
@@ -108,6 +109,22 @@ __no_instrument void *tlb_handle_miss(struct tlb *tlb, addr_t addr, int type) {
                         type == 0 ? "READ" : type == 1 ? "WRITE" : "OTHER",
                         (unsigned long long)TLB_PAGE(addr));
             }
+#else
+            // 32-bit build - use eip instead of rip
+            if (current && current->cpu.eip) {
+                fprintf(f, "TLB miss: addr=0x%llx, type=%s, page=0x%llx, ip=0x%x, pid=%d\n", 
+                        (unsigned long long)addr, 
+                        type == 0 ? "READ" : type == 1 ? "WRITE" : "OTHER",
+                        (unsigned long long)TLB_PAGE(addr),
+                        current->cpu.eip,
+                        current->pid);
+            } else {
+                fprintf(f, "TLB miss: addr=0x%llx, type=%s, page=0x%llx (no CPU context)\n", 
+                        (unsigned long long)addr, 
+                        type == 0 ? "READ" : type == 1 ? "WRITE" : "OTHER",
+                        (unsigned long long)TLB_PAGE(addr));
+            }
+#endif
             fclose(f);
         }
         return NULL;

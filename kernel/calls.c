@@ -280,6 +280,27 @@ void handle_interrupt(int interrupt) {
             STRACE(" = 0x%x\n", result);
             cpu->eax = result;
         }
+#ifdef ISH_64BIT
+    } else if (interrupt == INT_SYSCALL64) {
+        // 64-bit syscall instruction - use proper 64-bit register convention
+        unsigned syscall_num = cpu->rax;
+        if (syscall_num >= NUM_SYSCALLS || syscall_table[syscall_num] == NULL) {
+            printk("%d(%s) missing 64-bit syscall %d\n", current->pid, current->comm, syscall_num);
+            cpu->rax = _ENOSYS;
+        } else {
+            if (syscall_table[syscall_num] == (syscall_t) syscall_stub) {
+                printk("%d(%s) stub 64-bit syscall %d\n", current->pid, current->comm, syscall_num);
+            }
+            STRACE("%d 64-bit call %-3d ", current->pid, syscall_num);
+            // 64-bit syscall uses different register convention:
+            // rdi, rsi, rdx, r10, r8, r9 (not ebx, ecx, edx, esi, edi, ebp)
+            int result = syscall_table[syscall_num](
+                cpu->rdi, cpu->rsi, cpu->rdx,
+                cpu->r10, cpu->r8, cpu->r9);
+            STRACE(" = 0x%x\n", result);
+            cpu->rax = result;
+        }
+#endif
     } else if (interrupt == INT_GPF) {
         // some page faults, such as stack growing or CoW clones, are handled by mem_ptr
         read_wrlock(&current->mem->lock);
