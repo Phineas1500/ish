@@ -136,7 +136,7 @@ r10b .req w6
 
 _ip .req x28
 eip .req w28
-rip .req x28
+rip .req x19
 _tmp .req w0
 _xtmp .req x0
 _cpu .req x1

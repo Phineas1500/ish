@@ -334,7 +334,7 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
     TRACE_debug("CALL_REL: target offset=%d, fake_ip=0x%lx, target addr=0x%lx, orig_ip=0x%lx\n", \
         off, fake_ip, target_addr, state->orig_ip); \
     ggggg(CALL_GADGET, state->orig_ip, -1, fake_ip, target_addr); \
-    state->block_patch_ip = state->size - 2; \
+    state->block_patch_ip = state->size - 3; \
     jump_ips(-1, 0); \
     end_block = true; \
 } while (0)

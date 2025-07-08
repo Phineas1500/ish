@@ -21,6 +21,7 @@
 #ifdef ISH_64BIT
 .gadget call64
     // save return address to 64-bit stack
+    sub rsp, rsp, 8  // align stack to 16-byte boundary
     sub _xaddr, rsp, 8
     write_prep 64, call64
     ldr x8, [_ip, 16]  // load 64-bit return address
@@ -34,8 +35,9 @@
     add x13, _cpu, LOCAL_ret_cache
     str _ip, [x13, x12, lsl 3]
     // jump to target x86 address (like call_indir)
-    ldr rip, [_ip, 32]  // load 64-bit target address into RIP
-    b fiber_ret
+    ldr x9, [_ip, 32]  // load 64-bit target address into a temporary register
+    mov rip, x9        // move the target address to rip
+    b fiber_ret_chain
     write_bullshit 64, call64
 #endif
 
@@ -97,9 +99,10 @@
     // load return address and save to _xtmp (64-bit)
     read_prep 64, ret64
     ldr _xtmp, [_xaddr]
-    // pop stack pointer (8 bytes for 64-bit)
+    // pop stack pointer (8 bytes for 64-bit + 8 for alignment)
     ldr x8, [_ip, 8]
     add rsp, rsp, x8
+    add rsp, rsp, 8  // remove extra alignment padding
     // load saved ip in return cache (use lower 32 bits of 64-bit return address)
     mov w9, w0  // w0 is the 32-bit view of _xtmp (x0)
     ubfx w12, w9, 4, 12
