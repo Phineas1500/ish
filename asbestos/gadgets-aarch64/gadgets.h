@@ -161,6 +161,26 @@ _xaddr .req x3
 .irp type, read,write
 
 .macro \type\()_prep size, id
+#ifdef ISH_64BIT
+    and x8, _xaddr, 0xfff
+    cmp x8, (0x1000-(\size/8))
+    b.hi crosspage_load_\id
+    and x8, _xaddr, 0xfffff000
+    str w8, [_tlb, (-TLB_entries+TLB_dirty_page)]
+    ubfx x9, _xaddr, 12, 10
+    eor x9, x9, _xaddr, lsr 22
+    lsl x9, x9, 4
+    add x9, x9, _tlb
+    .ifc \type,read
+        ldr w10, [x9, TLB_ENTRY_page]
+    .else
+        ldr w10, [x9, TLB_ENTRY_page_if_writable]
+    .endif
+    cmp w8, w10
+    b.ne handle_miss_\id
+    ldr x10, [x9, TLB_ENTRY_data_minus_addr]
+    add _xaddr, x10, _xaddr, uxtx
+#else
     and w8, _addr, 0xfff
     cmp x8, (0x1000-(\size/8))
     b.hi crosspage_load_\id
@@ -179,6 +199,7 @@ _xaddr .req x3
     b.ne handle_miss_\id
     ldr x10, [x9, TLB_ENTRY_data_minus_addr]
     add _xaddr, x10, _xaddr, uxtx
+#endif
 back_\id:
 .endm
 
@@ -478,6 +499,7 @@ back_write_done_\id :
     ldr rdi, [_cpu, CPU_rdi]
     ldr rbp, [_cpu, CPU_rbp]
     ldr rsp, [_cpu, CPU_rsp]
+    ldr rip, [_cpu, CPU_rip]
     # Load extended registers (Final: R8-R10 only, R11+ memory-based)
     ldr r8, [_cpu, CPU_r8]
     ldr r9, [_cpu, CPU_r9]

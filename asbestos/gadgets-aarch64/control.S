@@ -20,29 +20,21 @@
 
 #ifdef ISH_64BIT
 .gadget call64
-    // save return address to 64-bit stack
-    sub rsp, rsp, 8  // align stack to 16-byte boundary
-    sub _xaddr, rsp, 8
+    // save return address (back to original approach with rsp)
+    sub _xaddr, rsp, 8  // Use 64-bit stack pointer
     write_prep 64, call64
-    ldr x8, [_ip, 16]  // load 64-bit return address
+    ldr x8, [_ip, 16]
     str x8, [_xaddr]
-    // push stack pointer (8 bytes for 64-bit)
+    // push stack pointer
     sub rsp, rsp, 8
-    // save ip-to-arguments to return cache (use lower 32 bits)
+    // save ip-to-arguments to return cache
     mov w9, w8  // w9 = lower 32 bits of return address
     ubfx w12, w9, 4, 12
     write_done 64, call64 // clobbers w8
     add x13, _cpu, LOCAL_ret_cache
     str _ip, [x13, x12, lsl 3]
-    // jump to target x86 address (like call_indir)  
-    ldr x9, [_ip, 40]  // load 64-bit target address from parameter 5 (offset 40)
-    
-    // DEBUG: Store values for lldb examination
-    mov x20, _ip       // Store original _ip in x20
-    mov x21, x9        // Store loaded target in x21  
-    mov x22, #0xBEEF   // Debug marker (smaller value)
-    
-    mov _ip, x9        // move target address to _ip
+    // jump to target
+    ldr _ip, [_ip, 48]  // load 64-bit target address from parameter 6 (offset 48)
     b fiber_ret_chain
     write_bullshit 64, call64
 #endif

@@ -19,7 +19,16 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     state->orig_ip = state->ip;
     state->orig_ip_extra = 0;
 #ifdef ISH_64BIT
-    return gen_step64(state, tlb);
+    fprintf(stderr, "DEBUG: gen_step ENTRY - state->ip = 0x%llx\n", state->ip);
+    fprintf(stderr, "DEBUG: About to call gen_step64...\n");
+    fflush(stderr);
+    int result = gen_step64(state, tlb);
+    fprintf(stderr, "DEBUG: gen_step64 returned successfully, result = %d\n", result);
+    fprintf(stderr, "DEBUG: gen_step EXIT - state->ip = 0x%llx, result = %d\n", state->ip, result);
+    if (state->ip == 0) {
+        fprintf(stderr, "DEBUG: CORRUPTION DETECTED! state->ip became 0!\n");
+    }
+    return result;
 #else
     return gen_step32(state, tlb);
 #endif
@@ -37,6 +46,9 @@ static void gen(struct gen_state *state, unsigned long thing) {
         state->block = bigger_block;
     }
     assert(state->size < state->capacity);
+#ifdef ISH_64BIT
+    fprintf(stderr, "DEBUG: gen - adding gadget 0x%lx at index %d\n", thing, state->size);
+#endif
     state->block->code[state->size++] = thing;
 }
 
@@ -84,6 +96,7 @@ void gen_end(struct gen_state *state) {
 void gen_exit(struct gen_state *state) {
     extern void gadget_exit(void);
     // in case the last instruction didn't end the block
+    fprintf(stderr, "DEBUG: gen_exit - state->ip = 0x%llx\n", state->ip);
     gen(state, (unsigned long) gadget_exit);
     gen(state, state->ip);
 }
