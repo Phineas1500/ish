@@ -19,6 +19,10 @@ extern int current_pid(void);
 // this will be the next PyEval_EvalFrameEx
 __no_instrument DECODER_RET glue(DECODER_NAME, OP_SIZE)(DECODER_ARGS) {
     DECLARE_LOCALS;
+    
+#ifdef DEBUG_DECODE_ENTRY
+    DEBUG_DECODE_ENTRY
+#endif
 
     byte_t insn;
     uint64_t imm = 0;

@@ -34,9 +34,15 @@
     write_done 64, call64 // clobbers w8
     add x13, _cpu, LOCAL_ret_cache
     str _ip, [x13, x12, lsl 3]
-    // jump to target x86 address (like call_indir)
-    ldr x9, [_ip, 32]  // load 64-bit target address into a temporary register
-    mov rip, x9        // move the target address to rip
+    // jump to target x86 address (like call_indir)  
+    ldr x9, [_ip, 40]  // load 64-bit target address from parameter 5 (offset 40)
+    
+    // DEBUG: Store values for lldb examination
+    mov x20, _ip       // Store original _ip in x20
+    mov x21, x9        // Store loaded target in x21  
+    mov x22, #0xBEEF   // Debug marker (smaller value)
+    
+    mov _ip, x9        // move target address to _ip
     b fiber_ret_chain
     write_bullshit 64, call64
 #endif

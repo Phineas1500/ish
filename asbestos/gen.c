@@ -162,7 +162,8 @@ typedef void (*gadget_t)(void);
 #define gggg(_g, a, b, c) do { g(_g); GEN(a); GEN(b); GEN(c); } while (0)
 #define ggggg(_g, a, b, c, d) do { g(_g); GEN(a); GEN(b); GEN(c); GEN(d); } while (0)
 #define gggggg(_g, a, b, c, d, e) do { g(_g); GEN(a); GEN(b); GEN(c); GEN(d); GEN(e); } while (0)
-#define ggggggg(_g, a, b, c, d, e, f, h) do { g(_g); GEN(a); GEN(b); GEN(c); GEN(d); GEN(e); GEN(f); GEN(h); } while (0)
+#define ggggggg(_g, a, b, c, d, e, f) do { g(_g); GEN(a); GEN(b); GEN(c); GEN(d); GEN(e); GEN(f); } while (0)
+#define gggggggg(_g, a, b, c, d, e, f, h) do { g(_g); GEN(a); GEN(b); GEN(c); GEN(d); GEN(e); GEN(f); GEN(h); } while (0)
 #define ga(g, i) do { extern gadget_t g##_gadgets[]; if (g##_gadgets[i] == NULL) UNDEFINED; GEN(g##_gadgets[i]); } while (0)
 #define gag(g, i, a) do { ga(g, i); GEN(a); } while (0)
 #define gagg(g, i, a, b) do { ga(g, i); GEN(a); GEN(b); } while (0)
@@ -332,9 +333,7 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
 #define CALL_REL(off) do { \
     addr_t target_addr = fake_ip + off; \
     /* Debug removed for cleaner output */ \
-    TRACE_debug("CALL_REL: target offset=%d, fake_ip=0x%lx, target addr=0x%lx, orig_ip=0x%lx\n", \
-        off, fake_ip, target_addr, state->orig_ip); \
-    gggggg(CALL_GADGET, state->orig_ip, -1, fake_ip, fake_ip, target_addr); \
+    ggggggg(CALL_GADGET, state->orig_ip, -1, fake_ip, fake_ip, fake_ip, target_addr); \
     state->block_patch_ip = state->size - 4; \
     jump_ips(-2, -1); \
     end_block = true; \
