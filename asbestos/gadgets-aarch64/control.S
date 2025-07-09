@@ -33,7 +33,6 @@
     write_done 64, call64 // clobbers w8
     add x13, _cpu, LOCAL_ret_cache
     str _ip, [x13, x12, lsl 3]
-    // jump to target
     ldr _ip, [_ip, 48]  // load 64-bit target address from parameter 6 (offset 48)
     b fiber_ret_chain
     write_bullshit 64, call64

@@ -140,7 +140,7 @@ rip .req x19
 _tmp .req w0
 _xtmp .req x0
 _cpu .req x1
-_tlb .req x2
+_tlb .req x14
 _addr .req w3
 _xaddr .req x3
 
@@ -169,14 +169,33 @@ _xaddr .req x3
     str x8, [_tlb, (-TLB_entries+TLB_dirty_page)]
     ubfx x9, _xaddr, 12, 10
     eor x9, x9, _xaddr, lsr 22
-    lsl x9, x9, 4
+#ifdef ISH_64BIT
+    // 64-bit TLB entries are 24 bytes (not 16)
+    lsl x10, x9, 4              // x10 = x9 * 16
+    lsl x11, x9, 3              // x11 = x9 * 8
+    add x9, x10, x11            // x9 = x9 * 24
+#else
+    lsl x9, x9, 4               // 32-bit entries are 16 bytes
+#endif
     add x9, x9, _tlb
     .ifc \type,read
+#ifdef ISH_64BIT
+        ldr x10, [x9, TLB_ENTRY_page]
+#else
         ldr w10, [x9, TLB_ENTRY_page]
+#endif
     .else
+#ifdef ISH_64BIT
+        ldr x10, [x9, TLB_ENTRY_page_if_writable]
+#else
         ldr w10, [x9, TLB_ENTRY_page_if_writable]
+#endif
     .endif
+#ifdef ISH_64BIT
+    cmp x8, x10
+#else
     cmp w8, w10
+#endif
     b.ne handle_miss_\id
     ldr x10, [x9, TLB_ENTRY_data_minus_addr]
     add _xaddr, x10, _xaddr, uxtx
@@ -191,11 +210,23 @@ _xaddr .req x3
     lsl x9, x9, 4
     add x9, x9, _tlb
     .ifc \type,read
+#ifdef ISH_64BIT
+        ldr x10, [x9, TLB_ENTRY_page]
+#else
         ldr w10, [x9, TLB_ENTRY_page]
+#endif
     .else
+#ifdef ISH_64BIT
+        ldr x10, [x9, TLB_ENTRY_page_if_writable]
+#else
         ldr w10, [x9, TLB_ENTRY_page_if_writable]
+#endif
     .endif
+#ifdef ISH_64BIT
+    cmp x8, x10
+#else
     cmp w8, w10
+#endif
     b.ne handle_miss_\id
     ldr x10, [x9, TLB_ENTRY_data_minus_addr]
     add _xaddr, x10, _xaddr, uxtx

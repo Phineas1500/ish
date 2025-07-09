@@ -15,24 +15,10 @@ NAME(fiber_enter):
     # cpu is already x1
     add _tlb, x2, TLB_entries
     load_regs
-#ifdef ISH_64BIT
-    // Debug: Print _ip at fiber_enter
-    stp x0, x1, [sp, -0x20]!
-    mov x0, _ip
-    bl NAME(debug_print_ip)
-    ldp x0, x1, [sp], 0x20
-#endif
     gret
 
 .global fiber_ret_chain
 fiber_ret_chain:
-#ifdef ISH_64BIT
-    // Debug: Check _ip before using it
-    stp x0, x1, [sp, -0x20]!
-    mov x0, _ip
-    bl NAME(debug_print_fiber_ret_chain)
-    ldp x0, x1, [sp], 0x20
-#endif
     cmp _ip, 0
     b.lt fiber_ret
     ldr x8, [_cpu, CPU_poked_ptr]
@@ -41,13 +27,6 @@ fiber_ret_chain:
     b.ne poke
     sub x8, _ip, FIBER_BLOCK_code
     str x8, [_cpu, LOCAL_last_block]
-#ifdef ISH_64BIT
-    // Debug: Print _ip before gret
-    stp x0, x1, [sp, -0x20]!
-    mov x0, _ip
-    bl NAME(debug_print_before_gret)
-    ldp x0, x1, [sp], 0x20
-#endif
     gret
 
 poke:
