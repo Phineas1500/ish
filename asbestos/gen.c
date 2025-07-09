@@ -320,6 +320,15 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
 // -1: will be patched to block address in gen_end();
 // fake_ip: the first one is the return address, used for saving to stack and verifying the cached ip in return cache is correct;
 // fake_ip: the second one is the return target, patchable by return chaining.
+#ifdef ISH_64BIT
+#define CALL(loc) do { \
+    load(loc, OP_SIZE); \
+    ggggg(call_indir64, state->orig_ip, -1, fake_ip, fake_ip); \
+    state->block_patch_ip = state->size - 3; \
+    jump_ips(-1, 0); \
+    end_block = true; \
+} while (0)
+#else
 #define CALL(loc) do { \
     load(loc, OP_SIZE); \
     ggggg(call_indir, state->orig_ip, -1, fake_ip, fake_ip); \
@@ -327,15 +336,16 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
     jump_ips(-1, 0); \
     end_block = true; \
 } while (0)
+#endif
 // the first four arguments are the same with CALL,
 // the last one is the call target, patchable by return chaining.
 #ifdef ISH_64BIT
 #define CALL_REL(off) do { \
     addr_t target_addr = fake_ip + off; \
-    /* Debug removed for cleaner output */ \
+    /* printf("DEBUG: CALL_REL off=%lld, fake_ip=0x%llx, target_addr=0x%llx, state->ip=0x%llx\n", (long long)off, (unsigned long long)fake_ip, (unsigned long long)target_addr, (unsigned long long)state->ip); */ \
     ggggggg(CALL_GADGET, state->orig_ip, -1, fake_ip, fake_ip, fake_ip, target_addr); \
-    state->block_patch_ip = state->size - 4; \
-    jump_ips(-2, -1); \
+    state->block_patch_ip = state->size - 3; \
+    jump_ips(-1, 0); \
     end_block = true; \
 } while (0)
 #else
