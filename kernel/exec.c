@@ -231,10 +231,17 @@ static int load_entry(struct prg_header_unified ph, addr_t bias, struct fd *fd) 
     int flags = P_READ;
     if (ph.flags & PH_W) flags |= P_WRITE;
 
+    TRACE_memory("Loading ELF segment: vaddr=0x%llx, bias=0x%llx, final_addr=0x%llx, filesize=0x%llx, memsize=0x%llx, flags=0x%x\n",
+                 ph.vaddr, bias, addr, filesize, memsize, flags);
+
     if ((err = fd->ops->mmap(fd, current->mem, PAGE(addr),
                     PAGE_ROUND_UP(filesize + PGOFFSET(addr)),
-                    offset - PGOFFSET(addr), flags, MMAP_PRIVATE)) < 0)
+                    offset - PGOFFSET(addr), flags, MMAP_PRIVATE)) < 0) {
+        TRACE_memory("mmap failed for addr=0x%llx, pages=%d, error=%d\n", addr, PAGE_ROUND_UP(filesize + PGOFFSET(addr)), err);
         return err;
+    }
+    
+    TRACE_memory("mmap succeeded for addr=0x%llx, pages=%d\n", addr, PAGE_ROUND_UP(filesize + PGOFFSET(addr)));
     // TODO find a better place for these to avoid code duplication
     mem_pt(current->mem, PAGE(addr))->data->fd = fd_retain(fd);
     mem_pt(current->mem, PAGE(addr))->data->file_offset = offset - PGOFFSET(addr);
@@ -285,16 +292,35 @@ static addr_t find_hole_for_elf(struct elf_header_unified *header, struct prg_he
         pages_t b = PAGE(first->vaddr);
         size = a - b;
     }
+    
+#ifdef ISH_64BIT
+    if (header->bitness == ELF_64BIT) {
+        // For 64-bit programs, find holes in the 64-bit address space
+        // Use a simple approach: start at high 64-bit addresses and work down
+        // This matches Linux's typical mmap behavior for 64-bit processes
+        for (page_t start_page = 0x7ffe00000; start_page > 0x100000; start_page -= 0x10000) {
+            if (pt_is_hole(current->mem, start_page, size)) {
+                return start_page << PAGE_BITS;
+            }
+        }
+    }
+#endif
+    
+    // Fallback to 32-bit address space or when above fails
     return pt_find_hole(current->mem, size) << PAGE_BITS;
 }
 
 static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, struct exec_args envp) {
+    TRACE_memory("elf_exec called for file: %s\n", file);
     int err = 0;
 
     // read the headers
     struct elf_header_unified header;
-    if ((err = read_header(fd, &header)) < 0)
+    if ((err = read_header(fd, &header)) < 0) {
+        TRACE_memory("read_header failed for file: %s, error: %d\n", file, err);
         return err;
+    }
+    TRACE_memory("read_header succeeded for file: %s\n", file);
     struct prg_header_unified *ph;
     if ((err = read_prg_headers(fd, header, &ph)) < 0)
         return err;
@@ -376,6 +402,14 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
 #endif
             else
                 bias = find_hole_for_elf(&header, ph);
+                
+            // Debug: Log bias calculation
+            FILE *f = fopen("/tmp/debug_exec.txt", "a");
+            if (f) { 
+                fprintf(f, "ELF type: %d (ELF_DYNAMIC=%d), interp_name: %s, bias: 0x%llx\n", 
+                        header.type, ELF_DYNAMIC, interp_name ? interp_name : "NULL", (unsigned long long)bias);
+                fclose(f); 
+            }
         }
 
         if ((err = load_entry(ph[i], bias, fd)) < 0)
@@ -399,6 +433,15 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     if (interp_name) {
         // map dat shit! interpreter edition
         interp_base = find_hole_for_elf(&interp_header, interp_ph);
+        
+        // Debug: Log interpreter loading
+        FILE *f = fopen("/tmp/debug_exec.txt", "a");
+        if (f) { 
+            fprintf(f, "Interpreter: %s, bitness: %d, interp_base: 0x%llx, entry_point: 0x%llx\n", 
+                    interp_name, interp_header.bitness, (unsigned long long)interp_base, (unsigned long long)interp_header.entry_point);
+            fclose(f); 
+        }
+        
         for (int i = interp_header.phent_count - 1; i >= 0; i--) {
             if (interp_ph[i].type != PT_LOAD)
                 continue;
@@ -406,6 +449,13 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
                 goto beyond_hope;
         }
         entry = interp_base + interp_header.entry_point;
+        
+        // Debug: Log final entry point
+        f = fopen("/tmp/debug_exec.txt", "a");
+        if (f) { 
+            fprintf(f, "Final entry point: 0x%llx (interp_base + interp_header.entry_point)\n", (unsigned long long)entry);
+            fclose(f); 
+        }
     }
 
     // map vdso
@@ -787,7 +837,9 @@ static inline int user_memset(addr_t start, byte_t val, dword_t len) {
 }
 
 static int format_exec(struct fd *fd, const char *file, struct exec_args argv, struct exec_args envp) {
+    TRACE_memory("format_exec called for file: %s\n", file);
     int err = elf_exec(fd, file, argv, envp);
+    TRACE_memory("elf_exec returned: %d for file: %s\n", err, file);
     if (err != _ENOEXEC)
         return err;
     // other formats would go here
@@ -874,23 +926,30 @@ static int shebang_exec(struct fd *fd, const char *file, struct exec_args argv, 
 }
 
 int __do_execve(const char *file, struct exec_args argv, struct exec_args envp) {
+    TRACE_memory("__do_execve called for file: %s\n", file);
+    
     struct fd *fd = generic_open(file, O_RDONLY, 0);
-    if (IS_ERR(fd))
+    if (IS_ERR(fd)) {
+        TRACE_memory("Failed to open file: %s, error: %ld\n", file, PTR_ERR(fd));
         return PTR_ERR(fd);
+    }
 
     struct statbuf stat;
     int err = fd->mount->fs->fstat(fd, &stat);
     if (err < 0) {
+        TRACE_memory("Failed to fstat file: %s, error: %d\n", file, err);
         fd_close(fd);
         return err;
     }
 
     // if nobody has permission to execute, it should be safe to not execute
     if (!(stat.mode & 0111)) {
+        TRACE_memory("File not executable: %s, mode: %o\n", file, stat.mode);
         fd_close(fd);
         return _EACCES;
     }
 
+    TRACE_memory("About to call format_exec for file: %s\n", file);
     err = format_exec(fd, file, argv, envp);
     if (err == _ENOEXEC)
         err = shebang_exec(fd, file, argv, envp);

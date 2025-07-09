@@ -405,7 +405,23 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
 }
 
 static void *mem_mmu_translate(struct mmu *mmu, addr_t addr, int type) {
-    return mem_ptr_nofault(container_of(mmu, struct mem, mmu), addr, type);
+    struct mem *mem = container_of(mmu, struct mem, mmu);
+    void *result = mem_ptr_nofault(mem, addr, type);
+    
+    if (result == NULL) {
+        page_t page = PAGE(addr);
+        TRACE_memory("MMU translation failed for addr=0x%llx, page=0x%llx, type=%d\n", addr, page, type);
+        
+        // Check if page table entry exists
+        struct pt_entry *entry = mem_pt(mem, page);
+        if (entry == NULL) {
+            TRACE_memory("No page table entry for page 0x%llx\n", page);
+        } else {
+            TRACE_memory("Page table entry exists but data=%p, flags=0x%x\n", entry->data, entry->flags);
+        }
+    }
+    
+    return result;
 }
 
 static struct mmu_ops mem_mmu_ops = {
