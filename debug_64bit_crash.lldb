@@ -1,0 +1,8 @@
+#!/usr/bin/env lldb
+target create ./build-64bit/ish
+settings set -- target.run-args "-f" "alpine-64bit-processed" "/bin/busybox" "echo" "test"
+run
+bt
+register read
+continue
+

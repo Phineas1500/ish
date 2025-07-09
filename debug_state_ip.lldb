@@ -1,0 +1,28 @@
+# LLDB script to debug state->ip corruption during 64-bit gadget execution
+
+# Set target and arguments
+file build-64bit-debug-new/ish
+settings set target.run-args -f alpine-64bit-processed /bin/busybox echo "test"
+
+# Set breakpoint right before fiber_enter call
+breakpoint set -n fiber_enter
+
+# Set breakpoint in gen_step64 to track state->ip
+breakpoint set -f gen.c -l 19 --condition 'state->ip == 0xf7fc29d5'
+
+# Set a watchpoint on state->ip when it becomes non-zero
+# This will help us catch when it gets corrupted to 0
+run
+print state->ip
+watch set variable state->ip
+continue
+
+# If we hit the watchpoint, examine the call stack
+bt
+print state->ip
+print *state
+register read
+
+# Continue and see what happens
+continue
+EOF < /dev/null

@@ -1,0 +1,5 @@
+target create build-64bit/ish
+process launch -- -f alpine-64bit-processed /bin/busybox echo "debug test"
+expr -- $x28
+bt
+quit

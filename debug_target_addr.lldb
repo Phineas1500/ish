@@ -1,0 +1,9 @@
+target create build-64bit/ish
+b gadget_call64
+process launch -- -f alpine-64bit-processed /bin/busybox echo "test"
+expr -- $x28
+expr -- *(unsigned long*)($x28 + 32)
+expr -- *(unsigned long*)($x28 + 24)
+expr -- *(unsigned long*)($x28 + 16)
+c
+quit

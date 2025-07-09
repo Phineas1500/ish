@@ -1,0 +1,8 @@
+target create ./build-64bit/ish
+process launch -f alpine-64bit-processed /bin/echo test
+thread info
+register read
+memory read --size 8 --count 4 $sp
+bt
+quit
+EOF < /dev/null

@@ -1,0 +1,9 @@
+target create "./build-64bit/ish"
+settings set -- target.run-args  "-f" "alpine-64bit-processed" "/bin/echo" "test"
+b handle_interrupt
+run
+register read
+p interrupt
+bt
+register read eflags ip rip
+quit

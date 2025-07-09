@@ -1,0 +1,9 @@
+target create ./build-64bit/ish
+breakpoint set --name handle_interrupt
+run -f alpine-64bit-processed /bin/busybox echo test
+frame variable interrupt
+frame variable cpu->rip
+frame variable cpu->segfault_addr
+frame variable cpu->segfault_was_write
+memory read --size 8 --count 4 cpu
+quit

@@ -1,10 +1,12 @@
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include "kernel/calls.h"
 #include "kernel/task.h"
 #include "xX_main_Xx.h"
 
 int main(int argc, char *const argv[]) {
+    // printf("main: ENTRY with argc=%d\n", argc);
     char envp[100] = {0};
     if (getenv("TERM")) {
         const char *term = getenv("TERM");

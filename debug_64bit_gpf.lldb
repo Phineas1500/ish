@@ -1,0 +1,8 @@
+target create ./build-64bit/ish
+breakpoint set --name handle_interrupt
+run -f alpine-64bit-processed /bin/busybox echo test
+thread backtrace
+frame variable interrupt
+frame variable cpu
+continue
+quit

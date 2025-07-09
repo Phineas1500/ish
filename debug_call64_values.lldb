@@ -1,0 +1,22 @@
+#!/usr/bin/env lldb -S
+
+# Debug script to examine call64 gadget values
+file ./build-64bit-fixed/ish
+
+# Set breakpoint in call64 gadget  
+breakpoint set -n gadget_call64
+
+run -f alpine-64bit-processed /bin/busybox echo test
+
+# When we hit the breakpoint, examine registers and memory
+continue
+print $x28
+print/x *(unsigned long*)($x28 + 48)
+print/x *(unsigned long*)($x28 + 40)
+print/x *(unsigned long*)($x28 + 32)
+print/x *(unsigned long*)($x28 + 24)
+print/x *(unsigned long*)($x28 + 16)
+print/x *(unsigned long*)($x28 + 8)
+print/x *(unsigned long*)($x28 + 0)
+
+quit

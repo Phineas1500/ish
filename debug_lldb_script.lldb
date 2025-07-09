@@ -1,0 +1,6 @@
+target create build-64bit/ish
+process launch -- -f alpine-64bit-processed /bin/busybox echo "debug test"
+bt
+register read
+memory read --size 4 --format x --count 16 $rsp
+quit

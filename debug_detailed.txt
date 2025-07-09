@@ -1,0 +1,27 @@
+DEBUG: Starting 64-bit iSH main()
+DEBUG: Calling xX_main_Xx()
+DEBUG: xX_main_Xx completed, mounting filesystems
+DEBUG: Starting task_run_current()
+DEBUG: task_run_current - entering main loop, CPU IP=f7fc33ee
+DEBUG: About to call cpu_run_to_interrupt, IP=f7fc33ee
+DEBUG: cpu_run_to_interrupt returned interrupt=6
+DEBUG: INT_UNDEFINED at IP=0xf7fc33ee
+DEBUG: About to read instruction bytes
+DEBUG: Reading byte 0 at address 0xf7fc33ee
+DEBUG: Read byte 0: 0x31
+DEBUG: Reading byte 1 at address 0xf7fc33ef
+DEBUG: Read byte 1: 0xed
+DEBUG: Reading byte 2 at address 0xf7fc33f0
+DEBUG: Read byte 2: 0x89
+DEBUG: Reading byte 3 at address 0xf7fc33f1
+DEBUG: Read byte 3: 0xe0
+DEBUG: Reading byte 4 at address 0xf7fc33f2
+DEBUG: Read byte 4: 0x83
+DEBUG: Reading byte 5 at address 0xf7fc33f3
+DEBUG: Read byte 5: 0xe4
+DEBUG: Reading byte 6 at address 0xf7fc33f4
+DEBUG: Read byte 6: 0xf0
+DEBUG: Reading byte 7 at address 0xf7fc33f5
+DEBUG: Read byte 7: 0x50
+DEBUG: About to dump stack
+DEBUG: About to deliver SIGILL

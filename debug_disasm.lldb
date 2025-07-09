@@ -1,0 +1,3 @@
+target create build-64bit/ish
+dis -n 10 -s 0x00000001000f0938
+quit

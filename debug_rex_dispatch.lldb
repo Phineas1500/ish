@@ -1,0 +1,45 @@
+target create build-64bit/ish
+settings set target.run-args "-f" "alpine-64bit-processed" "/bin/echo" "test"
+
+# Phase 1: Track REX parsing success
+breakpoint set --file decode.h --line 54 --condition "(insn & 0xF0) == 0x40"
+breakpoint command add
+  print/x insn
+  print/x rex_w
+  print/x rex_r  
+  print/x rex_x
+  print/x rex_b
+  continue
+DONE
+
+# Phase 2: Track post-REX instruction dispatch  
+breakpoint set --file decode.h --line 68
+breakpoint command add
+  print/x insn
+  print "After REX, processing actual instruction"
+  continue
+DONE
+
+# Phase 3: Catch UNDEFINED instruction trigger
+breakpoint set --file gen.c --line 168
+breakpoint command add
+  print "UNDEFINED triggered - examining context"
+  print state->orig_ip
+  print state->ip
+  bt 10
+  register read
+  continue  
+DONE
+
+# Phase 4: Monitor gadget generation
+breakpoint set --name gen_op
+breakpoint command add
+  print "gen_op called"
+  print arg
+  print size
+  continue
+DONE
+
+process launch
+continue
+quit

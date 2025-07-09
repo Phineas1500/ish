@@ -1,0 +1,6 @@
+target create build-64bit/ish
+b fiber_ret_chain
+process launch -- -f alpine-64bit-processed /bin/busybox echo "test"
+expr -- $x28
+bt
+quit

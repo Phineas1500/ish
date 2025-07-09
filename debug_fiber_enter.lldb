@@ -1,0 +1,31 @@
+# Debug fiber_enter execution to find state->ip corruption
+
+file build-64bit-debug-new/ish
+settings set target.run-args -f alpine-64bit-processed /bin/busybox echo "test"
+
+# Set breakpoint at fiber_enter
+breakpoint set -n fiber_enter
+
+# Set breakpoint at the assembly load_regs 
+# and at the first gret (gadget return)
+breakpoint set -f entry.S -l 17
+breakpoint set -f entry.S -l 18
+
+run
+continue
+
+# When we hit fiber_enter, examine the parameters
+frame variable
+print block
+print frame
+print tlb
+
+# Continue to load_regs
+continue
+
+# Continue to gret
+continue
+
+# If we're still alive, continue
+continue
+EOF < /dev/null

@@ -1,0 +1,6 @@
+target create build-64bit/ish
+b gadget_call64
+process launch -- -f alpine-64bit-processed /bin/busybox echo "test"
+dis -c 10
+bt
+quit

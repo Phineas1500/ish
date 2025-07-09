@@ -1,0 +1,17 @@
+# Continue debugging to find when state->ip becomes 0
+
+# Continue from where we left off
+continue
+
+# Keep continuing until we see state->ip become 0 or get close to the crash
+continue
+continue
+continue
+continue
+continue
+continue
+continue
+continue
+continue
+continue
+EOF < /dev/null
