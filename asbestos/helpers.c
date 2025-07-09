@@ -4,22 +4,20 @@
 #include "emu/cpuid.h"
 
 #ifdef ISH_64BIT
+// Debug functions disabled for cleaner testing
 void debug_print_ip(unsigned long ip) {
     fprintf(stderr, "DEBUG: fiber_enter - _ip = 0x%lx\n", ip);
 }
 
 void debug_print_gadget(unsigned long gadget) {
-    fprintf(stderr, "DEBUG: fiber_enter - first gadget = 0x%lx\n", gadget);
-    // Try to verify the gadget address is valid
-    if (gadget >= 0x100000000ULL && gadget < 0x200000000ULL) {
-        fprintf(stderr, "DEBUG: Gadget address looks valid (in expected range)\n");
-    } else {
-        fprintf(stderr, "DEBUG: WARNING - Gadget address looks suspicious!\n");
-    }
+    // fprintf(stderr, "DEBUG: fiber_enter - first gadget = 0x%lx\n", gadget);
 }
 
 void debug_print_fiber_ret_chain(unsigned long ip) {
     fprintf(stderr, "DEBUG: fiber_ret_chain - _ip = 0x%lx\n", ip);
+    if (ip == 0) {
+        fprintf(stderr, "DEBUG: *** NULL _IP DETECTED IN FIBER_RET_CHAIN ***\n");
+    }
 }
 
 void debug_print_before_gret(unsigned long ip) {
@@ -27,7 +25,7 @@ void debug_print_before_gret(unsigned long ip) {
 }
 
 void debug_print_next_gadget(unsigned long gadget) {
-    fprintf(stderr, "DEBUG: next gadget = 0x%lx\n", gadget);
+    // fprintf(stderr, "DEBUG: next gadget = 0x%lx\n", gadget);
 }
 
 void debug_print_rsp(unsigned long rsp) {

@@ -166,7 +166,7 @@ _xaddr .req x3
     cmp x8, (0x1000-(\size/8))
     b.hi crosspage_load_\id
     and x8, _xaddr, 0xfffff000
-    str w8, [_tlb, (-TLB_entries+TLB_dirty_page)]
+    str x8, [_tlb, (-TLB_entries+TLB_dirty_page)]
     ubfx x9, _xaddr, 12, 10
     eor x9, x9, _xaddr, lsr 22
     lsl x9, x9, 4
@@ -182,7 +182,7 @@ _xaddr .req x3
     add _xaddr, x10, _xaddr, uxtx
 #else
     and w8, _addr, 0xfff
-    cmp x8, (0x1000-(\size/8))
+    cmp w8, (0x1000-(\size/8))
     b.hi crosspage_load_\id
     and w8, _addr, 0xfffff000
     str w8, [_tlb, (-TLB_entries+TLB_dirty_page)]

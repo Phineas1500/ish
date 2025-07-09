@@ -117,10 +117,7 @@ static struct fiber_block *fiber_block_compile(addr_t ip, struct tlb *tlb) {
     compile_count++;
     struct gen_state state;
     TRACE("%d %08x --- compiling:\n", current_pid(), ip);
-// Debug output removed for cleaner testing
-    fprintf(stderr, "DEBUG: fiber_block_compile #%d - ip = 0x%llx\n", compile_count, ip);
-    gen_start(ip, &state);
-    fprintf(stderr, "DEBUG: after gen_start - state.ip = 0x%llx\n", state.ip);
+gen_start(ip, &state);
     while (true) {
         if (!gen_step(&state, tlb))
             break;
@@ -134,9 +131,7 @@ static struct fiber_block *fiber_block_compile(addr_t ip, struct tlb *tlb) {
             break;
         }
     }
-    fprintf(stderr, "DEBUG: after gen_step loop - state.ip = 0x%llx\n", state.ip);
     gen_end(&state);
-    fprintf(stderr, "DEBUG: after gen_end - state.ip = 0x%llx\n", state.ip);
     assert(state.ip - ip <= PAGE_SIZE);
     state.block->used = state.capacity;
     return state.block;
@@ -239,16 +234,7 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 
         TRACE("%d %08x --- cycle %ld\n", current_pid(), ip, frame->cpu.cycle);
 
-#ifdef ISH_64BIT
-        fprintf(stderr, "DEBUG: BEFORE fiber_enter - frame->cpu.rip = 0x%llx\n", frame->cpu.rip);
-        fprintf(stderr, "DEBUG: BEFORE fiber_enter - block->code[0] = 0x%lx\n", block->code[0]);
-        fprintf(stderr, "DEBUG: BEFORE fiber_enter - block->code[1] = 0x%lx\n", block->code[1]);
-        fprintf(stderr, "DEBUG: BEFORE fiber_enter - block->code[2] = 0x%lx\n", block->code[2]);
-#endif
-        interrupt = fiber_enter(block, frame, tlb);
-#ifdef ISH_64BIT
-        fprintf(stderr, "DEBUG: AFTER fiber_enter - frame->cpu.rip = 0x%llx, interrupt = %d\n", frame->cpu.rip, interrupt);
-#endif
+interrupt = fiber_enter(block, frame, tlb);
         if (interrupt == INT_NONE && __atomic_exchange_n(cpu->poked_ptr, false, __ATOMIC_SEQ_CST))
             interrupt = INT_TIMER;
         if (interrupt == INT_NONE && ++frame->cpu.cycle % (1 << 10) == 0)

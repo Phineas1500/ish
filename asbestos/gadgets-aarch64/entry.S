@@ -16,12 +16,10 @@ NAME(fiber_enter):
     add _tlb, x2, TLB_entries
     load_regs
 #ifdef ISH_64BIT
-    // Debug: Print _ip and first gadget before executing
+    // Debug: Print _ip at fiber_enter
     stp x0, x1, [sp, -0x20]!
     mov x0, _ip
     bl NAME(debug_print_ip)
-    ldr x0, [_ip]
-    bl NAME(debug_print_gadget)
     ldp x0, x1, [sp], 0x20
 #endif
     gret
@@ -29,7 +27,7 @@ NAME(fiber_enter):
 .global fiber_ret_chain
 fiber_ret_chain:
 #ifdef ISH_64BIT
-    // Debug: Print _ip at fiber_ret_chain entry
+    // Debug: Check _ip before using it
     stp x0, x1, [sp, -0x20]!
     mov x0, _ip
     bl NAME(debug_print_fiber_ret_chain)
@@ -48,8 +46,6 @@ fiber_ret_chain:
     stp x0, x1, [sp, -0x20]!
     mov x0, _ip
     bl NAME(debug_print_before_gret)
-    ldr x0, [_ip]
-    bl NAME(debug_print_next_gadget)
     ldp x0, x1, [sp], 0x20
 #endif
     gret
