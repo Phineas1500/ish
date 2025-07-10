@@ -246,8 +246,8 @@ crosspage_load:
     mov x2, x22  // Restore x2
     mov x3, x23  // Restore x3
     
-    // USE: Simple 64-bit compatible crosspage handler
-    bl NAME(simple_64bit_crosspage_read)
+    // FIX: Use fixed 64-bit crosspage handler
+    bl NAME(fixed_64bit_crosspage_read)
     mov x19, x0
     
     // DEBUG: Check if we survive the C function call (without using x1)

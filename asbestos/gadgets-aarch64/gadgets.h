@@ -162,9 +162,11 @@ _xaddr .req x3
 
 .macro \type\()_prep size, id
 #ifdef ISH_64BIT
-    // FORCE ALL 64-BIT MEMORY OPS TO USE CROSSPAGE - BYPASS TLB ENTIRELY
+    // SAFE APPROACH: Use crosspage for all 64-bit memory operations
+    // Real memory access will be handled selectively within crosspage handler
+    // This avoids TLB bugs while still allowing selective real memory access
     b crosspage_load_\id
-    // Dead code below (TLB fast path)
+    // Dead code below (TLB fast path disabled due to hanging issues)
     and x8, _xaddr, 0xfff
     cmp x8, (0x1000-(\size/8))
     b.hi crosspage_load_\id

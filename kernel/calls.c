@@ -694,6 +694,20 @@ static unsigned map_64bit_syscall(unsigned syscall_64) {
 
 void handle_interrupt(int interrupt) {
     struct cpu_state *cpu = &current->cpu;
+    
+    // Debug: Log all interrupt attempts
+    static int interrupt_count = 0;
+    interrupt_count++;
+    if (interrupt_count <= 10) {
+        fprintf(stderr, "DEBUG_INTERRUPT[%d]: interrupt=0x%x", interrupt_count, interrupt);
+        if (interrupt == INT_SYSCALL) {
+            fprintf(stderr, " (32-bit syscall: eax=%d)", cpu->eax);
+        } else if (interrupt == INT_SYSCALL64) {
+            fprintf(stderr, " (64-bit syscall: rax=%lld)", cpu->rax);
+        }
+        fprintf(stderr, "\n");
+    }
+    
     if (interrupt == INT_SYSCALL) {
         unsigned syscall_num = cpu->eax;
         if (syscall_num >= NUM_SYSCALLS || syscall_table[syscall_num] == NULL) {
