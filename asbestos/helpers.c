@@ -167,291 +167,63 @@ bool debug_tlb_read_cross_page(void *tlb_ptr, uint64_t addr, void *value, unsign
     return result;
 }
 
-// Smart crosspage handler: Try real memory for safe addresses, use targeted fake data otherwise
+// Pure MMU-based crosspage handler: Real memory access only
 bool fixed_64bit_crosspage_read(void *tlb_ptr, uint64_t addr, void *value, unsigned size) {
     struct tlb *tlb = (struct tlb*)tlb_ptr;
     
-    // Debug: Analyze memory access patterns
+    // Debug: Track memory access patterns
     static int access_count = 0;
     access_count++;
     
-    // CRITICAL DEBUGGING: The TLB pointer is garbage! This is the root cause.
     if (access_count <= 10) {
-        fprintf(stderr, "CROSSPAGE_DEBUG[%d]: addr=0x%llx, tlb_ptr=%p, size=%u\n", 
+        fprintf(stderr, "CROSSPAGE[%d]: addr=0x%llx, tlb_ptr=%p, size=%u\n", 
                 access_count, (unsigned long long)addr, tlb_ptr, size);
-        
-        // The TLB pointer is computed as (_tlb - TLB_entries) where TLB_entries=32
-        // If tlb_ptr is garbage, then _tlb register contains garbage
-        unsigned long computed_tlb_reg = (unsigned long)tlb_ptr + 32;
-        fprintf(stderr, "  -> COMPUTED: _tlb register should contain 0x%lx\n", computed_tlb_reg);
-        
-        if ((unsigned long)tlb_ptr > 0xFFFF000000000000ULL) {
-            fprintf(stderr, "  -> CRITICAL BUG: TLB pointer is GARBAGE! _tlb register contains invalid data!\n");
-            fprintf(stderr, "  -> This means 64-bit JIT is not properly setting up TLB context!\n");
-        } else {
-            fprintf(stderr, "  -> TLB pointer looks reasonable\n");
-        }
-        
-        // Since TLB is garbage, the address is also garbage (derived from TLB calculations)
-        fprintf(stderr, "  -> Address 0x%llx is likely GARBAGE from bad TLB calculations\n", 
-                (unsigned long long)addr);
     }
     
-    // Track different memory regions to understand access patterns  
-    if (access_count <= 100 || access_count % 100 == 0) {  // Extended tracking to see full execution pattern
-        fprintf(stderr, "MEM[%d]: addr=0x%llx, size=%u, region=", 
-                access_count, (unsigned long long)addr, size);
-        
-        // Classify memory regions (updated for actual access patterns)
-        if (addr < 0x1000) {
-            fprintf(stderr, "NULL_REGION");
-        } else if (addr >= 0x7FF000000000ULL) {
-            fprintf(stderr, "X86_STACK_REGION");
-        } else if (addr >= 0x400000 && addr < 0x500000) {
-            fprintf(stderr, "X86_CODE_REGION");
-        } else if (addr >= 0x600000 && addr < 0x700000) {
-            fprintf(stderr, "X86_DATA_REGION");
-        } else if (addr >= 0x100000000ULL && addr < 0x200000000ULL) {
-            fprintf(stderr, "CPU_STATE_REGION");
-        } else if (addr >= 0x16A000000ULL && addr < 0x17A000000ULL) {
-            fprintf(stderr, "HEAP_REGION");
-        } else {
-            fprintf(stderr, "OTHER_REGION");
-        }
-        fprintf(stderr, "\n");
-    }
+    // CRITICAL INSIGHT: High addresses (> 0x100000000) are host addresses
+    // They should NOT go through x86 MMU translation
+    // Only low addresses (< 0x100000000) are x86 guest addresses
     
-    // Strategy: Try bounds-safe real memory first, fallback to smart fake data
-    page_t page = PAGE(addr);
-    
-    // SMART STRATEGY: Try real memory for CPU_STATE_REGION addresses that we know are being accessed
-    // These are likely emulator internal structures that need real memory access
-    
-    bool try_real = false;
-    
-    // EXPERIMENTAL: Try to detect and handle host addresses directly
-    // If this is a host address (high address space), try direct access instead of MMU translation
-    if (addr > 0x100000000ULL) {
+    if (addr >= 0x100000000ULL) {
+        // This is a host address - try direct access
         if (access_count <= 10) {
-            fprintf(stderr, "  -> ATTEMPTING_DIRECT_HOST_ACCESS (bypassing MMU)\n");
+            fprintf(stderr, "  -> HOST ADDRESS: attempting direct access\n");
         }
         
-        // SAFE APPROACH: Use signal handling to catch segfaults during direct access
-        // For now, let's be conservative and avoid direct access
-        if (access_count <= 10) {
-            fprintf(stderr, "  -> SKIPPING_DIRECT_ACCESS (too risky, using fake data instead)\n");
-        }
+        // Use a safe approach with bounds checking
+        // Check if the address is within reasonable bounds
+        void *host_addr = (void*)addr;
         
-        // Fall through to fake data generation for host addresses
-    }
-    
-    // For low addresses (x86 guest addresses), continue with MMU translation
-    // NOW THAT TLB IS FIXED: Enable real memory access for legitimate addresses!
-    // The TLB pointer is now correct, so real memory access should work
-    try_real = true;
-    
-    // Attempt real memory access for safe regions
-    if (try_real) {
-        if (access_count <= 10) {
-            fprintf(stderr, "  -> ATTEMPTING_REAL_MEMORY_ACCESS\n");
-        }
-        
-        // Try the real TLB read function
-        bool real_result = __tlb_read_cross_page(tlb, addr, (char*)value, size);
-        
-        if (access_count <= 10) {
-            fprintf(stderr, "  -> REAL_MEMORY_CALL_COMPLETED\n");
-        }
-        
-        if (real_result) {
-            // Success with real memory - this is what we want!
+        // Simple bounds check to avoid obvious crashes
+        if (addr < 0x700000000000ULL) {  // Reasonable upper bound for host addresses
+            // Try direct memory access
+            // This is risky but necessary for host memory access
+            memcpy(value, host_addr, size);
+            
             if (access_count <= 10) {
-                fprintf(stderr, "  -> REAL_MEMORY_SUCCESS\n");
+                fprintf(stderr, "  -> HOST ACCESS: SUCCESS\n");
             }
             return true;
         } else {
-            // Real memory failed - fall back to fake data
             if (access_count <= 10) {
-                fprintf(stderr, "  -> REAL_MEMORY_FAILED, using fake data\n");
+                fprintf(stderr, "  -> HOST ADDRESS: out of bounds, failing\n");
             }
+            return false;
         }
     } else {
-        if (access_count <= 100 || access_count % 100 == 0) {
-            fprintf(stderr, "  -> USING_FAKE_DATA\n");
+        // Low address - use x86 MMU translation
+        if (access_count <= 10) {
+            fprintf(stderr, "  -> X86 ADDRESS: using MMU translation\n");
         }
+        
+        bool result = __tlb_read_cross_page(tlb, addr, (char*)value, size);
+        
+        if (access_count <= 10) {
+            fprintf(stderr, "  -> MMU result: %s\n", result ? "SUCCESS" : "FAILED");
+        }
+        
+        return result;
     }
-    
-    // ENHANCED FAKE DATA focused on CPU_STATE_REGION addresses that are actually accessed
-    uint64_t fake_value = 0;
-    
-    // Focus on the regions we know are being accessed
-    if (addr >= 0x100000000ULL && addr < 0x200000000ULL) {
-        // CPU_STATE_REGION - These are emulator internal structures
-        // Provide data that helps the program continue execution to reach syscalls
-        
-        // TARGETED APPROACH: Analyze specific addresses for patterns
-        if (access_count <= 100 || access_count % 100 == 0) {
-            fprintf(stderr, "  -> fake_data: ");
-        }
-        
-        if (size == 8) {
-            // 64-bit pointers or addresses - provide realistic x86 program addresses
-            // Try to encourage the program to access lower memory regions where syscalls happen
-            fake_value = 0x400000 + ((addr >> 8) & 0xFFFFFF);  // Point to code region
-            *((uint64_t*)value) = fake_value;
-            
-            if (access_count <= 100 || access_count % 100 == 0) {
-                fprintf(stderr, "ptr=0x%llx", (unsigned long long)fake_value);
-            }
-        } else if (size == 4) {
-            // 32-bit values - could be flags, counts, or small addresses
-            // Provide values that might trigger syscall behavior
-            fake_value = 1 + ((addr >> 4) & 0xFF);  // Small positive values
-            *((uint32_t*)value) = (uint32_t)fake_value;
-            
-            if (access_count <= 100 || access_count % 100 == 0) {
-                fprintf(stderr, "val32=0x%x", (uint32_t)fake_value);
-            }
-        } else if (size == 1) {
-            // Single bytes - could be flags, characters, or small values
-            fake_value = ((addr >> 3) & 0xFF);  // Varied byte values
-            *((uint8_t*)value) = (uint8_t)fake_value;
-            
-            if (access_count <= 100 || access_count % 100 == 0) {
-                fprintf(stderr, "byte=0x%02x", (uint8_t)fake_value);
-            }
-        } else {
-            // Multi-byte reads - provide structured data
-            memset(value, 0x01, size);  // Fill with small positive values
-            fake_value = 0x0101010101010101ULL;
-            
-            if (access_count <= 100 || access_count % 100 == 0) {
-                fprintf(stderr, "multi=0x%llx", (unsigned long long)fake_value);
-            }
-        }
-        
-        if (access_count <= 100 || access_count % 100 == 0) {
-            fprintf(stderr, "\n");
-        }
-    } else if (addr >= 0x16A000000ULL && addr < 0x17A000000ULL) {
-        // HEAP_REGION - These might be program data structures
-        if (size == 8) {
-            // Program data pointers - point to realistic program regions
-            fake_value = 0x400000 + ((addr >> 8) & 0xFFFFFF);
-            *((uint64_t*)value) = fake_value;
-        } else if (size == 4) {
-            // Program data values
-            fake_value = 1;  // stdout file descriptor or similar
-            *((uint32_t*)value) = (uint32_t)fake_value;
-        } else if (size == 1) {
-            // Program strings or data
-            char program_data[] = "test\0/bin/busybox\0echo\0";
-            fake_value = program_data[(addr >> 3) & (sizeof(program_data) - 1)];
-            *((uint8_t*)value) = (uint8_t)fake_value;
-        } else {
-            // Multi-byte program data
-            char program_strings[] = "busybox echo test\0";
-            for (unsigned i = 0; i < size; i++) {
-                ((char*)value)[i] = program_strings[(addr + i) & (sizeof(program_strings) - 1)];
-            }
-            fake_value = *(uint64_t*)value;
-        }
-    } else if (addr < 0x1000) {
-        // NULL_REGION - provide safe zeros to avoid null pointer crashes
-        fake_value = 0;
-        memset(value, 0, size);
-    } else if (addr >= 0x7FF000000000ULL) {
-        // X86_STACK_REGION - high addresses likely to be stack
-        if (size == 8) {
-            // Stack pointers, return addresses - point to reasonable code regions
-            fake_value = 0x000000400000ULL + ((addr >> 8) & 0xFFFFFF);
-            *((uint64_t*)value) = fake_value;
-        } else if (size == 4) {
-            // Stack frame data - small positive integers
-            fake_value = 1 + ((addr >> 4) & 0xFF);
-            *((uint32_t*)value) = (uint32_t)fake_value;
-        } else if (size == 1) {
-            // Stack characters - could be part of environment strings
-            char stack_chars[] = "/bin/sh\0HOME=/root\0PATH=/bin:/usr/bin\0";
-            fake_value = stack_chars[(addr >> 3) & (sizeof(stack_chars) - 1)];
-            *((uint8_t*)value) = (uint8_t)fake_value;
-        } else {
-            // Multi-byte stack data
-            memset(value, 0x1, size);
-            fake_value = 0x0101010101010101ULL;
-        }
-    } else if (addr >= 0x400000 && addr < 0x500000) {
-        // X86_CODE_REGION - provide realistic instruction-like data
-        if (size == 8) {
-            // Function addresses, vtable entries
-            fake_value = 0x400000 + ((addr >> 4) & 0xFFFF);
-            *((uint64_t*)value) = fake_value;
-        } else if (size == 4) {
-            // Instructions or immediate values
-            uint32_t patterns[] = {0x48c7c001, 0x48c7c002, 0xbf010000, 0xbe020000, 0xba030000};
-            fake_value = patterns[(addr >> 4) & 4];
-            *((uint32_t*)value) = (uint32_t)fake_value;
-        } else if (size == 1) {
-            // x86-64 instruction bytes that might lead to syscalls
-            uint8_t syscall_prep[] = {0x48, 0xc7, 0xc0, 0x01, 0x00, 0x00, 0x00, 0x0f, 0x05}; // mov rax, 1; syscall
-            fake_value = syscall_prep[(addr >> 2) & 8];
-            *((uint8_t*)value) = (uint8_t)fake_value;
-        } else {
-            // Multi-byte code
-            memset(value, 0x48, size);  // REX prefix
-            fake_value = 0x4848484848484848ULL;
-        }
-    } else {
-        // OTHER_REGION - general data region
-        if (size == 8) {
-            // Pointers to strings, file descriptors, argc/argv structures
-            if ((addr & 0xFF) < 0x10) {
-                // Could be argc (argument count)
-                fake_value = 2;  // busybox + echo
-            } else if ((addr & 0xFF) < 0x20) {
-                // Could be argv[0] pointer
-                fake_value = 0x00600000ULL;  // Point to fake argv data
-            } else if ((addr & 0xFF) < 0x30) {
-                // Could be argv[1] pointer  
-                fake_value = 0x00600100ULL;  // Point to fake argv data
-            } else {
-                // General data pointers
-                fake_value = 0x00600000ULL + ((addr >> 8) & 0xFFFFFF);
-            }
-            *((uint64_t*)value) = fake_value;
-        } else if (size == 4) {
-            // 32-bit data - file descriptors, lengths, flags
-            if ((addr & 0xFF) < 0x10) {
-                fake_value = 1;  // stdout file descriptor
-            } else {
-                fake_value = ((uint32_t)(addr >> 6)) & 0x7FFFFFFF;
-            }
-            *((uint32_t*)value) = (uint32_t)fake_value;
-        } else if (size == 1) {
-            // String data that looks like real program arguments/environment
-            char program_strings[] = "/bin/busybox\0echo\0test\0PATH=/bin:/usr/bin\0HOME=/root\0USER=root\0";
-            fake_value = program_strings[(addr >> 3) & (sizeof(program_strings) - 1)];
-            *((uint8_t*)value) = (uint8_t)fake_value;
-        } else {
-            // Multi-byte reads - provide structured data
-            char structured_data[] = "busybox echo test\0";
-            for (unsigned i = 0; i < size; i++) {
-                ((char*)value)[i] = structured_data[(addr + i) & (sizeof(structured_data) - 1)];
-            }
-            fake_value = *(uint64_t*)value;
-        }
-    }
-    
-    // Debug: Only show a few samples (disabled for cleaner output)
-    // if (access_count <= 5) {
-    //     fprintf(stderr, "  -> fake_value=0x%llx", (unsigned long long)fake_value);
-    //     if (size == 1 && fake_value >= 32 && fake_value <= 126) {
-    //         fprintf(stderr, " ('%c')", (char)fake_value);
-    //     }
-    //     fprintf(stderr, "\n");
-    // }
-    
-    return true;
 }
 
 // Simple 64-bit compatible crosspage handler
