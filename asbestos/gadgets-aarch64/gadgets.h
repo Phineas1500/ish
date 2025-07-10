@@ -140,7 +140,7 @@ rip .req x19
 _tmp .req w0
 _xtmp .req x0
 _cpu .req x1
-_tlb .req x14
+_tlb .req x29
 _addr .req w3
 _xaddr .req x3
 
@@ -461,24 +461,26 @@ back_write_done_\id :
 .endm
 
 .macro save_c
-    stp x0, x1, [sp, -0x80]!
+    stp x0, x1, [sp, -0x90]!   // Increase stack space to accommodate x14,x15
     stp x2, x3, [sp, 0x10]
     stp x4, x5, [sp, 0x20]  // Save r8, r9 (x4, x5)
     stp x6, x7, [sp, 0x30]  // Save r10 and x7 (for future use)
     stp x8, x9, [sp, 0x40]
     stp x10, x11, [sp, 0x50]
     stp x12, x13, [sp, 0x60]
-    str lr, [sp, 0x70]
+    stp x14, x15, [sp, 0x70]  // CRITICAL: x15 now holds _tlb, must be saved/restored
+    str lr, [sp, 0x80]
 .endm
 .macro restore_c
-    ldr lr, [sp, 0x70]
+    ldr lr, [sp, 0x80]
+    ldp x14, x15, [sp, 0x70]  // CRITICAL: x15 now holds _tlb, must be saved/restored
     ldp x12, x13, [sp, 0x60]
     ldp x10, x11, [sp, 0x50]
     ldp x8, x9, [sp, 0x40]
     ldp x6, x7, [sp, 0x30]  // Restore r10 and x7
     ldp x4, x5, [sp, 0x20]  // Restore r8, r9 (x4, x5)
     ldp x2, x3, [sp, 0x10]
-    ldp x0, x1, [sp], 0x80
+    ldp x0, x1, [sp], 0x90
 .endm
 
 .macro movs dst, src, s

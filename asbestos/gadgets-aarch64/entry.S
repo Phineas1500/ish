@@ -11,9 +11,31 @@ NAME(fiber_enter):
     stp x26, x27, [sp, 0x40]
     stp x28, x29, [sp, 0x50]
     str lr, [sp, 0x60]
+    
+    // CRITICAL DEBUG: Check input parameters to fiber_enter
+    mov x19, x0  // Save x0
+    mov x20, x1  // Save x1  
+    mov x21, x2  // Save x2
+    
+    // Debug call: pass x2 (TLB base) and x2+32 (TLB entries)
+    mov x0, x2   // TLB base
+    add x1, x2, TLB_entries  // TLB entries pointer
+    bl NAME(debug_print_tlb_setup)
+    
+    mov x0, x19  // Restore x0
+    mov x1, x20  // Restore x1
+    mov x2, x21  // Restore x2
+    
     add _ip, x0, FIBER_BLOCK_code
     # cpu is already x1
     add _tlb, x2, TLB_entries
+    
+    // CRITICAL: Debug TLB register immediately after setup
+    mov x19, x1  // Save x1
+    mov x0, _tlb // Pass _tlb register value
+    bl NAME(debug_print_tlb)
+    mov x1, x19  // Restore x1
+    
     load_regs
     gret
 

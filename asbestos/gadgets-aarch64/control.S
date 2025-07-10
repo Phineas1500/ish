@@ -26,6 +26,12 @@
     bl NAME(debug_call64_start)
     mov x1, x19  // Restore x1
     
+    // CRITICAL: Check TLB register at start of call64
+    mov x19, x1  // Save x1
+    mov x0, _tlb // Pass _tlb register value
+    bl NAME(debug_print_tlb)
+    mov x1, x19  // Restore x1
+    
     sub _xaddr, rsp, 8  // Use 64-bit stack pointer
     
     // DEBUG: Before write_prep
@@ -41,6 +47,12 @@
     mov x0, x1
     bl NAME(debug_after_write_prep)
     mov x1, x19
+    
+    // CRITICAL: Check TLB register after write_prep
+    mov x19, x1  // Save x1
+    mov x0, _tlb // Pass _tlb register value
+    bl NAME(debug_print_tlb)
+    mov x1, x19  // Restore x1
     
     ldr x8, [_ip, 16]
     
