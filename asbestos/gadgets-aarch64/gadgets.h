@@ -162,11 +162,9 @@ _xaddr .req x3
 
 .macro \type\()_prep size, id
 #ifdef ISH_64BIT
-    // SAFE APPROACH: Use crosspage for all 64-bit memory operations
-    // Real memory access will be handled selectively within crosspage handler
-    // This avoids TLB bugs while still allowing selective real memory access
+    // CONSERVATIVE: Use crosspage while debugging TLB fast path issues
+    // Keep the correct 24-byte entry size for future fast path enablement
     b crosspage_load_\id
-    // Dead code below (TLB fast path disabled due to hanging issues)
     and x8, _xaddr, 0xfff
     cmp x8, (0x1000-(\size/8))
     b.hi crosspage_load_\id
@@ -176,8 +174,10 @@ _xaddr .req x3
     ubfx x9, _xaddr, 12, 10
     eor x9, x9, _xaddr, lsr 22
 #ifdef ISH_64BIT
-    // TEMPORARY: Use 32-bit TLB logic for 64-bit to test if this fixes the crash
-    lsl x9, x9, 4               // Use 16-byte entries like 32-bit (instead of 24)
+    // FIXED: Use correct 24-byte entries for 64-bit mode
+    // 64-bit TLB entries: page(8) + page_if_writable(8) + data_minus_addr(8) = 24 bytes
+    add x9, x9, x9, lsl 1       // x9 * 3 
+    lsl x9, x9, 3               // (x9 * 3) * 8 = x9 * 24
 #else
     lsl x9, x9, 4               // 32-bit entries are 16 bytes
 #endif
