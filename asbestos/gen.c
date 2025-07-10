@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <execinfo.h>
 #include "debug.h"
 #include "asbestos/gen.h"
 #include "emu/modrm.h"
@@ -37,7 +38,34 @@ static void gen(struct gen_state *state, unsigned long thing) {
         state->block = bigger_block;
     }
     assert(state->size < state->capacity);
+    #ifdef ISH_64BIT
+    // Debug: Check what's being stored at the offset call64 will read from (offset 5 = 40 bytes)
+    if (state->size == 5) {
+        printf("DEBUG: gen() OFFSET 5 (call64 target) INPUT = 0x%lx\n", thing);
+    }
+    // Debug: Also check what's being stored at offset 29 (which was 232 bytes in previous debug)
+    if (state->size == 29) {
+        printf("DEBUG: gen() OFFSET 29 (232 bytes) INPUT = 0x%lx\n", thing);
+        // Print call stack to see where this is coming from
+        printf("DEBUG: CALL STACK for offset 29:\n");
+        void *array[10];
+        size_t size = backtrace(array, 10);
+        char **strings = backtrace_symbols(array, size);
+        for (size_t i = 0; i < size; i++) {
+            printf("  %s\n", strings[i]);
+        }
+        free(strings);
+    }
+    #endif
     state->block->code[state->size++] = thing;
+    #ifdef ISH_64BIT
+    // Debug: Verify target address was stored correctly
+    if (state->size == 6) {
+        printf("DEBUG: gen() TARGET ADDRESS STORED = 0x%lx at offset %zu\n", state->block->code[state->size - 1], state->size - 1);
+        printf("DEBUG: gen() block base address = %p, target is at %p\n", state->block, &state->block->code[state->size - 1]);
+        printf("DEBUG: gen() distance from base to target = %ld bytes\n", (char*)&state->block->code[state->size - 1] - (char*)state->block);
+    }
+    #endif
 }
 
 void gen_start(addr_t addr, struct gen_state *state) {
@@ -161,7 +189,16 @@ typedef void (*gadget_t)(void);
 #define ggg(_g, a, b) do { g(_g); GEN(a); GEN(b); } while (0)
 #define gggg(_g, a, b, c) do { g(_g); GEN(a); GEN(b); GEN(c); } while (0)
 #define ggggg(_g, a, b, c, d) do { g(_g); GEN(a); GEN(b); GEN(c); GEN(d); } while (0)
+#ifdef ISH_64BIT
+#define gggggg(_g, a, b, c, d, e) do { \
+    printf("DEBUG: gggggg called with gadget %s\n", #_g); \
+    printf("DEBUG: gggggg params: a=0x%lx, b=0x%lx, c=0x%lx, d=0x%lx, e=0x%lx\n", \
+           (unsigned long)(a), (unsigned long)(b), (unsigned long)(c), (unsigned long)(d), (unsigned long)(e)); \
+    g(_g); GEN(a); GEN(b); GEN(c); GEN(d); GEN(e); \
+} while (0)
+#else
 #define gggggg(_g, a, b, c, d, e) do { g(_g); GEN(a); GEN(b); GEN(c); GEN(d); GEN(e); } while (0)
+#endif
 #define ggggggg(_g, a, b, c, d, e, f) do { g(_g); GEN(a); GEN(b); GEN(c); GEN(d); GEN(e); GEN(f); } while (0)
 #define gggggggg(_g, a, b, c, d, e, f, h) do { g(_g); GEN(a); GEN(b); GEN(c); GEN(d); GEN(e); GEN(f); GEN(h); } while (0)
 #define ga(g, i) do { extern gadget_t g##_gadgets[]; if (g##_gadgets[i] == NULL) UNDEFINED; GEN(g##_gadgets[i]); } while (0)
@@ -341,17 +378,24 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
 // the last one is the call target, patchable by return chaining.
 #ifdef ISH_64BIT
 #define CALL_REL(off) do { \
-    addr_t target_addr = fake_ip + off; \
-    /* printf("DEBUG: CALL_REL off=%lld, fake_ip=0x%llx, target_addr=0x%llx, state->ip=0x%llx\n", (long long)off, (unsigned long long)fake_ip, (unsigned long long)target_addr, (unsigned long long)state->ip); */ \
-    ggggggg(CALL_GADGET, state->orig_ip, -1, fake_ip, fake_ip, fake_ip, target_addr); \
-    state->block_patch_ip = state->size - 3; \
-    jump_ips(-1, 0); \
+    addr_t xyz_fake_ip_val = fake_ip; \
+    addr_t xyz_orig_ip_val = state->orig_ip; \
+    addr_t xyz_target_addr_val = xyz_fake_ip_val + off; \
+    printf("DEBUG: CALL_REL off=%lld, fake_ip=0x%llx, target_addr=0x%llx, state->ip=0x%llx\n", (long long)off, (unsigned long long)xyz_fake_ip_val, (unsigned long long)xyz_target_addr_val, (unsigned long long)state->ip); \
+    printf("DEBUG: CALL_REL params: orig_ip=0x%llx, -1=%lld, fake_ip=0x%llx, fake_ip=0x%llx, target_addr=0x%llx\n", (unsigned long long)xyz_orig_ip_val, (long long)-1, (unsigned long long)xyz_fake_ip_val, (unsigned long long)xyz_fake_ip_val, (unsigned long long)xyz_target_addr_val); \
+    printf("DEBUG: DIRECT LITERAL FIX - using exact 32-bit pattern with literals!\n"); \
+    addr_t final_target = xyz_target_addr_val; \
+    printf("DEBUG: final_target literal = 0x%llx\n", (unsigned long long)final_target); \
+    addr_t neg_one = 0xFFFFFFFFFFFFFFFF; \
+    gggggg(call64, xyz_orig_ip_val, neg_one, xyz_fake_ip_val, xyz_fake_ip_val, final_target); \
+    state->block_patch_ip = state->size - 4; \
+    jump_ips(-2, -1); \
     end_block = true; \
 } while (0)
 #else
 #define CALL_REL(off) do { \
-    gggggg(call, state->orig_ip, -1, fake_ip, fake_ip, fake_ip + off); \
-    state->block_patch_ip = state->size - 4; \
+    ggggg(call, state->orig_ip, -1, fake_ip, fake_ip + off); \
+    state->block_patch_ip = state->size - 3; \
     jump_ips(-2, -1); \
     end_block = true; \
 } while (0)

@@ -464,18 +464,63 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     // FIXME disgusting hack: musl's dynamic linker has a one-page hole, and
     // I'd rather not put the vdso in that hole. so find a two-page hole and
     // add one.
-    page_t vdso_page = pt_find_hole(current->mem, vdso_pages + 1);
+    page_t vdso_page;
+    
+#ifdef ISH_64BIT
+    if (header.bitness == ELF_64BIT) {
+        // For 64-bit programs, place VDSO in 64-bit address space
+        // Find a hole in the high 64-bit address space
+        vdso_page = BAD_PAGE;
+        for (page_t start_page = 0x7ffd00000; start_page > 0x100000; start_page -= 0x10000) {
+            if (pt_is_hole(current->mem, start_page, vdso_pages + 1)) {
+                vdso_page = start_page + 1;  // Add one to avoid the hole
+                break;
+            }
+        }
+    } else {
+        vdso_page = pt_find_hole(current->mem, vdso_pages + 1);
+        if (vdso_page != BAD_PAGE) vdso_page += 1;
+    }
+#else
+    vdso_page = pt_find_hole(current->mem, vdso_pages + 1);
+    if (vdso_page != BAD_PAGE) vdso_page += 1;
+#endif
+
     if (vdso_page == BAD_PAGE)
         goto beyond_hope;
-    vdso_page += 1;
     if ((err = pt_map(current->mem, vdso_page, vdso_pages, (void *) vdso_data, 0, 0)) < 0)
         goto beyond_hope;
     mem_pt(current->mem, vdso_page)->data->name = "[vdso]";
     current->mm->vdso = vdso_page << PAGE_BITS;
     addr_t vdso_entry = current->mm->vdso + ((struct elf_header *) vdso_data)->entry_point;
+    
+    // Debug: Log VDSO mapping
+    FILE *f_vdso = fopen("/tmp/debug_exec.txt", "a");
+    if (f_vdso) { 
+        fprintf(f_vdso, "VDSO mapped at: 0x%llx, entry: 0x%llx\n", (unsigned long long)current->mm->vdso, (unsigned long long)vdso_entry);
+        fclose(f_vdso); 
+    }
 
     // map 3 empty "vvar" pages to satisfy ptraceomatic
-    page_t vvar_page = pt_find_hole(current->mem, VVAR_PAGES);
+    page_t vvar_page;
+    
+#ifdef ISH_64BIT
+    if (header.bitness == ELF_64BIT) {
+        // For 64-bit programs, place vvar in 64-bit address space
+        vvar_page = BAD_PAGE;
+        for (page_t start_page = 0x7ffc00000; start_page > 0x100000; start_page -= 0x10000) {
+            if (pt_is_hole(current->mem, start_page, VVAR_PAGES)) {
+                vvar_page = start_page;
+                break;
+            }
+        }
+    } else {
+        vvar_page = pt_find_hole(current->mem, VVAR_PAGES);
+    }
+#else
+    vvar_page = pt_find_hole(current->mem, VVAR_PAGES);
+#endif
+
     if (vvar_page == BAD_PAGE)
         goto beyond_hope;
     if ((err = pt_map_nothing(current->mem, vvar_page, VVAR_PAGES, 0)) < 0)

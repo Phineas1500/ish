@@ -19,6 +19,11 @@ NAME(fiber_enter):
 
 .global fiber_ret_chain
 fiber_ret_chain:
+    // DEBUG: Minimal debug to see if we reach fiber_ret_chain
+    mov x19, x1  // Save x1
+    mov x0, x1   // Pass CPU pointer
+    bl NAME(debug_fiber_ret_chain_reached)
+    mov x1, x19  // Restore x1
     cmp _ip, 0
     b.lt fiber_ret
     ldr x8, [_cpu, CPU_poked_ptr]
@@ -41,6 +46,11 @@ fiber_ret:
 
 .global fiber_exit
 fiber_exit:
+    // DEBUG: Track x1 at fiber_exit entry
+    mov x19, x1  // Save x1 in x19 (callee-saved register)
+    mov x0, x1   // Pass x1 value to debug function
+    bl NAME(debug_track_x1_fiber_exit)
+    mov x1, x19  // Restore x1 from x19
     save_regs
     ldr lr, [sp, 0x60]
     ldp x28, x29, [sp, 0x50]

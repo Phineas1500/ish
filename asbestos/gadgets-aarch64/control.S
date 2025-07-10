@@ -20,10 +20,38 @@
 
 #ifdef ISH_64BIT
 .gadget call64
-    // Restore proper 64-bit call implementation
+    // Minimal debug to track progress through call64
+    mov x19, x1  // Save x1
+    mov x0, x1   // Pass CPU pointer
+    bl NAME(debug_call64_start)
+    mov x1, x19  // Restore x1
+    
     sub _xaddr, rsp, 8  // Use 64-bit stack pointer
+    
+    // DEBUG: Before write_prep
+    mov x19, x1
+    mov x0, x1
+    bl NAME(debug_before_write_prep)
+    mov x1, x19
+    
     write_prep 64, call64
+    
+    // DEBUG: After write_prep
+    mov x19, x1
+    mov x0, x1
+    bl NAME(debug_after_write_prep)
+    mov x1, x19
+    
     ldr x8, [_ip, 16]
+    
+    // DEBUG: Check values before critical stack write
+    mov x19, x1  // Save x1
+    mov x0, x27  // Pass rsp
+    mov x1, x3   // Pass _xaddr
+    mov x2, x8   // Pass return address
+    bl NAME(debug_before_stack_write)
+    mov x1, x19  // Restore x1
+    
     str x8, [_xaddr]
     sub rsp, rsp, 8
     mov w9, w8
@@ -31,7 +59,16 @@
     write_done 64, call64
     add x13, _cpu, LOCAL_ret_cache
     str _ip, [x13, x12, lsl 3]
-    ldr _ip, [_ip, 40]
+    // Load target from offset 32 (parameter 4) instead of 40 (parameter 5)
+    ldr x8, [_ip, 32]
+    mov _ip, x8
+    
+    // DEBUG: Check if we reach the end of call64
+    mov x19, x1  // Save x1
+    mov x0, x1   // Pass CPU pointer
+    bl NAME(debug_call64_end)
+    mov x1, x19  // Restore x1
+    
     b fiber_ret_chain
     write_bullshit 64, call64
 #endif

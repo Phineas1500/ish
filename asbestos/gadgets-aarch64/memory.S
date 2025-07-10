@@ -219,16 +219,48 @@ segfault_\type:
 
 .global crosspage_load
 crosspage_load:
+    // DEBUG: Check if we reach crosspage_load
+    mov x20, x1  // Save x1
+    mov x0, x1   // Pass CPU pointer
+    bl NAME(debug_crosspage_load_reached)
+    mov x1, x20  // Restore x1
     save_c
     sub x0, _tlb, TLB_entries
     add x2, _cpu, LOCAL_value
-    mov w1, _addr
+#ifdef ISH_64BIT
+    mov x1, _xaddr  // Use 64-bit address for 64-bit mode
+#else
+    mov w1, _addr   // Use 32-bit address for 32-bit mode
+#endif
     mov x3, x19
-    bl NAME(__tlb_read_cross_page)
+    // DEBUG: Show parameters before C call
+    mov x20, x1  // Save x1
+    mov x21, x0  // Save x0 (tlb)
+    mov x22, x2  // Save x2 (value)
+    mov x23, x3  // Save x3 (size)
+    
+    bl NAME(debug_before_c_call)
+    
+    mov x0, x21  // Restore x0
+    mov x1, x20  // Restore x1  
+    mov x2, x22  // Restore x2
+    mov x3, x23  // Restore x3
+    
+    // USE: Simple 64-bit compatible crosspage handler
+    bl NAME(simple_64bit_crosspage_read)
     mov x19, x0
+    
+    // DEBUG: Check if we survive the C function call (without using x1)
+    mov x0, x19  // Pass return value instead of potentially corrupted CPU pointer
+    bl NAME(debug_after_tlb_read_cross_page)
+    
     restore_c
     cbz x19, segfault_read
-    str _addr, [_cpu, LOCAL_value_addr]
+#ifdef ISH_64BIT
+    str _xaddr, [_cpu, LOCAL_value_addr]  // Store 64-bit address
+#else
+    str _addr, [_cpu, LOCAL_value_addr]   // Store 32-bit address
+#endif
     add _xaddr, _cpu, LOCAL_value
     ret
 
@@ -237,7 +269,11 @@ crosspage_store:
     save_c
     sub x0, _tlb, TLB_entries
     add x2, _cpu, LOCAL_value
-    ldr w1, [_cpu, LOCAL_value_addr]
+#ifdef ISH_64BIT
+    ldr x1, [_cpu, LOCAL_value_addr]  // Load 64-bit address for 64-bit mode
+#else
+    ldr w1, [_cpu, LOCAL_value_addr]  // Load 32-bit address for 32-bit mode
+#endif
     mov x3, x19
     bl NAME(__tlb_write_cross_page)
     mov x19, x0

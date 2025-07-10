@@ -162,6 +162,9 @@ _xaddr .req x3
 
 .macro \type\()_prep size, id
 #ifdef ISH_64BIT
+    // FORCE ALL 64-BIT MEMORY OPS TO USE CROSSPAGE - BYPASS TLB ENTIRELY
+    b crosspage_load_\id
+    // Dead code below (TLB fast path)
     and x8, _xaddr, 0xfff
     cmp x8, (0x1000-(\size/8))
     b.hi crosspage_load_\id
@@ -171,10 +174,8 @@ _xaddr .req x3
     ubfx x9, _xaddr, 12, 10
     eor x9, x9, _xaddr, lsr 22
 #ifdef ISH_64BIT
-    // 64-bit TLB entries are 24 bytes (not 16)
-    lsl x10, x9, 4              // x10 = x9 * 16
-    lsl x11, x9, 3              // x11 = x9 * 8
-    add x9, x10, x11            // x9 = x9 * 24
+    // TEMPORARY: Use 32-bit TLB logic for 64-bit to test if this fixes the crash
+    lsl x9, x9, 4               // Use 16-byte entries like 32-bit (instead of 24)
 #else
     lsl x9, x9, 4               // 32-bit entries are 16 bytes
 #endif

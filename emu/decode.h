@@ -99,9 +99,9 @@ restart:
             switch (insn) {
 #ifdef ISH_64BIT
                 case 0x05: TRACEI("syscall"); 
-                           // 64-bit syscall instruction - needs different handling than int 0x80
+                           // 64-bit syscall instruction - use 64-bit interrupt
                            TRACE_debug("SYSCALL: using 64-bit syscall interrupt 0x81\n");
-                           INT(0x81); break;  // Use different interrupt for 64-bit syscalls
+                           INT(0x81); break;  // Use 64-bit interrupt for 64-bit syscalls
 #endif
                 case 0x18 ... 0x1f: TRACEI("nop modrm\t"); READMODRM; break;
 
