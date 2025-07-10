@@ -162,9 +162,12 @@ _xaddr .req x3
 
 .macro \type\()_prep size, id
 #ifdef ISH_64BIT
-    // CONSERVATIVE: Use crosspage while debugging TLB fast path issues
-    // Keep the correct 24-byte entry size for future fast path enablement
+    // MANDATORY: ALL 64-bit memory accesses MUST go through safe crosspage handler
+    // Completely remove TLB fast path to prevent segfaults in __tlb_read_cross_page
     b crosspage_load_\id
+    // NO FAST PATH CODE BELOW - everything is disabled for 64-bit safety
+#else
+    // 32-bit uses original fast path
     and x8, _xaddr, 0xfff
     cmp x8, (0x1000-(\size/8))
     b.hi crosspage_load_\id
@@ -173,37 +176,25 @@ _xaddr .req x3
     // str x8, [_tlb, (-TLB_entries+TLB_dirty_page)]
     ubfx x9, _xaddr, 12, 10
     eor x9, x9, _xaddr, lsr 22
-#ifdef ISH_64BIT
-    // FIXED: Use correct 24-byte entries for 64-bit mode
-    // 64-bit TLB entries: page(8) + page_if_writable(8) + data_minus_addr(8) = 24 bytes
-    add x9, x9, x9, lsl 1       // x9 * 3 
-    lsl x9, x9, 3               // (x9 * 3) * 8 = x9 * 24
-#else
     lsl x9, x9, 4               // 32-bit entries are 16 bytes
 #endif
+
+#ifndef ISH_64BIT
+    // 32-bit fast path only - 64-bit completely skips this section
     add x9, x9, _tlb
     .ifc \type,read
-#ifdef ISH_64BIT
-        ldr x10, [x9, TLB_ENTRY_page]
-#else
         ldr w10, [x9, TLB_ENTRY_page]
-#endif
     .else
-#ifdef ISH_64BIT
-        ldr x10, [x9, TLB_ENTRY_page_if_writable]
-#else
         ldr w10, [x9, TLB_ENTRY_page_if_writable]
-#endif
     .endif
-#ifdef ISH_64BIT
-    cmp x8, x10
-#else
     cmp w8, w10
-#endif
     b.ne handle_miss_\id
     ldr x10, [x9, TLB_ENTRY_data_minus_addr]
     add _xaddr, x10, _xaddr, uxtx
-#else
+#endif
+
+#ifndef ISH_64BIT
+    // This section is also 32-bit only - original code here
     and w8, _addr, 0xfff
     cmp w8, (0x1000-(\size/8))
     b.hi crosspage_load_\id
@@ -215,26 +206,16 @@ _xaddr .req x3
     lsl x9, x9, 4
     add x9, x9, _tlb
     .ifc \type,read
-#ifdef ISH_64BIT
-        ldr x10, [x9, TLB_ENTRY_page]
-#else
         ldr w10, [x9, TLB_ENTRY_page]
-#endif
     .else
-#ifdef ISH_64BIT
-        ldr x10, [x9, TLB_ENTRY_page_if_writable]
-#else
         ldr w10, [x9, TLB_ENTRY_page_if_writable]
-#endif
     .endif
-#ifdef ISH_64BIT
-    cmp x8, x10
-#else
     cmp w8, w10
-#endif
     b.ne handle_miss_\id
     ldr x10, [x9, TLB_ENTRY_data_minus_addr]
     add _xaddr, x10, _xaddr, uxtx
+#else
+    // 64-bit MUST NOT execute any fast path code - already branched to crosspage_load_\id
 #endif
 back_\id:
 .endm

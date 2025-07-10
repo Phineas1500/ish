@@ -20,49 +20,41 @@
 
 #ifdef ISH_64BIT
 .gadget call64
-    // Minimal debug to track progress through call64
-    mov x19, x1  // Save x1
-    mov x0, x1   // Pass CPU pointer
-    bl NAME(debug_call64_start)
-    mov x1, x19  // Restore x1
+    // DISABLED: Reduce debug noise
+    // mov x19, x1  // Save x1
+    // mov x0, x1   // Pass CPU pointer
+    // bl NAME(debug_call64_start)
+    // mov x1, x19  // Restore x1
     
-    // CRITICAL: Check TLB register at start of call64
-    mov x19, x1  // Save x1
-    mov x0, _tlb // Pass _tlb register value
-    bl NAME(debug_print_tlb)
-    mov x1, x19  // Restore x1
+    // DISABLED: Reduce debug noise for testing
+    // mov x19, x1  // Save x1
+    // mov x0, _tlb // Pass _tlb register value
+    // bl NAME(debug_print_tlb)
+    // mov x1, x19  // Restore x1
     
     sub _xaddr, rsp, 8  // Use 64-bit stack pointer
     
-    // DEBUG: Before write_prep
-    mov x19, x1
-    mov x0, x1
-    bl NAME(debug_before_write_prep)
-    mov x1, x19
+    // DISABLED: Reduce debug noise
+    // mov x19, x1
+    // mov x0, x1
+    // bl NAME(debug_before_write_prep)
+    // mov x1, x19
     
     write_prep 64, call64
     
-    // DEBUG: After write_prep
-    mov x19, x1
-    mov x0, x1
-    bl NAME(debug_after_write_prep)
-    mov x1, x19
+    // DISABLED: Reduce debug noise
+    // mov x19, x1
+    // mov x0, x1
+    // bl NAME(debug_after_write_prep)
+    // mov x1, x19
     
-    // CRITICAL: Check TLB register after write_prep
-    mov x19, x1  // Save x1
-    mov x0, _tlb // Pass _tlb register value
-    bl NAME(debug_print_tlb)
-    mov x1, x19  // Restore x1
+    // DISABLED: Reduce debug noise
+    // mov x19, x1  // Save x1
+    // mov x0, _tlb // Pass _tlb register value
+    // bl NAME(debug_print_tlb)
+    // mov x1, x19  // Restore x1
     
     ldr x8, [_ip, 16]
-    
-    // DEBUG: Check values before critical stack write
-    mov x19, x1  // Save x1
-    mov x0, x27  // Pass rsp
-    mov x1, x3   // Pass _xaddr
-    mov x2, x8   // Pass return address
-    bl NAME(debug_before_stack_write)
-    mov x1, x19  // Restore x1
     
     str x8, [_xaddr]
     sub rsp, rsp, 8
