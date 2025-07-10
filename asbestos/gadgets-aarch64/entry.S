@@ -80,6 +80,7 @@ fiber_exit:
     mov x1, x0   // Pass _tmp to debug function as second parameter
     mov x0, x1   // Pass _tmp as first parameter too
     bl NAME(debug_track_interrupt_code)
+    
     mov x0, x20  // Restore _tmp
     mov x1, x19  // Restore x1
     

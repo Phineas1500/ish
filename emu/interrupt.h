@@ -14,3 +14,4 @@
 #define INT_TIMER 32
 #define INT_SYSCALL 0x80
 #define INT_SYSCALL64 0x81
+#define INT_LEGACY_SYSCALL 0x1d // Legacy syscall interrupt (used by some 64-bit programs)

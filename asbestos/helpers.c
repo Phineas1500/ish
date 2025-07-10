@@ -243,6 +243,9 @@ void debug_track_interrupt_code(unsigned long interrupt_code) {
         case 0x81:
             fprintf(stderr, "  -> INT_SYSCALL64 (64-bit syscall!)\n");
             break;
+        case 0x1d:
+            fprintf(stderr, "  -> INT_LEGACY_SYSCALL (legacy syscall!)\n");
+            break;
         case 13:
             fprintf(stderr, "  -> INT_GPF (general protection fault)\n");
             break;
@@ -264,6 +267,7 @@ void debug_track_interrupt_code(unsigned long interrupt_code) {
             break;
     }
 }
+
 
 void debug_track_x1_after_sub(unsigned long x1_value) {
     fprintf(stderr, "DEBUG: call64 after sub - x1 = 0x%lx\n", x1_value);
