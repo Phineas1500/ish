@@ -31,7 +31,7 @@
     write_done 64, call64
     add x13, _cpu, LOCAL_ret_cache
     str _ip, [x13, x12, lsl 3]
-    ldr _ip, [_ip, 40]
+    ldr _ip, [_ip, 32]
     b fiber_ret_chain
     write_bullshit 64, call64
 #endif

@@ -256,6 +256,32 @@ syscall_t syscall_table[] = {
 
 void dump_stack(int lines);
 
+#ifdef ISH_64BIT
+// Map 64-bit syscall numbers to 32-bit syscall numbers
+// This is needed because 64-bit programs use different syscall numbers
+static unsigned map_64bit_syscall(unsigned syscall_64) {
+    // Common 64-bit to 32-bit syscall mappings
+    static const unsigned syscall_map[] = {
+        [0] = 3,    // sys_read (64-bit #0 -> 32-bit #3)
+        [1] = 4,    // sys_write (64-bit #1 -> 32-bit #4)
+        [2] = 5,    // sys_open (64-bit #2 -> 32-bit #5)
+        [3] = 6,    // sys_close (64-bit #3 -> 32-bit #6)
+        [13] = 45,  // sys_brk (64-bit #13 -> 32-bit #45)
+        [32] = 20,  // sys_getpid (64-bit #32 -> 32-bit #20)
+        [39] = 20,  // sys_getpid (64-bit #39 -> 32-bit #20)
+        [52] = 1,   // sys_exit (64-bit #52 -> 32-bit #1)
+        [60] = 1,   // sys_exit (64-bit #60 -> 32-bit #1)
+    };
+    
+    const unsigned map_size = sizeof(syscall_map) / sizeof(syscall_map[0]);
+    if (syscall_64 < map_size && syscall_map[syscall_64] != 0) {
+        return syscall_map[syscall_64];
+    }
+    
+    return syscall_64; // Return unmapped for unknown syscalls
+}
+#endif
+
 void handle_interrupt(int interrupt) {
     struct cpu_state *cpu = &current->cpu;
     if (interrupt == INT_SYSCALL) {
@@ -284,6 +310,12 @@ void handle_interrupt(int interrupt) {
     } else if (interrupt == INT_SYSCALL64) {
         // 64-bit syscall instruction - use proper 64-bit register convention
         unsigned syscall_num = cpu->rax;
+        
+        // Map 64-bit syscall numbers to 32-bit syscall numbers
+        unsigned mapped_syscall = map_64bit_syscall(syscall_num);
+        STRACE("%d 64-bit call %-3d (mapped from %d) ", current->pid, mapped_syscall, syscall_num);
+        syscall_num = mapped_syscall;
+        
         if (syscall_num >= NUM_SYSCALLS || syscall_table[syscall_num] == NULL) {
             printk("%d(%s) missing 64-bit syscall %d\n", current->pid, current->comm, syscall_num);
             cpu->rax = _ENOSYS;
@@ -291,7 +323,6 @@ void handle_interrupt(int interrupt) {
             if (syscall_table[syscall_num] == (syscall_t) syscall_stub) {
                 printk("%d(%s) stub 64-bit syscall %d\n", current->pid, current->comm, syscall_num);
             }
-            STRACE("%d 64-bit call %-3d ", current->pid, syscall_num);
             // 64-bit syscall uses different register convention:
             // rdi, rsi, rdx, r10, r8, r9 (not ebx, ecx, edx, esi, edi, ebp)
             int result = syscall_table[syscall_num](
