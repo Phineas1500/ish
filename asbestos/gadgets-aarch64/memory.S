@@ -222,13 +222,26 @@ crosspage_load:
     save_c
     sub x0, _tlb, TLB_entries
     add x2, _cpu, LOCAL_value
-    mov w1, _addr
+#ifdef ISH_64BIT
+    mov x1, _xaddr   // Use 64-bit address for 64-bit mode
+#else
+    mov w1, _addr    // Use 32-bit address for 32-bit mode
+#endif
     mov x3, x19
+#ifdef ISH_64BIT
+    // FIX: Use fixed 64-bit crosspage handler
+    bl NAME(fixed_64bit_crosspage_read)
+#else
     bl NAME(__tlb_read_cross_page)
+#endif
     mov x19, x0
     restore_c
     cbz x19, segfault_read
+#ifdef ISH_64BIT
+    str _xaddr, [_cpu, LOCAL_value_addr]
+#else
     str _addr, [_cpu, LOCAL_value_addr]
+#endif
     add _xaddr, _cpu, LOCAL_value
     ret
 
