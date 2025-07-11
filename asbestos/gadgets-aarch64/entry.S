@@ -68,21 +68,21 @@ fiber_ret:
 
 .global fiber_exit
 fiber_exit:
-    // DEBUG: Track x1 at fiber_exit entry
-    mov x19, x1  // Save x1 in x19 (callee-saved register)
-    mov x0, x1   // Pass x1 value to debug function
-    bl NAME(debug_track_x1_fiber_exit)
-    mov x1, x19  // Restore x1 from x19
-    
-    // DEBUG: Track _tmp (actual interrupt code) at fiber_exit
-    mov x19, x1  // Save x1
-    mov x20, x0  // Save _tmp (x0)
-    mov x1, x0   // Pass _tmp to debug function as second parameter
-    mov x0, x1   // Pass _tmp as first parameter too
-    bl NAME(debug_track_interrupt_code)
-    
-    mov x0, x20  // Restore _tmp
-    mov x1, x19  // Restore x1
+    // DISABLED DEBUG CODE TO FIX INTERRUPT CORRUPTION
+    // // DEBUG: Track x1 at fiber_exit entry
+    // mov x19, x1  // Save x1 in x19 (callee-saved register)
+    // mov x0, x1   // Pass x1 value to debug function
+    // bl NAME(debug_track_x1_fiber_exit)
+    // mov x1, x19  // Restore x1 from x19
+    // 
+    // // DEBUG: Track _tmp (actual interrupt code) at fiber_exit
+    // mov x19, x1  // Save x1
+    // mov x20, x0  // Save _tmp (x0)
+    // mov x0, x20  // Pass _tmp to debug function
+    // bl NAME(debug_track_interrupt_code)
+    // 
+    // mov x0, x20  // Restore _tmp
+    // mov x1, x19  // Restore x1
     
     save_regs
     ldr lr, [sp, 0x60]
@@ -100,6 +100,16 @@ fiber_exit:
     ldr w8, [_ip, 16]
     str w8, [_cpu, CPU_segfault_addr]
     ldr eip, [_ip, 8]
+    strb wzr, [_cpu, CPU_segfault_was_write]
+    b fiber_exit
+
+.gadget interrupt64
+    // Load interrupt value from parameters
+    ldr w0, [_ip]
+    mov _tmp, w0
+    ldr x8, [_ip, 16]
+    str x8, [_cpu, CPU_segfault_addr]
+    ldr rip, [_ip, 8]
     strb wzr, [_cpu, CPU_segfault_was_write]
     b fiber_exit
 

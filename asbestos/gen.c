@@ -413,7 +413,11 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
     end_block = true; \
 } while (0)
 #endif
+#ifdef ISH_64BIT
+#define INT(code) gggg(interrupt64, (uint8_t) code, state->ip, 0); end_block = true
+#else
 #define INT(code) gggg(interrupt, (uint8_t) code, state->ip, 0); end_block = true
+#endif
 
 #define SET(cc, dst) ga(set, cond_##cc); store(dst, 8)
 #define SETN(cc, dst) ga(setn, cond_##cc); store(dst, 8)
