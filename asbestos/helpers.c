@@ -19,7 +19,9 @@ void debug_call64_end(unsigned long cpu_ptr) {}
 void debug_fiber_ret_chain_reached(unsigned long cpu_ptr) {}
 void debug_print_tlb(unsigned long tlb) {}
 void debug_print_tlb_setup(unsigned long tlb_base, unsigned long tlb_entries_ptr) {}
-void debug_track_interrupt_code(unsigned long interrupt_code) {}
+void debug_track_interrupt_code(unsigned long interrupt_code) {
+    fprintf(stderr, "DEBUG_GADGET: Using %s gadget\n", interrupt_code == 32 ? "interrupt (32-bit)" : "interrupt64 (64-bit)");
+}
 void debug_track_x1_fiber_exit(unsigned long x1_value) {}
 bool fixed_64bit_crosspage_read(void *tlb_ptr, uint64_t addr, void *value, unsigned size) {
     struct tlb *tlb = (struct tlb*)tlb_ptr;
@@ -109,7 +111,9 @@ bool fixed_64bit_crosspage_read(void *tlb_ptr, uint64_t addr, void *value, unsig
 void debug_fiber_ret_chain_reached(unsigned long cpu_ptr) {}
 void debug_print_tlb(unsigned long tlb) {}
 void debug_print_tlb_setup(unsigned long tlb_base, unsigned long tlb_entries_ptr) {}
-void debug_track_interrupt_code(unsigned long interrupt_code) {}
+void debug_track_interrupt_code(unsigned long interrupt_code) {
+    fprintf(stderr, "DEBUG_GADGET: Using %s gadget\n", interrupt_code == 32 ? "interrupt (32-bit)" : "interrupt64 (64-bit)");
+}
 void debug_track_x1_fiber_exit(unsigned long x1_value) {}
 bool fixed_64bit_crosspage_read(void *tlb_ptr, uint64_t addr, void *value, unsigned size) {
     return false;

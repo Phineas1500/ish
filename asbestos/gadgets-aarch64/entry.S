@@ -60,6 +60,16 @@ fiber_exit:
     strb wzr, [_cpu, CPU_segfault_was_write]
     b fiber_exit
 
+.gadget interrupt64
+    // Load interrupt value from parameters
+    ldr w0, [_ip]
+    mov _tmp, w0
+    ldr x8, [_ip, 16]
+    str x8, [_cpu, CPU_segfault_addr]
+    ldr rip, [_ip, 8]
+    strb wzr, [_cpu, CPU_segfault_was_write]
+    b fiber_exit
+
 .gadget exit
     ldr eip, [_ip]
     b fiber_ret
