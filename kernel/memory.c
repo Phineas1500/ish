@@ -88,6 +88,14 @@ static struct pt_entry *mem_pt_new(struct mem *mem, page_t page) {
     int l2_idx = PGDIR_L2_IDX(page);
     int l1_idx = PGDIR_L1_IDX(page);
     
+    // CRITICAL FIX: Add bounds checking to prevent array overflow
+    // This fixes the 64-bit MMU hanging issue for large addresses
+    if (l4_idx >= MEM_PGDIR_SIZE) {
+        TRACE_memory("64-bit page table L4 index %d out of bounds (max %d) for page 0x%llx - cannot create\n", 
+                     l4_idx, MEM_PGDIR_SIZE - 1, (unsigned long long)page);
+        return NULL;  // Cannot create page table entries for out-of-bounds addresses
+    }
+    
     // Get/create L3 table
     void ***pgdir_l3 = (void ***)mem->pgdir_l4[l4_idx];
     if (pgdir_l3 == NULL) {
@@ -121,6 +129,14 @@ struct pt_entry *mem_pt(struct mem *mem, page_t page) {
     int l3_idx = PGDIR_L3_IDX(page);
     int l2_idx = PGDIR_L2_IDX(page);
     int l1_idx = PGDIR_L1_IDX(page);
+    
+    // CRITICAL FIX: Add bounds checking to prevent array overflow
+    // This fixes the 64-bit MMU hanging issue for large addresses
+    if (l4_idx >= MEM_PGDIR_SIZE) {
+        TRACE_memory("64-bit page table L4 index %d out of bounds (max %d) for page 0x%llx\n", 
+                     l4_idx, MEM_PGDIR_SIZE - 1, (unsigned long long)page);
+        return NULL;  // Gracefully return NULL for out-of-bounds addresses
+    }
     
     void ***pgdir_l3 = (void ***)mem->pgdir_l4[l4_idx];
     if (pgdir_l3 == NULL)

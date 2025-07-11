@@ -332,6 +332,52 @@ void handle_interrupt(int interrupt) {
             cpu->rax = result;
         }
 #endif
+    } else if (interrupt == INT_LEGACY_SYSCALL) {
+        // Legacy syscall interrupt 0x1D - some 64-bit programs use this
+        // instead of the modern SYSCALL instruction. Treat it like INT_SYSCALL64
+        // but check RAX for the syscall number
+        
+#ifdef ISH_64BIT
+        unsigned syscall_num = cpu->rax;
+        STRACE("%d legacy INT 0x1D syscall %d ", current->pid, syscall_num);
+        
+        // Map 64-bit syscall numbers to 32-bit syscall numbers  
+        unsigned mapped_syscall = map_64bit_syscall(syscall_num);
+        STRACE("(mapped from %d) ", syscall_num);
+        syscall_num = mapped_syscall;
+        
+        if (syscall_num >= NUM_SYSCALLS || syscall_table[syscall_num] == NULL) {
+            printk("%d(%s) missing legacy syscall %d\n", current->pid, current->comm, syscall_num);
+            cpu->rax = _ENOSYS;
+        } else {
+            if (syscall_table[syscall_num] == (syscall_t) syscall_stub) {
+                printk("%d(%s) stub legacy syscall %d\n", current->pid, current->comm, syscall_num);
+            }
+            // Use 64-bit register convention like INT_SYSCALL64:
+            // rdi, rsi, rdx, r10, r8, r9
+            int result = syscall_table[syscall_num](
+                cpu->rdi, cpu->rsi, cpu->rdx,
+                cpu->r10, cpu->r8, cpu->r9);
+            STRACE(" = 0x%x\n", result);
+            cpu->rax = result;
+        }
+#else
+        // For 32-bit builds, treat as regular syscall
+        unsigned syscall_num = cpu->eax;
+        STRACE("%d legacy INT 0x1D syscall %d ", current->pid, syscall_num);
+        
+        if (syscall_num >= NUM_SYSCALLS || syscall_table[syscall_num] == NULL) {
+            printk("%d(%s) missing legacy syscall %d\n", current->pid, current->comm, syscall_num);
+            cpu->eax = _ENOSYS;
+        } else {
+            if (syscall_table[syscall_num] == (syscall_t) syscall_stub) {
+                printk("%d(%s) stub legacy syscall %d\n", current->pid, current->comm, syscall_num);
+            }
+            int result = syscall_table[syscall_num](cpu->ebx, cpu->ecx, cpu->edx, cpu->esi, cpu->edi, cpu->ebp);
+            STRACE(" = 0x%x\n", result);
+            cpu->eax = result;
+        }
+#endif
     } else if (interrupt == INT_GPF) {
         // some page faults, such as stack growing or CoW clones, are handled by mem_ptr
         read_wrlock(&current->mem->lock);
