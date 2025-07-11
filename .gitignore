@@ -28,3 +28,5 @@ usr/sbin/
 usr/lib/
 sbin/
 lib/
+
+alpine-64bit-processed/

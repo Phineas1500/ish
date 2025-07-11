@@ -11,14 +11,41 @@ NAME(fiber_enter):
     stp x26, x27, [sp, 0x40]
     stp x28, x29, [sp, 0x50]
     str lr, [sp, 0x60]
+    
+    // CRITICAL DEBUG: Check input parameters to fiber_enter
+    mov x19, x0  // Save x0
+    mov x20, x1  // Save x1  
+    mov x21, x2  // Save x2
+    
+    // Debug call: pass x2 (TLB base) and x2+32 (TLB entries)
+    mov x0, x2   // TLB base
+    add x1, x2, TLB_entries  // TLB entries pointer
+    bl NAME(debug_print_tlb_setup)
+    
+    mov x0, x19  // Restore x0
+    mov x1, x20  // Restore x1
+    mov x2, x21  // Restore x2
+    
     add _ip, x0, FIBER_BLOCK_code
     # cpu is already x1
     add _tlb, x2, TLB_entries
+    
+    // CRITICAL: Debug TLB register immediately after setup
+    mov x19, x1  // Save x1
+    mov x0, _tlb // Pass _tlb register value
+    bl NAME(debug_print_tlb)
+    mov x1, x19  // Restore x1
+    
     load_regs
     gret
 
 .global fiber_ret_chain
 fiber_ret_chain:
+    // DEBUG: Minimal debug to see if we reach fiber_ret_chain
+    mov x19, x1  // Save x1
+    mov x0, x1   // Pass CPU pointer
+    bl NAME(debug_fiber_ret_chain_reached)
+    mov x1, x19  // Restore x1
     cmp _ip, 0
     b.lt fiber_ret
     ldr x8, [_cpu, CPU_poked_ptr]
@@ -41,6 +68,22 @@ fiber_ret:
 
 .global fiber_exit
 fiber_exit:
+    // DISABLED DEBUG CODE TO FIX INTERRUPT CORRUPTION
+    // // DEBUG: Track x1 at fiber_exit entry
+    // mov x19, x1  // Save x1 in x19 (callee-saved register)
+    // mov x0, x1   // Pass x1 value to debug function
+    // bl NAME(debug_track_x1_fiber_exit)
+    // mov x1, x19  // Restore x1 from x19
+    // 
+    // // DEBUG: Track _tmp (actual interrupt code) at fiber_exit
+    // mov x19, x1  // Save x1
+    // mov x20, x0  // Save _tmp (x0)
+    // mov x0, x20  // Pass _tmp to debug function
+    // bl NAME(debug_track_interrupt_code)
+    // 
+    // mov x0, x20  // Restore _tmp
+    // mov x1, x19  // Restore x1
+    
     save_regs
     ldr lr, [sp, 0x60]
     ldp x28, x29, [sp, 0x50]

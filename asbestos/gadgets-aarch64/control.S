@@ -20,18 +20,59 @@
 
 #ifdef ISH_64BIT
 .gadget call64
-    // Restore proper 64-bit call implementation
+    // DISABLED: Reduce debug noise
+    // mov x19, x1  // Save x1
+    // mov x0, x1   // Pass CPU pointer
+    // bl NAME(debug_call64_start)
+    // mov x1, x19  // Restore x1
+    
+    // DISABLED: Reduce debug noise for testing
+    // mov x19, x1  // Save x1
+    // mov x0, _tlb // Pass _tlb register value
+    // bl NAME(debug_print_tlb)
+    // mov x1, x19  // Restore x1
+    
     sub _xaddr, rsp, 8  // Use 64-bit stack pointer
+    
+    // DISABLED: Reduce debug noise
+    // mov x19, x1
+    // mov x0, x1
+    // bl NAME(debug_before_write_prep)
+    // mov x1, x19
+    
     write_prep 64, call64
+    
+    // DISABLED: Reduce debug noise
+    // mov x19, x1
+    // mov x0, x1
+    // bl NAME(debug_after_write_prep)
+    // mov x1, x19
+    
+    // DISABLED: Reduce debug noise
+    // mov x19, x1  // Save x1
+    // mov x0, _tlb // Pass _tlb register value
+    // bl NAME(debug_print_tlb)
+    // mov x1, x19  // Restore x1
+    
     ldr x8, [_ip, 16]
+    
     str x8, [_xaddr]
     sub rsp, rsp, 8
     mov w9, w8
-    ubfx w12, w9, 4, 12
+    and w12, w9, 0x3fff
     write_done 64, call64
     add x13, _cpu, LOCAL_ret_cache
     str _ip, [x13, x12, lsl 3]
-    ldr _ip, [_ip, 32]
+    // Load target from offset 32 (parameter 4) instead of 40 (parameter 5)
+    ldr x8, [_ip, 32]
+    mov _ip, x8
+    
+    // DEBUG: Check if we reach the end of call64
+    mov x19, x1  // Save x1
+    mov x0, x1   // Pass CPU pointer
+    bl NAME(debug_call64_end)
+    mov x1, x19  // Restore x1
+    
     b fiber_ret_chain
     write_bullshit 64, call64
 #endif
