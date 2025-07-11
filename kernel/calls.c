@@ -256,6 +256,7 @@ syscall_t syscall_table[] = {
 
 void dump_stack(int lines);
 
+#ifdef ISH_64BIT
 // Map 64-bit syscall numbers to 32-bit syscall numbers
 // This is needed because 64-bit programs use different syscall numbers
 static unsigned map_64bit_syscall(unsigned syscall_64) {
@@ -691,6 +692,7 @@ static unsigned map_64bit_syscall(unsigned syscall_64) {
     
     return syscall_64; // Return unmapped for unknown syscalls
 }
+#endif
 
 void handle_interrupt(int interrupt) {
     struct cpu_state *cpu = &current->cpu;
@@ -702,8 +704,10 @@ void handle_interrupt(int interrupt) {
         fprintf(stderr, "DEBUG_INTERRUPT[%d]: interrupt=0x%x", interrupt_count, interrupt);
         if (interrupt == INT_SYSCALL) {
             fprintf(stderr, " (32-bit syscall: eax=%d)", cpu->eax);
+#ifdef ISH_64BIT
         } else if (interrupt == INT_SYSCALL64) {
             fprintf(stderr, " (64-bit syscall: rax=%lld)", cpu->rax);
+#endif
         }
         fprintf(stderr, "\n");
     }
@@ -754,53 +758,6 @@ void handle_interrupt(int interrupt) {
                 cpu->r10, cpu->r8, cpu->r9);
             STRACE(" = 0x%x\n", result);
             cpu->rax = result;
-        }
-#endif
-    } else if (interrupt == INT_LEGACY_SYSCALL) {
-        // Legacy syscall interrupt 0x1D - some 64-bit programs use this
-        // instead of the modern SYSCALL instruction. Treat it like INT_SYSCALL64
-        // but check RAX for the syscall number
-        
-#ifdef ISH_64BIT
-        unsigned syscall_num = cpu->rax;
-        fprintf(stderr, "DEBUG: INT 0x1D syscall - RAX=%llu (syscall %u)\n", cpu->rax, syscall_num);
-        STRACE("%d legacy INT 0x1D syscall %d ", current->pid, syscall_num);
-        
-        // Map 64-bit syscall numbers to 32-bit syscall numbers  
-        unsigned mapped_syscall = map_64bit_syscall(syscall_num);
-        STRACE("(mapped from %d) ", syscall_num);
-        syscall_num = mapped_syscall;
-        
-        if (syscall_num >= NUM_SYSCALLS || syscall_table[syscall_num] == NULL) {
-            printk("%d(%s) missing legacy syscall %d\n", current->pid, current->comm, syscall_num);
-            cpu->rax = _ENOSYS;
-        } else {
-            if (syscall_table[syscall_num] == (syscall_t) syscall_stub) {
-                printk("%d(%s) stub legacy syscall %d\n", current->pid, current->comm, syscall_num);
-            }
-            // Use 64-bit register convention like INT_SYSCALL64:
-            // rdi, rsi, rdx, r10, r8, r9
-            int result = syscall_table[syscall_num](
-                cpu->rdi, cpu->rsi, cpu->rdx,
-                cpu->r10, cpu->r8, cpu->r9);
-            STRACE(" = 0x%x\n", result);
-            cpu->rax = result;
-        }
-#else
-        // For 32-bit builds, treat as regular syscall
-        unsigned syscall_num = cpu->eax;
-        STRACE("%d legacy INT 0x1D syscall %d ", current->pid, syscall_num);
-        
-        if (syscall_num >= NUM_SYSCALLS || syscall_table[syscall_num] == NULL) {
-            printk("%d(%s) missing legacy syscall %d\n", current->pid, current->comm, syscall_num);
-            cpu->eax = _ENOSYS;
-        } else {
-            if (syscall_table[syscall_num] == (syscall_t) syscall_stub) {
-                printk("%d(%s) stub legacy syscall %d\n", current->pid, current->comm, syscall_num);
-            }
-            int result = syscall_table[syscall_num](cpu->ebx, cpu->ecx, cpu->edx, cpu->esi, cpu->edi, cpu->ebp);
-            STRACE(" = 0x%x\n", result);
-            cpu->eax = result;
         }
 #endif
     } else if (interrupt == INT_GPF) {
