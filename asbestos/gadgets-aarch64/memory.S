@@ -219,28 +219,30 @@ segfault_\type:
 
 .global crosspage_load
 crosspage_load:
+    // x19 contains the size parameter from crosspage_load_\id macro
+    // This function should return success/failure in x19
+    
     save_c
+    
     sub x0, _tlb, TLB_entries
     add x2, _cpu, LOCAL_value
 #ifdef ISH_64BIT
-    mov x1, _xaddr   // Use 64-bit address for 64-bit mode
+    mov x1, _xaddr  // Use 64-bit address for 64-bit mode
 #else
-    mov w1, _addr    // Use 32-bit address for 32-bit mode
+    mov w1, _addr   // Use 32-bit address for 32-bit mode
 #endif
-    mov x3, x19
-#ifdef ISH_64BIT
-    // FIX: Use fixed 64-bit crosspage handler
+    mov x3, x19     // x3 = size parameter
+    
+    // DIRECT CALL: Use fixed 64-bit crosspage handler (debug calls removed)
     bl NAME(fixed_64bit_crosspage_read)
-#else
-    bl NAME(__tlb_read_cross_page)
-#endif
     mov x19, x0
+    
     restore_c
     cbz x19, segfault_read
 #ifdef ISH_64BIT
-    str _xaddr, [_cpu, LOCAL_value_addr]
+    str _xaddr, [_cpu, LOCAL_value_addr]  // Store 64-bit address
 #else
-    str _addr, [_cpu, LOCAL_value_addr]
+    str _addr, [_cpu, LOCAL_value_addr]   // Store 32-bit address
 #endif
     add _xaddr, _cpu, LOCAL_value
     ret
@@ -250,7 +252,11 @@ crosspage_store:
     save_c
     sub x0, _tlb, TLB_entries
     add x2, _cpu, LOCAL_value
-    ldr w1, [_cpu, LOCAL_value_addr]
+#ifdef ISH_64BIT
+    ldr x1, [_cpu, LOCAL_value_addr]  // Load 64-bit address for 64-bit mode
+#else
+    ldr w1, [_cpu, LOCAL_value_addr]  // Load 32-bit address for 32-bit mode
+#endif
     mov x3, x19
     bl NAME(__tlb_write_cross_page)
     mov x19, x0

@@ -344,8 +344,8 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
     addr_t target_addr = fake_ip + off; \
     /* printf("DEBUG: CALL_REL off=%lld, fake_ip=0x%llx, target_addr=0x%llx, state->ip=0x%llx\n", (long long)off, (unsigned long long)fake_ip, (unsigned long long)target_addr, (unsigned long long)state->ip); */ \
     gggggg(CALL_GADGET, state->orig_ip, -1, fake_ip, fake_ip, target_addr); \
-    state->block_patch_ip = state->size - 3; \
-    jump_ips(-1, 0); \
+    state->block_patch_ip = state->size - 4; \
+    jump_ips(-2, -1); \
     end_block = true; \
 } while (0)
 #else
