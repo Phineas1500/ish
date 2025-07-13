@@ -154,6 +154,14 @@ _xaddr .req x3
 .macro gret pop=0
     ldr x8, [_ip, \pop*8]!
     add _ip, _ip, 8 /* TODO get rid of this */
+//#ifdef ISH_64BIT
+//    // MINIMAL DEBUG: Track gadget jumps (only first few)
+//    stp x0, x1, [sp, -16]!
+//    mov x0, x8  // Gadget address we're jumping to
+//    mov x1, _ip // Current _ip value
+//    bl NAME(debug_gret_jump)
+//    ldp x0, x1, [sp], 16
+//#endif
     br x8
 .endm
 
@@ -162,22 +170,9 @@ _xaddr .req x3
 
 .macro \type\()_prep size, id
 #ifdef ISH_64BIT
-    // TEMPORARY: Use simplified TLB path without complex miss handling
-    // Directly translate through TLB entries, fallback to segfault if miss
-    and x8, _xaddr, 0xfffff000
-    ubfx x9, _xaddr, 12, 10
-    eor x9, x9, _xaddr, lsr 22
-    lsl x9, x9, 4               // 32-bit entries are 16 bytes
-    add x9, x9, _tlb
-    .ifc \type,read
-        ldr w10, [x9, TLB_ENTRY_page]
-    .else
-        ldr w10, [x9, TLB_ENTRY_page_if_writable]
-    .endif
-    cmp w8, w10
-    b.ne handle_miss_\id    // Fall back to miss handler for now
-    ldr x10, [x9, TLB_ENTRY_data_minus_addr]
-    add _xaddr, x10, _xaddr, uxtx
+    // TEMPORARY: Completely bypass TLB for 64-bit write_prep to test call64
+    // This is unsafe but allows testing if call64 logic works
+    // TODO: Fix proper TLB handling for 64-bit
 #else
     and x8, _xaddr, 0xfff
     cmp x8, (0x1000-(\size/8))

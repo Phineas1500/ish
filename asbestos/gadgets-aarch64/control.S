@@ -20,6 +20,13 @@
 
 #ifdef ISH_64BIT
 .gadget call64
+    // MINIMAL DEBUG: Only confirm call64 is reached
+//#ifdef ISH_64BIT
+//    stp x0, x1, [sp, -16]!
+//    bl NAME(debug_call64_reached)
+//    ldp x0, x1, [sp], 16
+//#endif
+    
     // DISABLED: Reduce debug noise
     // mov x15, x0   // Save x0
     // mov x16, x1   // Save x1
@@ -36,6 +43,13 @@
     
     sub _xaddr, rsp, 8  // Use 64-bit stack pointer
     
+//#ifdef ISH_64BIT
+//    // DEBUG: Track progress through call64
+//    stp x0, x1, [sp, -16]!
+//    bl NAME(debug_call64_after_stack_setup)
+//    ldp x0, x1, [sp], 16
+//#endif
+    
     // DISABLED: Reduce debug noise
     // mov x19, x1
     // mov x0, x1
@@ -43,6 +57,13 @@
     // mov x1, x19
     
     write_prep 64, call64
+    
+#ifdef ISH_64BIT
+    // DEBUG: After write_prep
+    stp x0, x1, [sp, -16]!
+    bl NAME(debug_call64_after_write_prep)
+    ldp x0, x1, [sp], 16
+#endif
     
     // DISABLED: Reduce debug noise
     // mov x19, x1
@@ -58,7 +79,23 @@
     
     ldr x8, [_ip, 24]    // Load fake_ip (return address) from parameter 3
     
+#ifdef ISH_64BIT
+    // DEBUG: After loading return address
+    stp x0, x1, [sp, -16]!
+    mov x0, x8
+    bl NAME(debug_call64_after_load_retaddr)
+    ldp x0, x1, [sp], 16
+#endif
+    
     str x8, [_xaddr]
+    
+#ifdef ISH_64BIT
+    // DEBUG: After storing return address
+    stp x0, x1, [sp, -16]!
+    bl NAME(debug_call64_after_store)
+    ldp x0, x1, [sp], 16
+#endif
+    
     sub rsp, rsp, 8
     mov w9, w8
     and w12, w9, 0x3fff

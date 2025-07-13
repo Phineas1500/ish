@@ -201,9 +201,9 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 #ifdef ISH_64BIT
         addr_t ip = frame->cpu.rip;
         block_count++;
-        if (block_count <= 10) {  // Show first 10 blocks with more detail
-            fprintf(stderr, "64-bit: Block %d, RIP=0x%llx (debug point 1)\n", 
-                    block_count, ip);
+        // REDUCED DEBUG: Only show first few blocks
+        if (block_count <= 3) {
+            fprintf(stderr, "64-bit: Block %d, RIP=0x%llx\n", block_count, ip);
         }
 #else
         addr_t ip = frame->cpu.eip;
@@ -215,6 +215,14 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
             block = fiber_lookup(asbestos, ip);
             if (block == NULL) {
                 block = fiber_block_compile(ip, tlb);
+#ifdef ISH_64BIT
+                if (block_count <= 3) {
+                    fprintf(stderr, "DEBUG: Compiled block %d: addr=0x%llx, end_addr=0x%llx, size=%zu bytes\n", 
+                            block_count, (unsigned long long)block->addr, 
+                            (unsigned long long)block->end_addr, 
+                            (size_t)(block->end_addr - block->addr));
+                }
+#endif
                 fiber_insert(asbestos, block);
             } else {
                 TRACE("%d %08x --- missed cache\n", current_pid(), ip);

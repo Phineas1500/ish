@@ -60,6 +60,15 @@ NAME(fiber_enter):
     // #endif
     
     load_regs
+    
+#ifdef ISH_64BIT
+    // MINIMAL DEBUG: Check _ip value before first gret
+    stp x0, x1, [sp, -16]!
+    mov x0, _ip
+    bl NAME(debug_fiber_ip_value)
+    ldp x0, x1, [sp], 16
+#endif
+    
     gret
 
 .global fiber_ret_chain
@@ -94,12 +103,25 @@ poke:
 
 .global fiber_ret
 fiber_ret:
+#ifdef ISH_64BIT
+    // DEBUG: Track if we reach fiber_ret
+    stp x0, x1, [sp, -16]!
+    bl NAME(debug_fiber_ret_reached) 
+    ldp x0, x1, [sp], 16
+#endif
     # load -1
     mvn _tmp, wzr
     # fallthrough
 
 .global fiber_exit
 fiber_exit:
+#ifdef ISH_64BIT
+    // DEBUG: Track if we reach fiber_exit
+    stp x0, x1, [sp, -16]!
+    mov w0, _tmp  // _tmp is w0 (32-bit)
+    bl NAME(debug_fiber_exit_reached)
+    ldp x0, x1, [sp], 16
+#endif
     // DISABLED DEBUG CODE TO FIX INTERRUPT CORRUPTION
     // // DEBUG: Track x1 at fiber_exit entry
     // mov x19, x1  // Save x1 in x19 (callee-saved register)
@@ -146,7 +168,7 @@ fiber_exit:
     b fiber_exit
 
 .gadget exit
-#ifdef __ISH_64BIT__
+#ifdef ISH_64BIT
     ldr rip, [_ip]
 #else
     ldr eip, [_ip]
