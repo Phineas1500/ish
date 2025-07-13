@@ -201,9 +201,8 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 #ifdef ISH_64BIT
         addr_t ip = frame->cpu.rip;
         block_count++;
-        if (block_count <= 10 || block_count % 10000 == 0) {
+        if (block_count <= 5) {  // Only show first 5 blocks to reduce noise
             fprintf(stderr, "64-bit: Block %d, RIP=0x%llx\n", block_count, ip);
-            printk("64-bit: Block %d, RIP=0x%llx\n", block_count, ip);
         }
 #else
         addr_t ip = frame->cpu.eip;
@@ -248,33 +247,34 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 
         TRACE("%d %08x --- cycle %ld\n", current_pid(), ip, frame->cpu.cycle);
         
-        // Debug for 64-bit execution
-#ifdef ISH_64BIT
-        static int first_10_ips = 0;
-        if (first_10_ips < 10) {
-            FILE *f = fopen("/tmp/ish_exec_debug.txt", "a");
-            if (f) {
-                fprintf(f, "DEBUG: About to execute block at IP=0x%llx, block->addr=0x%llx, block->end_addr=0x%llx, cycle=%ld\n", 
-                        (unsigned long long)ip, (unsigned long long)block->addr, 
-                        (unsigned long long)block->end_addr, frame->cpu.cycle);
-                fclose(f);
-            }
-            first_10_ips++;
-        }
-#endif
+        // TEMPORARILY DISABLED: Debug for 64-bit execution to test hanging issue
+        // #ifdef ISH_64BIT
+        //         static int first_10_ips = 0;
+        //         if (first_10_ips < 10) {
+        //             FILE *f = fopen("/tmp/ish_exec_debug.txt", "a");
+        //             if (f) {
+        //                 fprintf(f, "DEBUG: About to execute block at IP=0x%llx, block->addr=0x%llx, block->end_addr=0x%llx, cycle=%ld\n", 
+        //                         (unsigned long long)ip, (unsigned long long)block->addr, 
+        //                         (unsigned long long)block->end_addr, frame->cpu.cycle);
+        //                 fclose(f);
+        //             }
+        //             first_10_ips++;
+        //         }
+        // #endif
 
-interrupt = fiber_enter(block, frame, tlb);
+        interrupt = fiber_enter(block, frame, tlb);
         
-#ifdef ISH_64BIT
-        if (first_10_ips <= 10) {
-            FILE *f = fopen("/tmp/ish_exec_debug.txt", "a");
-            if (f) {
-                fprintf(f, "DEBUG: After fiber_enter, new RIP=0x%llx, interrupt=%d\n", 
-                        (unsigned long long)frame->cpu.rip, interrupt);
-                fclose(f);
-            }
-        }
-#endif
+        // TEMPORARILY DISABLED: After fiber_enter debug
+        // #ifdef ISH_64BIT
+        //         if (first_10_ips <= 10) {
+        //             FILE *f = fopen("/tmp/ish_exec_debug.txt", "a");
+        //             if (f) {
+        //                 fprintf(f, "DEBUG: After fiber_enter, new RIP=0x%llx, interrupt=%d\n", 
+        //                         (unsigned long long)frame->cpu.rip, interrupt);
+        //                 fclose(f);
+        //             }
+        //         }
+        // #endif
         
         if (interrupt == INT_NONE && __atomic_exchange_n(cpu->poked_ptr, false, __ATOMIC_SEQ_CST))
             interrupt = INT_TIMER;
@@ -286,6 +286,9 @@ interrupt = fiber_enter(block, frame, tlb);
     free(frame);
     free(cache);
     read_wrunlock(&asbestos->jetsam_lock);
+#ifdef ISH_64BIT
+    fprintf(stderr, "64-bit: Execution finished with interrupt=%d after %d blocks\n", interrupt, block_count);
+#endif
     return interrupt;
 }
 
