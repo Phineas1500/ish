@@ -311,6 +311,7 @@ static addr_t find_hole_for_elf(struct elf_header_unified *header, struct prg_he
 }
 
 static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, struct exec_args envp) {
+    fprintf(stderr, "elf_exec: Loading %s\n", file);
     TRACE_memory("elf_exec called for file: %s\n", file);
     int err = 0;
 
@@ -321,6 +322,7 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
         return err;
     }
     TRACE_memory("read_header succeeded for file: %s\n", file);
+    fprintf(stderr, "elf_exec: ELF bitness=%d (1=32bit, 2=64bit)\n", header.bitness);
     struct prg_header_unified *ph;
     if ((err = read_prg_headers(fd, header, &ph)) < 0)
         return err;
@@ -771,6 +773,8 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     current->cpu.eflags = 0;
 
     err = 0;
+    fprintf(stderr, "elf_exec: Successfully loaded, entry=0x%llx, sp=0x%llx\n", 
+            (unsigned long long)entry, (unsigned long long)sp);
 out_free_interp:
     if (interp_name != NULL)
         free(interp_name);

@@ -25,10 +25,10 @@ NAME(fiber_enter):
     mov x21, x2  // Save x2
 #endif
     
-    // Debug call: pass x2 (TLB base) and x2+32 (TLB entries)
-    mov x0, x2   // TLB base
-    add x1, x2, TLB_entries  // TLB entries pointer
-    bl NAME(debug_print_tlb_setup)
+    // DISABLED: Debug call: pass x2 (TLB base) and x2+32 (TLB entries)
+    // mov x0, x2   // TLB base
+    // add x1, x2, TLB_entries  // TLB entries pointer
+    // bl NAME(debug_print_tlb_setup)
     
 #ifdef ISH_64BIT
     mov x0, x15  // Restore x0
@@ -44,40 +44,40 @@ NAME(fiber_enter):
     # cpu is already x1
     add _tlb, x2, TLB_entries
     
-    // CRITICAL: Debug TLB register immediately after setup
-#ifdef ISH_64BIT
-    // In 64-bit mode, x19 is the RIP register, so use x15
-    mov x15, x1  // Save x1
-    mov x0, _tlb // Pass _tlb register value
-    bl NAME(debug_print_tlb)
-    mov x1, x15  // Restore x1
-#else
-    // In 32-bit mode, x19 is safe to use
-    mov x19, x1  // Save x1
-    mov x0, _tlb // Pass _tlb register value
-    bl NAME(debug_print_tlb)
-    mov x1, x19  // Restore x1
-#endif
+    // DISABLED: Debug TLB register immediately after setup
+    // #ifdef ISH_64BIT
+    //     // In 64-bit mode, x19 is the RIP register, so use x15
+    //     mov x15, x1  // Save x1
+    //     mov x0, _tlb // Pass _tlb register value
+    //     bl NAME(debug_print_tlb)
+    //     mov x1, x15  // Restore x1
+    // #else
+    //     // In 32-bit mode, x19 is safe to use
+    //     mov x19, x1  // Save x1
+    //     mov x0, _tlb // Pass _tlb register value
+    //     bl NAME(debug_print_tlb)
+    //     mov x1, x19  // Restore x1
+    // #endif
     
     load_regs
     gret
 
 .global fiber_ret_chain
 fiber_ret_chain:
-    // DEBUG: Minimal debug to see if we reach fiber_ret_chain
-#ifdef ISH_64BIT
-    // In 64-bit mode, x19 is the RIP register, so use x15
-    mov x15, x1  // Save x1
-    mov x0, x1   // Pass CPU pointer
-    bl NAME(debug_fiber_ret_chain_reached)
-    mov x1, x15  // Restore x1
-#else
-    // In 32-bit mode, x19 is safe to use
-    mov x19, x1  // Save x1
-    mov x0, x1   // Pass CPU pointer
-    bl NAME(debug_fiber_ret_chain_reached)
-    mov x1, x19  // Restore x1
-#endif
+    // DEBUG: Temporarily disabled to debug crash
+    // #ifdef ISH_64BIT
+    //     // In 64-bit mode, x19 is the RIP register, so use x15
+    //     mov x15, x1  // Save x1
+    //     mov x0, x1   // Pass CPU pointer
+    //     bl NAME(debug_fiber_ret_chain_reached)
+    //     mov x1, x15  // Restore x1
+    // #else
+    //     // In 32-bit mode, x19 is safe to use
+    //     mov x19, x1  // Save x1
+    //     mov x0, x1   // Pass CPU pointer
+    //     bl NAME(debug_fiber_ret_chain_reached)
+    //     mov x1, x19  // Restore x1
+    // #endif
     cmp _ip, 0
     b.lt fiber_ret
     ldr x8, [_cpu, CPU_poked_ptr]

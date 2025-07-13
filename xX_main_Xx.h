@@ -28,6 +28,7 @@ static void exit_handler(struct task *task, int code) {
 // data structures. thanks programming discussions discord server for the name.
 // https://discord.gg/9zT7NHP
 static inline int xX_main_Xx(int argc, char *const argv[], const char *envp) {
+    fprintf(stderr, "xX_main_Xx: Starting\n");
 #ifdef __APPLE__
     // Enable case-sensitive filesystem mode on macOS, if possible.
     // In order for this to succeed, either we need to be running as root, or
@@ -77,11 +78,14 @@ static inline int xX_main_Xx(int argc, char *const argv[], const char *envp) {
     }
     if (fs == &fakefs)
         strcat(root_realpath, "/data");
+    fprintf(stderr, "xX_main_Xx: Mounting root fs\n");
     int err = mount_root(fs, root_realpath);
     if (err < 0)
         return err;
 
+    fprintf(stderr, "xX_main_Xx: Calling become_first_process\n");
     become_first_process();
+    fprintf(stderr, "xX_main_Xx: After become_first_process\n");
     current->thread = pthread_self();
     char cwd[MAX_PATH + 1];
     if (root == NULL && workdir == NULL) {
@@ -106,8 +110,11 @@ static inline int xX_main_Xx(int argc, char *const argv[], const char *envp) {
         i++;
     }
     argv_copy[p] = '\0';
-    if (argv[optind] == NULL)
+    if (argv[optind] == NULL) {
+        fprintf(stderr, "xX_main_Xx: No program specified\n");
 	    return _ENOENT;
+    }
+    fprintf(stderr, "xX_main_Xx: About to do_execve(%s)\n", argv[optind]);
     printf("DEBUG: About to do_execve(%s)\n", argv[optind]);
     err = do_execve(argv[optind], argc - optind, argv_copy, envp == NULL ? "\0" : envp);
     printf("DEBUG: do_execve returned %d\n", err);

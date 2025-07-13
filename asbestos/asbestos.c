@@ -190,10 +190,21 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
     frame->cpu = *cpu;
     assert(asbestos->mmu == cpu->mmu);
 
+#ifdef ISH_64BIT
+    static int block_count = 0;
+    fprintf(stderr, "64-bit: Starting execution, initial RIP=0x%llx\n", cpu->rip);
+    printk("64-bit: Starting execution, initial RIP=0x%llx\n", cpu->rip);
+#endif
+
     int interrupt = INT_NONE;
     while (interrupt == INT_NONE) {
 #ifdef ISH_64BIT
         addr_t ip = frame->cpu.rip;
+        block_count++;
+        if (block_count <= 10 || block_count % 10000 == 0) {
+            fprintf(stderr, "64-bit: Block %d, RIP=0x%llx\n", block_count, ip);
+            printk("64-bit: Block %d, RIP=0x%llx\n", block_count, ip);
+        }
 #else
         addr_t ip = frame->cpu.eip;
 #endif

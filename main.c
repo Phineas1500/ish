@@ -6,6 +6,7 @@
 #include "xX_main_Xx.h"
 
 int main(int argc, char *const argv[]) {
+    fprintf(stderr, "ISH 64-bit: main() reached with argc=%d\n", argc);
     printf("main: ENTRY with argc=%d\n", argc);
     char envp[100] = {0};
     if (getenv("TERM")) {
