@@ -194,15 +194,6 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
     while (interrupt == INT_NONE) {
 #ifdef ISH_64BIT
         addr_t ip = frame->cpu.rip;
-        // Debug the dynamic linker loop
-        if (ip == 0x7ffe0006a9d5 || ip == 0x7ffe0006a9e6) {
-            static int loop_count = 0;
-            loop_count++;
-            if (loop_count <= 3) {
-                printk("=== 64-bit loop at IP: 0x%llx (iteration %d) ===\n", ip, loop_count);
-                debug_dump_loop_instructions(&frame->cpu);
-            }
-        }
 #else
         addr_t ip = frame->cpu.eip;
 #endif

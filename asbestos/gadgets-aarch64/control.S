@@ -65,8 +65,8 @@
     write_done 64, call64
     add x13, _cpu, LOCAL_ret_cache
     str _ip, [x13, x12, lsl 3]
-    // Load target from offset 32 (parameter 4) instead of 40 (parameter 5)
-    ldr x8, [_ip, 32]
+    // Load target from offset 40 (parameter 5) which contains target_addr
+    ldr x8, [_ip, 40]
     mov _ip, x8
     
     // DEBUG: Check if we reach the end of call64
