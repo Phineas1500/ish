@@ -85,4 +85,8 @@ _Noreturn void die(const char *msg, ...);
 #define debugger raise(SIGTRAP)
 #endif
 
+// Forward declaration for debug loop
+struct cpu_state;
+void debug_dump_loop_instructions(struct cpu_state *cpu);
+
 #endif

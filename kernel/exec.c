@@ -565,10 +565,14 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     if (header.bitness == ELF_64BIT) {
         // 64-bit auxiliary vector
         f = fopen("/tmp/debug_exec.txt", "a");
-        if (f) { fprintf(f, "Using 64-bit auxiliary vector\n"); fclose(f); }
+        if (f) { 
+            fprintf(f, "Using 64-bit auxiliary vector, entry=0x%llx, interp_base=0x%llx\n", 
+                    (unsigned long long)(bias + header.entry_point), (unsigned long long)interp_base);
+            fclose(f); 
+        }
         struct aux_ent_64 aux[] = {
-            {AX_SYSINFO, vdso_entry},
-            {AX_SYSINFO_EHDR, current->mm->vdso},
+            // {AX_SYSINFO, vdso_entry},  // Disable VDSO for 64-bit for now
+            // {AX_SYSINFO_EHDR, current->mm->vdso},
             {AX_HWCAP, 0x00000000}, // suck that
             {AX_PAGESZ, PAGE_SIZE},
             {AX_CLKTCK, 0x64},

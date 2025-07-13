@@ -87,6 +87,18 @@ void gen_exit(struct gen_state *state) {
     // in case the last instruction didn't end the block
     gen(state, (unsigned long) gadget_exit);
     gen(state, state->ip);
+    
+#ifdef ISH_64BIT
+    static int debug_exit_count = 0;
+    if (debug_exit_count < 10) {
+        FILE *f = fopen("/tmp/ish_gen_debug.txt", "a");
+        if (f) {
+            fprintf(f, "gen_exit: Generated exit with IP=0x%llx\n", (unsigned long long)state->ip);
+            fclose(f);
+        }
+        debug_exit_count++;
+    }
+#endif
 }
 
 #define DECLARE_LOCALS \

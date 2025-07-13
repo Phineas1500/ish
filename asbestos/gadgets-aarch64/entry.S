@@ -146,5 +146,9 @@ fiber_exit:
     b fiber_exit
 
 .gadget exit
+#ifdef __ISH_64BIT__
+    ldr rip, [_ip]
+#else
     ldr eip, [_ip]
+#endif
     b fiber_ret

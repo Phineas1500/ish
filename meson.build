@@ -161,6 +161,10 @@ if get_option('kernel') == 'ish'
 
         'platform/' + host_machine.system() + '.c',
     ]
+    
+    if get_option('arch') == 'x86_64'
+        src += ['debug_loop.c']
+    endif
 
     libish = library('ish', src,
         include_directories: includes)

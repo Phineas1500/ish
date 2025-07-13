@@ -21,10 +21,12 @@
 #ifdef ISH_64BIT
 .gadget call64
     // DISABLED: Reduce debug noise
-    // mov x19, x1  // Save x1
-    // mov x0, x1   // Pass CPU pointer
+    // mov x15, x0   // Save x0
+    // mov x16, x1   // Save x1
+    // mov x0, x1    // Pass CPU pointer
     // bl NAME(debug_call64_start)
-    // mov x1, x19  // Restore x1
+    // mov x0, x15   // Restore x0
+    // mov x1, x16   // Restore x1
     
     // DISABLED: Reduce debug noise for testing
     // mov x19, x1  // Save x1
@@ -54,7 +56,7 @@
     // bl NAME(debug_print_tlb)
     // mov x1, x19  // Restore x1
     
-    ldr x8, [_ip, 16]
+    ldr x8, [_ip, 24]    // Load fake_ip (return address) from parameter 3
     
     str x8, [_xaddr]
     sub rsp, rsp, 8

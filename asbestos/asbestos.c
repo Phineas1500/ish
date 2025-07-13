@@ -119,8 +119,11 @@ static struct fiber_block *fiber_block_compile(addr_t ip, struct tlb *tlb) {
     TRACE("%d %08x --- compiling:\n", current_pid(), ip);
 gen_start(ip, &state);
     while (true) {
-        if (!gen_step(&state, tlb))
+        if (!gen_step(&state, tlb)) {
+            // If gen_step returns false, we need to generate an exit
+            gen_exit(&state);
             break;
+        }
         // no block should span more than 2 pages
         // guarantee this by limiting total block size to 1 page
         // guarantee that by stopping as soon as there's less space left than
@@ -191,6 +194,15 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
     while (interrupt == INT_NONE) {
 #ifdef ISH_64BIT
         addr_t ip = frame->cpu.rip;
+        // Debug the dynamic linker loop
+        if (ip == 0x7ffe0006a9d5 || ip == 0x7ffe0006a9e6) {
+            static int loop_count = 0;
+            loop_count++;
+            if (loop_count <= 3) {
+                printk("=== 64-bit loop at IP: 0x%llx (iteration %d) ===\n", ip, loop_count);
+                debug_dump_loop_instructions(&frame->cpu);
+            }
+        }
 #else
         addr_t ip = frame->cpu.eip;
 #endif
@@ -234,20 +246,34 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 
         TRACE("%d %08x --- cycle %ld\n", current_pid(), ip, frame->cpu.cycle);
         
-        // Debug for 64-bit execution - DISABLED for performance
-        // static int first_10_ips = 0;
-        // if (first_10_ips < 10) {
-        //     FILE *f = fopen("/tmp/ish_exec_debug.txt", "a");
-        //     if (f) {
-        //         fprintf(f, "DEBUG: Executing IP=0x%llx, cycle=%ld, pid=%d\n", 
-        //                 (unsigned long long)ip, frame->cpu.cycle, current_pid());
-        //         fclose(f);
-        //     }
-        //     printk("DEBUG: Executing IP=0x%llx, cycle=%ld\n", (unsigned long long)ip, frame->cpu.cycle);
-        //     first_10_ips++;
-        // }
+        // Debug for 64-bit execution
+#ifdef ISH_64BIT
+        static int first_10_ips = 0;
+        if (first_10_ips < 10) {
+            FILE *f = fopen("/tmp/ish_exec_debug.txt", "a");
+            if (f) {
+                fprintf(f, "DEBUG: About to execute block at IP=0x%llx, block->addr=0x%llx, block->end_addr=0x%llx, cycle=%ld\n", 
+                        (unsigned long long)ip, (unsigned long long)block->addr, 
+                        (unsigned long long)block->end_addr, frame->cpu.cycle);
+                fclose(f);
+            }
+            first_10_ips++;
+        }
+#endif
 
 interrupt = fiber_enter(block, frame, tlb);
+        
+#ifdef ISH_64BIT
+        if (first_10_ips <= 10) {
+            FILE *f = fopen("/tmp/ish_exec_debug.txt", "a");
+            if (f) {
+                fprintf(f, "DEBUG: After fiber_enter, new RIP=0x%llx, interrupt=%d\n", 
+                        (unsigned long long)frame->cpu.rip, interrupt);
+                fclose(f);
+            }
+        }
+#endif
+        
         if (interrupt == INT_NONE && __atomic_exchange_n(cpu->poked_ptr, false, __ATOMIC_SEQ_CST))
             interrupt = INT_TIMER;
         if (interrupt == INT_NONE && ++frame->cpu.cycle % (1 << 10) == 0)

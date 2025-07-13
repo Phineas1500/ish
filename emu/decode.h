@@ -54,9 +54,31 @@ __no_instrument DECODER_RET glue(DECODER_NAME, OP_SIZE)(DECODER_ARGS) {
 restart:
     TRACEIP();
 #ifdef ISH_64BIT
+    // Debug: Log first few instructions in 64-bit mode
+    static int debug_count = 0;
+    if (debug_count < 10) {
+        FILE *f = fopen("/tmp/ish_decode_debug.txt", "a");
+        if (f) {
+            fprintf(f, "Decoding at IP=0x%llx, orig_ip=0x%llx, end_block=%d\n", 
+                    (unsigned long long)state->ip, (unsigned long long)state->orig_ip, end_block);
+            fclose(f);
+        }
+        debug_count++;
+    }
+    
     // Reset REX state and check for REX prefix (0x40-0x4F)
     rex_w = rex_r = rex_x = rex_b = 0;
     READINSN;
+    
+    // Debug: Log instruction byte
+    if (debug_count <= 10) {
+        FILE *f = fopen("/tmp/ish_decode_debug.txt", "a");
+        if (f) {
+            fprintf(f, "  Read insn byte: 0x%02x at IP=0x%llx\n", insn, (unsigned long long)(state->ip - 1));
+            fclose(f);
+        }
+    }
+    
     if ((insn & 0xF0) == 0x40) {
         // Parse REX prefix bits
         rex_w = (insn >> 3) & 1;  // Bit 3: 64-bit operand size
