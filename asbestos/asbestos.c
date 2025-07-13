@@ -201,8 +201,9 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 #ifdef ISH_64BIT
         addr_t ip = frame->cpu.rip;
         block_count++;
-        if (block_count <= 5) {  // Only show first 5 blocks to reduce noise
-            fprintf(stderr, "64-bit: Block %d, RIP=0x%llx\n", block_count, ip);
+        if (block_count <= 10) {  // Show first 10 blocks with more detail
+            fprintf(stderr, "64-bit: Block %d, RIP=0x%llx (debug point 1)\n", 
+                    block_count, ip);
         }
 #else
         addr_t ip = frame->cpu.eip;
@@ -221,6 +222,12 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
             cache[cache_index] = block;
             unlock(&asbestos->lock);
         }
+#ifdef ISH_64BIT
+        if (block_count <= 10) {
+            fprintf(stderr, "64-bit: Block %d, about to execute block at 0x%llx (debug point 2)\n", 
+                    block_count, (unsigned long long)block->addr);
+        }
+#endif
         struct fiber_block *last_block = frame->last_block;
         if (last_block != NULL &&
                 (last_block->jump_ip[0] != NULL ||
@@ -263,6 +270,13 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
         // #endif
 
         interrupt = fiber_enter(block, frame, tlb);
+        
+#ifdef ISH_64BIT
+        if (block_count <= 10) {
+            fprintf(stderr, "64-bit: Block %d, after fiber_enter, interrupt=%d, new RIP=0x%llx (debug point 3)\n", 
+                    block_count, interrupt, (unsigned long long)frame->cpu.rip);
+        }
+#endif
         
         // TEMPORARILY DISABLED: After fiber_enter debug
         // #ifdef ISH_64BIT

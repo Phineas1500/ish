@@ -184,7 +184,11 @@ handle_\type\()_miss:
     save_c
     # %tlb actually points to tlb->entries
     sub x0, _tlb, TLB_entries
-    mov w1, _addr
+#ifdef ISH_64BIT
+    mov x1, _xaddr  // Use 64-bit address in 64-bit mode
+#else
+    mov w1, _addr   // Use 32-bit address in 32-bit mode
+#endif
     .ifc \type,read
         mov x2, xzr
     .else
@@ -243,8 +247,8 @@ crosspage_load:
     mov x3, x19     // x3 = size parameter (from x19 in 32-bit mode)
 #endif
     
-    // DIRECT CALL: Use fixed 64-bit crosspage handler (debug calls removed)
-    bl NAME(fixed_64bit_crosspage_read)
+    // Use the real TLB crosspage read function
+    bl NAME(__tlb_read_cross_page)
 #ifdef ISH_64BIT
     // In 64-bit mode, x19 is the RIP register, so use x15
     mov x15, x0
