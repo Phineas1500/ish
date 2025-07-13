@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdio.h>
 #include "debug.h"
 #include "kernel/calls.h"
 #include "emu/interrupt.h"
@@ -384,6 +385,17 @@ void handle_interrupt(int interrupt) {
         void *ptr = mem_ptr(current->mem, cpu->segfault_addr, cpu->segfault_was_write ? MEM_WRITE : MEM_READ);
         read_wrunlock(&current->mem->lock);
         if (ptr == NULL) {
+            FILE *f = fopen("/tmp/ish_segfault_debug.txt", "a");
+            if (f) {
+#ifdef ISH_64BIT
+                fprintf(f, "SEGFAULT: pid=%d, addr=0x%x, rip=0x%llx, rsp=0x%llx\n", 
+                        current->pid, cpu->segfault_addr, cpu->rip, cpu->rsp);
+#else
+                fprintf(f, "SEGFAULT: pid=%d, addr=0x%x, eip=0x%x, esp=0x%x\n", 
+                        current->pid, cpu->segfault_addr, cpu->eip, cpu->esp);
+#endif
+                fclose(f);
+            }
 #ifdef ISH_64BIT
             printk("%d page fault on 0x%x at 0x%llx\n", current->pid, cpu->segfault_addr, cpu->rip);
 #else

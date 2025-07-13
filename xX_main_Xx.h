@@ -108,9 +108,14 @@ static inline int xX_main_Xx(int argc, char *const argv[], const char *envp) {
     argv_copy[p] = '\0';
     if (argv[optind] == NULL)
 	    return _ENOENT;
+    printf("DEBUG: About to do_execve(%s)\n", argv[optind]);
     err = do_execve(argv[optind], argc - optind, argv_copy, envp == NULL ? "\0" : envp);
+    printf("DEBUG: do_execve returned %d\n", err);
     if (err < 0)
         return err;
+    
+    // If we get here, do_execve succeeded and we should now be running the new program
+    printf("DEBUG: After successful do_execve, this should not be printed!\n");
     tty_drivers[TTY_CONSOLE_MAJOR] = &real_tty_driver;
     if (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)) {
         err = create_stdio(console, TTY_CONSOLE_MAJOR, 1);

@@ -233,6 +233,19 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
         // every thread on this asbestos is not executing anything
 
         TRACE("%d %08x --- cycle %ld\n", current_pid(), ip, frame->cpu.cycle);
+        
+        // Debug for 64-bit execution - DISABLED for performance
+        // static int first_10_ips = 0;
+        // if (first_10_ips < 10) {
+        //     FILE *f = fopen("/tmp/ish_exec_debug.txt", "a");
+        //     if (f) {
+        //         fprintf(f, "DEBUG: Executing IP=0x%llx, cycle=%ld, pid=%d\n", 
+        //                 (unsigned long long)ip, frame->cpu.cycle, current_pid());
+        //         fclose(f);
+        //     }
+        //     printk("DEBUG: Executing IP=0x%llx, cycle=%ld\n", (unsigned long long)ip, frame->cpu.cycle);
+        //     first_10_ips++;
+        // }
 
 interrupt = fiber_enter(block, frame, tlb);
         if (interrupt == INT_NONE && __atomic_exchange_n(cpu->poked_ptr, false, __ATOMIC_SEQ_CST))

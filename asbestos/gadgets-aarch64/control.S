@@ -68,10 +68,19 @@
     mov _ip, x8
     
     // DEBUG: Check if we reach the end of call64
+#ifdef ISH_64BIT
+    // In 64-bit mode, x19 is the RIP register, so use x15
+    mov x15, x1  // Save x1
+    mov x0, x1   // Pass CPU pointer
+    bl NAME(debug_call64_end)
+    mov x1, x15  // Restore x1
+#else
+    // In 32-bit mode, x19 is safe to use
     mov x19, x1  // Save x1
     mov x0, x1   // Pass CPU pointer
     bl NAME(debug_call64_end)
     mov x1, x19  // Restore x1
+#endif
     
     b fiber_ret_chain
     write_bullshit 64, call64

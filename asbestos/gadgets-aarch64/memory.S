@@ -191,10 +191,19 @@ handle_\type\()_miss:
         mov x2, 1
     .endif
     bl NAME(tlb_handle_miss)
+#ifdef ISH_64BIT
+    // In 64-bit mode, x19 is the RIP register, so use x15
+    mov x15, x0
+    restore_c
+    cbz x15, segfault_\type
+    mov _xaddr, x15
+#else
+    // In 32-bit mode, x19 is safe to use
     mov x19, x0
     restore_c
     cbz x19, segfault_\type
     mov _xaddr, x19
+#endif
     ret
 
 .global segfault_\type
@@ -235,10 +244,19 @@ crosspage_load:
     
     // DIRECT CALL: Use fixed 64-bit crosspage handler (debug calls removed)
     bl NAME(fixed_64bit_crosspage_read)
+#ifdef ISH_64BIT
+    // In 64-bit mode, x19 is the RIP register, so use x15
+    mov x15, x0
+    
+    restore_c
+    cbz x15, segfault_read
+#else
+    // In 32-bit mode, x19 is safe to use
     mov x19, x0
     
     restore_c
     cbz x19, segfault_read
+#endif
 #ifdef ISH_64BIT
     str _xaddr, [_cpu, LOCAL_value_addr]  // Store 64-bit address
 #else
@@ -259,8 +277,16 @@ crosspage_store:
 #endif
     mov x3, x19
     bl NAME(__tlb_write_cross_page)
+#ifdef ISH_64BIT
+    // In 64-bit mode, x19 is the RIP register, so use x15
+    mov x15, x0
+    restore_c
+    cbz x15, segfault_write
+#else
+    // In 32-bit mode, x19 is safe to use
     mov x19, x0
     restore_c
     cbz x19, segfault_write
+#endif
     ret
 

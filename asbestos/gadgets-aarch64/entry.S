@@ -13,28 +13,51 @@ NAME(fiber_enter):
     str lr, [sp, 0x60]
     
     // CRITICAL DEBUG: Check input parameters to fiber_enter
+#ifdef ISH_64BIT
+    // In 64-bit mode, x19 is the RIP register, so use x15-x17
+    mov x15, x0  // Save x0
+    mov x16, x1  // Save x1
+    mov x17, x2  // Save x2
+#else
+    // In 32-bit mode, x19 is safe to use
     mov x19, x0  // Save x0
-    mov x20, x1  // Save x1  
+    mov x20, x1  // Save x1
     mov x21, x2  // Save x2
+#endif
     
     // Debug call: pass x2 (TLB base) and x2+32 (TLB entries)
     mov x0, x2   // TLB base
     add x1, x2, TLB_entries  // TLB entries pointer
     bl NAME(debug_print_tlb_setup)
     
+#ifdef ISH_64BIT
+    mov x0, x15  // Restore x0
+    mov x1, x16  // Restore x1
+    mov x2, x17  // Restore x2
+#else
     mov x0, x19  // Restore x0
     mov x1, x20  // Restore x1
     mov x2, x21  // Restore x2
+#endif
     
     add _ip, x0, FIBER_BLOCK_code
     # cpu is already x1
     add _tlb, x2, TLB_entries
     
     // CRITICAL: Debug TLB register immediately after setup
+#ifdef ISH_64BIT
+    // In 64-bit mode, x19 is the RIP register, so use x15
+    mov x15, x1  // Save x1
+    mov x0, _tlb // Pass _tlb register value
+    bl NAME(debug_print_tlb)
+    mov x1, x15  // Restore x1
+#else
+    // In 32-bit mode, x19 is safe to use
     mov x19, x1  // Save x1
     mov x0, _tlb // Pass _tlb register value
     bl NAME(debug_print_tlb)
     mov x1, x19  // Restore x1
+#endif
     
     load_regs
     gret
@@ -42,10 +65,19 @@ NAME(fiber_enter):
 .global fiber_ret_chain
 fiber_ret_chain:
     // DEBUG: Minimal debug to see if we reach fiber_ret_chain
+#ifdef ISH_64BIT
+    // In 64-bit mode, x19 is the RIP register, so use x15
+    mov x15, x1  // Save x1
+    mov x0, x1   // Pass CPU pointer
+    bl NAME(debug_fiber_ret_chain_reached)
+    mov x1, x15  // Restore x1
+#else
+    // In 32-bit mode, x19 is safe to use
     mov x19, x1  // Save x1
     mov x0, x1   // Pass CPU pointer
     bl NAME(debug_fiber_ret_chain_reached)
     mov x1, x19  // Restore x1
+#endif
     cmp _ip, 0
     b.lt fiber_ret
     ldr x8, [_cpu, CPU_poked_ptr]

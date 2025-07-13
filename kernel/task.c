@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include "kernel/calls.h"
 #include "kernel/task.h"
 #include "kernel/memory.h"
@@ -99,6 +100,27 @@ void task_run_current() {
     struct cpu_state *cpu = &current->cpu;
     struct tlb tlb = {};
     tlb_refresh(&tlb, &current->mem->mmu);
+    
+    FILE *f = fopen("/tmp/ish_task_debug.txt", "a");
+    if (f) {
+#ifdef ISH_64BIT
+        fprintf(f, "DEBUG: task_run_current started, pid=%d, RIP=0x%llx, RSP=0x%llx\n", 
+               current->pid, cpu->rip, cpu->rsp);
+#else
+        fprintf(f, "DEBUG: task_run_current started, pid=%d, EIP=0x%x, ESP=0x%x\n", 
+               current->pid, cpu->eip, cpu->esp);
+#endif
+        fclose(f);
+    }
+    
+#ifdef ISH_64BIT
+    printk("DEBUG: task_run_current started, pid=%d, RIP=0x%llx, RSP=0x%llx\n", 
+           current->pid, cpu->rip, cpu->rsp);
+#else
+    printk("DEBUG: task_run_current started, pid=%d, EIP=0x%x, ESP=0x%x\n", 
+           current->pid, cpu->eip, cpu->esp);
+#endif
+    
     while (true) {
         read_wrlock(&current->mem->lock);
         int interrupt = cpu_run_to_interrupt(cpu, &tlb);

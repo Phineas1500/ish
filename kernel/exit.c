@@ -41,6 +41,7 @@ static struct task *find_new_parent(struct task *task) {
 }
 
 noreturn void do_exit(int status) {
+    printk("DEBUG: Process %d (%s) calling do_exit with status %d\n", current->pid, current->comm, status);
     // has to happen before mm_release
     addr_t clear_tid = current->clear_tid;
     if (clear_tid) {
