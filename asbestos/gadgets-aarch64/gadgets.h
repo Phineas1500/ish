@@ -194,12 +194,20 @@ handle_miss_\id :
     bl handle_\type\()_miss
     b back_\id
 crosspage_load_\id :
-    mov x19, (\size/8)
+#ifdef ISH_64BIT
+    mov x17, (\size/8)  // In 64-bit mode, use x17 instead of x19 (RIP register)
+#else
+    mov x19, (\size/8)  // In 32-bit mode, x19 is safe
+#endif
     bl crosspage_load
     b back_\id
 .ifc \type,write
 crosspage_store_\id :
-    mov x19, (\size/8)
+#ifdef ISH_64BIT
+    mov x17, (\size/8)  // In 64-bit mode, use x17 instead of x19 (RIP register)
+#else
+    mov x19, (\size/8)  // In 32-bit mode, x19 is safe
+#endif
     bl crosspage_store
     b back_write_done_\id
 .endif

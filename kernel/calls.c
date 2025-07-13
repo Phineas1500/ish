@@ -285,6 +285,14 @@ static unsigned map_64bit_syscall(unsigned syscall_64) {
 
 void handle_interrupt(int interrupt) {
     struct cpu_state *cpu = &current->cpu;
+#ifdef ISH_64BIT
+    static int interrupt_count = 0;
+    if (interrupt_count < 5) {
+        printk("DEBUG: Interrupt %d, pid=%d, RIP=0x%llx, RAX=0x%llx\n", 
+               interrupt, current->pid, (unsigned long long)cpu->rip, (unsigned long long)cpu->rax);
+        interrupt_count++;
+    }
+#endif
     if (interrupt == INT_SYSCALL) {
         unsigned syscall_num = cpu->eax;
         if (syscall_num >= NUM_SYSCALLS || syscall_table[syscall_num] == NULL) {
@@ -450,7 +458,14 @@ void handle_interrupt(int interrupt) {
         });
         unlock(&pids_lock);
     } else if (interrupt != INT_TIMER) {
-        printk("%d unhandled interrupt %d\n", current->pid, interrupt);
+        printk("%d unhandled interrupt %d (INT_FPU=%d)\n", current->pid, interrupt, INT_FPU);
+        if (interrupt == INT_FPU) {
+#ifdef ISH_64BIT
+            printk("FPU interrupt at RIP=0x%llx\n", (unsigned long long)cpu->rip);
+#else
+            printk("FPU interrupt at EIP=0x%x\n", cpu->eip);
+#endif
+        }
         sys_exit(interrupt);
     }
 

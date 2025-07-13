@@ -120,6 +120,15 @@ void task_run_current() {
     printk("DEBUG: task_run_current started, pid=%d, EIP=0x%x, ESP=0x%x\n", 
            current->pid, cpu->eip, cpu->esp);
 #endif
+#ifdef ISH_64BIT
+    static int first_run = 1;
+    // Check if RIP is beyond 32-bit range to detect 64-bit programs
+    if (first_run && cpu->rip > 0xFFFFFFFF) {
+        printk("DEBUG: First 64-bit task_run_current, pid=%d, RIP=0x%llx, RSP=0x%llx\n",
+               current->pid, (unsigned long long)cpu->rip, (unsigned long long)cpu->rsp);
+        first_run = 0;
+    }
+#endif
     
     while (true) {
         read_wrlock(&current->mem->lock);
