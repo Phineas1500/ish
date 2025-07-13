@@ -154,14 +154,6 @@ _xaddr .req x3
 .macro gret pop=0
     ldr x8, [_ip, \pop*8]!
     add _ip, _ip, 8 /* TODO get rid of this */
-//#ifdef ISH_64BIT
-//    // MINIMAL DEBUG: Track gadget jumps (only first few)
-//    stp x0, x1, [sp, -16]!
-//    mov x0, x8  // Gadget address we're jumping to
-//    mov x1, _ip // Current _ip value
-//    bl NAME(debug_gret_jump)
-//    ldp x0, x1, [sp], 16
-//#endif
     br x8
 .endm
 

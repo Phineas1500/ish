@@ -102,27 +102,22 @@
     write_done 64, call64
     add x13, _cpu, LOCAL_ret_cache
     str _ip, [x13, x12, lsl 3]
-    // Load target from offset 40 (parameter 5) which contains target_addr
-    ldr x8, [_ip, 40]
-    mov _ip, x8
     
-    // DISABLED: Debug function call causing crash
-    // // DEBUG: Check if we reach the end of call64
-    // #ifdef ISH_64BIT
-    //     // In 64-bit mode, x19 is the RIP register, so use x15
-    //     mov x15, x1  // Save x1
-    //     mov x0, x1   // Pass CPU pointer
-    //     bl NAME(debug_call64_end)
-    //     mov x1, x15  // Restore x1
-    // #else
-    //     // In 32-bit mode, x19 is safe to use
-    //     mov x19, x1  // Save x1
-    //     mov x0, x1   // Pass CPU pointer
-    //     bl NAME(debug_call64_end)
-    //     mov x1, x19  // Restore x1
-    // #endif
+    // For 64-bit CALL, we need to jump to the target address
+    // The target address is in parameter 5 (offset 40)
     
-    b fiber_ret_chain
+    // Load the target address from parameter 4 (offset 32)
+    // This had value 0x80007ffe00036540 which looks like a guest address
+    ldr x8, [_ip, 32]
+    
+    // Clear the high bit if set (might be a marker)
+    and x8, x8, 0x7fffffffffff
+    
+    // Set RIP to the target address
+    mov rip, x8
+    
+    // Jump to fiber_ret, which will compile a new block for the target
+    b fiber_ret
     write_bullshit 64, call64
 #endif
 

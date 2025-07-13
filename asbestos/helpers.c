@@ -86,6 +86,31 @@ void debug_fiber_ret_reached(void) {
 void debug_poked_value(unsigned long value) {
     fprintf(stderr, "DEBUG: poked byte value = %lu\n", value);
 }
+void debug_fiber_ret_chain_entry(void) {
+    fprintf(stderr, "DEBUG: Entered fiber_ret_chain\n");
+}
+void debug_before_last_block_store(unsigned long block_offset) {
+    fprintf(stderr, "DEBUG: About to store last_block, offset = 0x%lx\n", block_offset);
+}
+void debug_before_fiber_gret(void) {
+    fprintf(stderr, "DEBUG: About to execute gret in fiber_ret_chain\n");
+}
+void debug_before_fiber_gret_state(unsigned long ip, unsigned long cpu) {
+    fprintf(stderr, "DEBUG: Before gret: _ip=0x%lx, _cpu=0x%lx\n", ip, cpu);
+}
+void debug_fiber_chain_gret(unsigned long gadget_addr, unsigned long ip_value, unsigned long cpu_ptr) {
+    fprintf(stderr, "DEBUG: fiber_chain gret to gadget 0x%lx, _ip=0x%lx, cpu=0x%lx\n", 
+            gadget_addr, ip_value, cpu_ptr);
+}
+void debug_call64_target_param(unsigned long target, unsigned long ip) {
+    fprintf(stderr, "DEBUG: call64 target parameter = 0x%lx (from _ip=0x%lx)\n", target, ip);
+}
+void debug_call64_params_1(unsigned long p1, unsigned long p2, unsigned long p3, unsigned long p4) {
+    fprintf(stderr, "DEBUG: call64 params: p1=0x%lx, p2=0x%lx, p3=0x%lx, p4=0x%lx\n", p1, p2, p3, p4);
+}
+void debug_call64_params_2(unsigned long p5, unsigned long ip) {
+    fprintf(stderr, "DEBUG: call64 params: p5=0x%lx, from _ip=0x%lx\n", p5, ip);
+}
 #else
 // Stub functions for 32-bit builds to satisfy assembly gadget references
 void debug_gret_jump(unsigned long target_addr, unsigned long ip_value) {}
@@ -94,6 +119,14 @@ void debug_fiber_ret_reached(void) {}
 void debug_poked_ptr_value(unsigned long ptr_value) {}
 void debug_call64_target(unsigned long target) {}
 void debug_poked_value(unsigned long value) {}
+void debug_fiber_ret_chain_entry(void) {}
+void debug_before_last_block_store(unsigned long block_offset) {}
+void debug_before_fiber_gret(void) {}
+void debug_before_fiber_gret_state(unsigned long ip, unsigned long cpu) {}
+void debug_fiber_chain_gret(unsigned long gadget_addr, unsigned long ip_value, unsigned long cpu_ptr) {}
+void debug_call64_target_param(unsigned long target, unsigned long ip) {}
+void debug_call64_params_1(unsigned long p1, unsigned long p2, unsigned long p3, unsigned long p4) {}
+void debug_call64_params_2(unsigned long p5, unsigned long ip) {}
 void debug_call64_reached(void) {}
 void debug_call64_after_stack_setup(void) {}
 void debug_call64_after_write_prep(void) {}

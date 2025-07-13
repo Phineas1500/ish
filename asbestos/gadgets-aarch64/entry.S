@@ -73,20 +73,7 @@ NAME(fiber_enter):
 
 .global fiber_ret_chain
 fiber_ret_chain:
-    // DEBUG: Temporarily disabled to debug crash
-    // #ifdef ISH_64BIT
-    //     // In 64-bit mode, x19 is the RIP register, so use x15
-    //     mov x15, x1  // Save x1
-    //     mov x0, x1   // Pass CPU pointer
-    //     bl NAME(debug_fiber_ret_chain_reached)
-    //     mov x1, x15  // Restore x1
-    // #else
-    //     // In 32-bit mode, x19 is safe to use
-    //     mov x19, x1  // Save x1
-    //     mov x0, x1   // Pass CPU pointer
-    //     bl NAME(debug_fiber_ret_chain_reached)
-    //     mov x1, x19  // Restore x1
-    // #endif
+    
     cmp _ip, 0
     b.lt fiber_ret
     ldr x8, [_cpu, CPU_poked_ptr]
@@ -94,7 +81,11 @@ fiber_ret_chain:
     cmp w8, 0
     b.ne poke
     sub x8, _ip, FIBER_BLOCK_code
+    
+    
     str x8, [_cpu, LOCAL_last_block]
+    
+    
     gret
 
 poke:
