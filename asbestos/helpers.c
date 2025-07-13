@@ -17,9 +17,6 @@ void debug_gret_jump(unsigned long target_addr, unsigned long ip_value) {
     }
 }
 
-void debug_fiber_ret_reached(void) {
-    fprintf(stderr, "DEBUG: Reached fiber_ret\n");
-}
 
 void debug_call64_reached(void) {
     fprintf(stderr, "DEBUG: Reached call64 gadget - about to execute\n");
@@ -77,11 +74,26 @@ void debug_track_x1_fiber_exit(unsigned long x1_value) {}
 bool fixed_64bit_crosspage_read(void *tlb_ptr, uint64_t addr, void *value, unsigned size) {
     return simple_64bit_crosspage_read(tlb_ptr, addr, value, size);
 }
+void debug_poked_ptr_value(unsigned long ptr_value) {
+    fprintf(stderr, "DEBUG: poked_ptr value = 0x%lx\n", ptr_value);
+}
+void debug_call64_target(unsigned long target) {
+    fprintf(stderr, "DEBUG: call64 jumping to target 0x%lx\n", target);
+}
+void debug_fiber_ret_reached(void) {
+    fprintf(stderr, "DEBUG: fiber_ret reached\n");
+}
+void debug_poked_value(unsigned long value) {
+    fprintf(stderr, "DEBUG: poked byte value = %lu\n", value);
+}
 #else
 // Stub functions for 32-bit builds to satisfy assembly gadget references
 void debug_gret_jump(unsigned long target_addr, unsigned long ip_value) {}
 void debug_fiber_ip_value(unsigned long ip_value) {}
 void debug_fiber_ret_reached(void) {}
+void debug_poked_ptr_value(unsigned long ptr_value) {}
+void debug_call64_target(unsigned long target) {}
+void debug_poked_value(unsigned long value) {}
 void debug_call64_reached(void) {}
 void debug_call64_after_stack_setup(void) {}
 void debug_call64_after_write_prep(void) {}

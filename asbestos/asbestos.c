@@ -202,7 +202,7 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
         addr_t ip = frame->cpu.rip;
         block_count++;
         // REDUCED DEBUG: Only show first few blocks
-        if (block_count <= 3) {
+        if (block_count <= 10) {
             fprintf(stderr, "64-bit: Block %d, RIP=0x%llx\n", block_count, ip);
         }
 #else
