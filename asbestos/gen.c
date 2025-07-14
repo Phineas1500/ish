@@ -262,11 +262,6 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
     size = sz(size);
     gadgets = gadgets + size * arg_count;
     
-    // Debug: Focus only on the critical instruction and failures
-    if (state->orig_ip == 0x7ffe00036560) {
-        fprintf(stderr, "DEBUG: MOV R8,[RBP+0x10] gen_op: gadgets=%p, arg=%d\n", 
-                (void*)(gadgets - size * arg_count), arg);
-    }
 
     switch (arg) {
         case arg_modrm_reg:
@@ -290,10 +285,13 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
             break;
     }
     if (arg >= arg_count || gadgets[arg] == NULL) {
-        fprintf(stderr, "DEBUG: gen_op failed - arg=%d, gadgets[arg]=%p, arg_count=%d\n", 
-                arg, (void*)gadgets[arg], arg_count);
-        fprintf(stderr, "DEBUG: gadgets base pointer=%p, size=%d\n", 
-                (void*)gadgets, size);
+        if (state->orig_ip == 0x7ffe00036560) {
+            fprintf(stderr, "DEBUG: CRITICAL - MOV R8,[RBP+0x10] gen_op failed!\n");
+            fprintf(stderr, "DEBUG: arg=%d (0=reg_a,8=reg_r8,22=mem,23=addr), gadgets[arg]=%p\n", 
+                    arg, (void*)gadgets[arg]);
+            fprintf(stderr, "DEBUG: gadget array base=%p, size=%d, final=%p\n", 
+                    (void*)(gadgets - size * arg_count), size, (void*)gadgets);
+        }
         UNDEFINED;
     }
     if (arg == arg_mem || arg == arg_addr) {

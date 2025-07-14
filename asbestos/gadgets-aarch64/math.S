@@ -326,6 +326,7 @@
                 read_prep \size, \op\size\()_mem
             .endif N .endif
             .if \size == 64
+                // Debug: About to load from 64-bit memory address
                 ldr x8, [_xaddr]
                 do_op \armop, \size, x8
             .else
@@ -395,6 +396,111 @@
 
 
 .endm
+
+#ifdef ISH_64BIT
+/******************************************************************************
+ * R8-R10 gadgets (defined BEFORE automatic array generation for proper registration)
+ ******************************************************************************/
+
+/* Essential load/store gadgets for R8 register */
+.gadget load8_reg_r8
+    ldrb _tmp, [_cpu, CPU_r8]
+    gret
+
+.gadget store8_reg_r8
+    strb _tmp, [_cpu, CPU_r8]
+    gret
+
+.gadget load16_reg_r8
+    ldrh _tmp, [_cpu, CPU_r8]
+    gret
+
+.gadget store16_reg_r8
+    strh _tmp, [_cpu, CPU_r8]
+    gret
+
+.gadget load32_reg_r8
+    ldr _tmp, [_cpu, CPU_r8]
+    gret
+
+.gadget store32_reg_r8
+    str _tmp, [_cpu, CPU_r8]
+    gret
+
+.gadget load64_reg_r8
+    ldr _xtmp, [_cpu, CPU_r8]
+    gret
+
+.gadget store64_reg_r8
+    str _xtmp, [_cpu, CPU_r8]
+    gret
+
+/* Essential load/store gadgets for R9 register */
+.gadget load8_reg_r9
+    ldrb _tmp, [_cpu, CPU_r9]
+    gret
+
+.gadget store8_reg_r9
+    strb _tmp, [_cpu, CPU_r9]
+    gret
+
+.gadget load16_reg_r9
+    ldrh _tmp, [_cpu, CPU_r9]
+    gret
+
+.gadget store16_reg_r9
+    strh _tmp, [_cpu, CPU_r9]
+    gret
+
+.gadget load32_reg_r9
+    ldr _tmp, [_cpu, CPU_r9]
+    gret
+
+.gadget store32_reg_r9
+    str _tmp, [_cpu, CPU_r9]
+    gret
+
+.gadget load64_reg_r9
+    ldr _xtmp, [_cpu, CPU_r9]
+    gret
+
+.gadget store64_reg_r9
+    str _xtmp, [_cpu, CPU_r9]
+    gret
+
+/* Essential load/store gadgets for R10 register */
+.gadget load8_reg_r10
+    ldrb _tmp, [_cpu, CPU_r10]
+    gret
+
+.gadget store8_reg_r10
+    strb _tmp, [_cpu, CPU_r10]
+    gret
+
+.gadget load16_reg_r10
+    ldrh _tmp, [_cpu, CPU_r10]
+    gret
+
+.gadget store16_reg_r10
+    strh _tmp, [_cpu, CPU_r10]
+    gret
+
+.gadget load32_reg_r10
+    ldr _tmp, [_cpu, CPU_r10]
+    gret
+
+.gadget store32_reg_r10
+    str _tmp, [_cpu, CPU_r10]
+    gret
+
+.gadget load64_reg_r10
+    ldr _xtmp, [_cpu, CPU_r10]
+    gret
+
+.gadget store64_reg_r10
+    str _xtmp, [_cpu, CPU_r10]
+    gret
+#endif
 
 .irp op, load,store,xchg,add,sub,adc,sbb,and,or,xor
     .irp size, SIZE_LIST
@@ -1825,108 +1931,7 @@
 
 #ifdef ISH_64BIT
 
-/******************************************************************************
- * R8-R10 gadgets (essential load/store operations for MOV instructions) 
- ******************************************************************************/
 
-/* Essential load/store gadgets for R8 register */
-.gadget load8_reg_r8
-    ldrb _tmp, [_cpu, CPU_r8]
-    gret
-
-.gadget store8_reg_r8
-    strb _tmp, [_cpu, CPU_r8]
-    gret
-
-.gadget load16_reg_r8
-    ldrh _tmp, [_cpu, CPU_r8]
-    gret
-
-.gadget store16_reg_r8
-    strh _tmp, [_cpu, CPU_r8]
-    gret
-
-.gadget load32_reg_r8
-    ldr _tmp, [_cpu, CPU_r8]
-    gret
-
-.gadget store32_reg_r8
-    str _tmp, [_cpu, CPU_r8]
-    gret
-
-.gadget load64_reg_r8
-    ldr _xtmp, [_cpu, CPU_r8]
-    gret
-
-.gadget store64_reg_r8
-    str _xtmp, [_cpu, CPU_r8]
-    gret
-
-/* Essential load/store gadgets for R9 register */
-.gadget load8_reg_r9
-    ldrb _tmp, [_cpu, CPU_r9]
-    gret
-
-.gadget store8_reg_r9
-    strb _tmp, [_cpu, CPU_r9]
-    gret
-
-.gadget load16_reg_r9
-    ldrh _tmp, [_cpu, CPU_r9]
-    gret
-
-.gadget store16_reg_r9
-    strh _tmp, [_cpu, CPU_r9]
-    gret
-
-.gadget load32_reg_r9
-    ldr _tmp, [_cpu, CPU_r9]
-    gret
-
-.gadget store32_reg_r9
-    str _tmp, [_cpu, CPU_r9]
-    gret
-
-.gadget load64_reg_r9
-    ldr _xtmp, [_cpu, CPU_r9]
-    gret
-
-.gadget store64_reg_r9
-    str _xtmp, [_cpu, CPU_r9]
-    gret
-
-/* Essential load/store gadgets for R10 register */
-.gadget load8_reg_r10
-    ldrb _tmp, [_cpu, CPU_r10]
-    gret
-
-.gadget store8_reg_r10
-    strb _tmp, [_cpu, CPU_r10]
-    gret
-
-.gadget load16_reg_r10
-    ldrh _tmp, [_cpu, CPU_r10]
-    gret
-
-.gadget store16_reg_r10
-    strh _tmp, [_cpu, CPU_r10]
-    gret
-
-.gadget load32_reg_r10
-    ldr _tmp, [_cpu, CPU_r10]
-    gret
-
-.gadget store32_reg_r10
-    str _tmp, [_cpu, CPU_r10]
-    gret
-
-.gadget load64_reg_r10
-    ldr _xtmp, [_cpu, CPU_r10]
-    gret
-
-.gadget store64_reg_r10
-    str _xtmp, [_cpu, CPU_r10]
-    gret
 
 /* Additional arithmetic operations for R8-R10 to support complex MOV instructions */
 
