@@ -578,8 +578,8 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
             fclose(f); 
         }
         struct aux_ent_64 aux[] = {
-            // {AX_SYSINFO, vdso_entry},  // Disable VDSO for 64-bit for now
-            // {AX_SYSINFO_EHDR, current->mm->vdso},
+            {AX_SYSINFO, vdso_entry},  // Enable VDSO for 64-bit (was disabled)
+            {AX_SYSINFO_EHDR, current->mm->vdso},
             {AX_HWCAP, 0x00000000}, // suck that
             {AX_PAGESZ, PAGE_SIZE},
             {AX_CLKTCK, 0x64},
