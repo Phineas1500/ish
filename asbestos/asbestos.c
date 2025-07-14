@@ -234,12 +234,25 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
                             (size_t)(block->end_addr - block->addr));
                     
                     // Show the first few gadgets in the compiled block
-                    fprintf(stderr, "DEBUG: Block %d gadgets: 0x%lx, 0x%lx, 0x%lx (used=%zu)\n", 
+                    fprintf(stderr, "DEBUG: Block %d code: 0x%lx, 0x%lx, 0x%lx, 0x%lx (used=%zu)\n", 
                             block_count, 
                             block->code[0], 
                             block->code[1],
                             (size_t)block->used > 2 ? block->code[2] : 0,
+                            (size_t)block->used > 3 ? block->code[3] : 0,
                             (size_t)block->used);
+                    
+                    // Analyze gadget vs parameter pattern
+                    int gadget_count = 0;
+                    for (size_t i = 0; i < (size_t)block->used && i < 8; i++) {
+                        unsigned long val = block->code[i];
+                        if (val >= 0x100000000UL && val < 0x200000000UL) {
+                            gadget_count++;
+                            fprintf(stderr, "  [%zu] GADGET: 0x%lx\n", i, val);
+                        } else {
+                            fprintf(stderr, "  [%zu] PARAM:  0x%lx\n", i, val);
+                        }
+                    }
                 }
 #endif
                 fiber_insert(asbestos, block);
@@ -307,6 +320,14 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
                         block_count, interrupt, (unsigned long long)frame->cpu.rip);
                 fprintf(stderr, "64-bit: Last successful block was at 0x%llx\n", 
                         (unsigned long long)ip);
+                
+                // Show which block crashed
+                if (block_count == 2) {
+                    fprintf(stderr, "64-bit: Block 2 crash - first gadgets: 0x%lx, 0x%lx, 0x%lx\n",
+                            block->code[0], block->code[1], block->code[2]);
+                }
+            } else {
+                fprintf(stderr, "64-bit: Block %d executed successfully\n", block_count);
             }
         }
 #endif

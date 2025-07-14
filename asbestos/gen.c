@@ -64,6 +64,8 @@ void gen_start(addr_t addr, struct gen_state *state) {
     struct fiber_block *block = malloc(sizeof(struct fiber_block) + state->capacity * sizeof(unsigned long));
     state->block = block;
     block->addr = addr;
+    // Initialize end_addr to a reasonable default (will be updated in gen_end)
+    block->end_addr = addr + 4096; // Set to page boundary as safe default
 }
 
 void gen_end(struct gen_state *state) {
@@ -82,10 +84,17 @@ void gen_end(struct gen_state *state) {
     if (state->block_patch_ip != 0) {
         block->code[state->block_patch_ip] = (unsigned long) block;
     }
-    if (block->addr != state->ip)
+    if (block->addr != state->ip) {
         block->end_addr = state->ip - 1;
-    else
+    } else {
         block->end_addr = block->addr;
+    }
+#ifdef ISH_64BIT
+    fprintf(stderr, "DEBUG: gen_end_block: block->addr=0x%llx, state->ip=0x%llx, end_addr=0x%llx\n",
+            (unsigned long long)block->addr, (unsigned long long)state->ip, 
+            (unsigned long long)block->end_addr);
+    fflush(stderr);
+#endif
     list_init(&block->chain);
     block->is_jetsam = false;
     for (int i = 0; i <= 1; i++) {
@@ -197,7 +206,13 @@ typedef void (*gadget_t)(void);
 #define hhh(h, a, b) gggg(helper_2, h, a, b)
 #define h_read(h, z) do { g_addr(); ggg(helper_read##z, state->orig_ip, h##z); } while (0)
 #define h_write(h, z) do { g_addr(); ggg(helper_write##z, state->orig_ip, h##z); } while (0)
-#define UNDEFINED do { gggg(interrupt, INT_UNDEFINED, state->orig_ip, state->orig_ip); return false; } while (0)
+#define UNDEFINED do { \
+    fprintf(stderr, "DEBUG: UNDEFINED instruction at IP=0x%llx (this instruction is not implemented in 64-bit mode)\n", \
+            (unsigned long long)state->orig_ip); \
+    fflush(stderr); \
+    gggg(interrupt, INT_UNDEFINED, state->orig_ip, state->orig_ip); \
+    return false; \
+} while (0)
 #define SEGFAULT do { gggg(interrupt, INT_GPF, state->orig_ip, tlb->segfault_addr); return false; } while (0)
 
 static inline int sz(int size) {

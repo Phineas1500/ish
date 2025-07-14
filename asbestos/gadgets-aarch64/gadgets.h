@@ -150,10 +150,28 @@ _xaddr .req x3
     .global NAME(gadget_\()\name)
     .align 4
     NAME(gadget_\()\name) :
+#ifdef ISH_64BIT
+    // Debug: Track gadget start for Block 2 debugging
+    stp x0, x1, [sp, -16]!
+    adr x0, NAME(gadget_\()\name)
+    bl NAME(debug_gret_exit)
+    ldp x0, x1, [sp], 16
+#endif
 .endm
 .macro gret pop=0
     ldr x8, [_ip, \pop*8]!
     add _ip, _ip, 8 /* TODO get rid of this */
+#ifdef ISH_64BIT
+    // Debug: Track all gadget entries for Block 2 debugging
+    stp x0, x1, [sp, -16]!
+    stp x2, x3, [sp, -16]!
+    mov x0, x8      // target address
+    mov x1, _ip     // current _ip
+    bl NAME(debug_gret_jump)
+    ldp x2, x3, [sp], 16
+    ldp x0, x1, [sp], 16
+    ldr x8, [_ip, -8]  // Reload target address
+#endif
     br x8
 .endm
 
@@ -162,9 +180,11 @@ _xaddr .req x3
 
 .macro \type\()_prep size, id
 #ifdef ISH_64BIT
-    // TEMPORARY: Completely bypass TLB for 64-bit write_prep to test call64
-    // This is unsafe but allows testing if call64 logic works
+    // TEMPORARY: Completely bypass TLB for 64-bit read/write_prep to test execution
+    // This is unsafe but allows testing if gadgets work without TLB issues
     // TODO: Fix proper TLB handling for 64-bit
+    mov _xaddr, _xaddr  // Just use the address directly (bypass TLB)
+    b back_\id
 #else
     and x8, _xaddr, 0xfff
     cmp x8, (0x1000-(\size/8))

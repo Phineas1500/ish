@@ -11,9 +11,27 @@ static int gret_count = 0;
 
 void debug_gret_jump(unsigned long target_addr, unsigned long ip_value) {
     gret_count++;
-    if (gret_count <= 10) {  // Only show first 10 gadget jumps
-        fprintf(stderr, "DEBUG: gret %d jumping to 0x%lx, _ip=0x%lx\n", 
+    
+    // Show all gadget jumps for Block 2 (starts around gret 13)
+    if (gret_count >= 12) {  
+        fprintf(stderr, "DEBUG: gret %d ENTERING gadget 0x%lx, _ip=0x%lx\n", 
                 gret_count, target_addr, ip_value);
+        
+        // Check for obviously invalid jump targets
+        if (target_addr < 0x1000) {
+            fprintf(stderr, "ERROR: Invalid gadget address 0x%lx! This should be a parameter, not a gadget!\n", target_addr);
+        }
+        
+        // Force flush to see output before crash
+        fflush(stderr);
+    }
+}
+
+void debug_gret_exit(unsigned long gadget_addr) {
+    if (gret_count >= 12) {
+        fprintf(stderr, "DEBUG: gret %d EXITING gadget 0x%lx\n", 
+                gret_count, gadget_addr);
+        fflush(stderr);
     }
 }
 
@@ -120,6 +138,7 @@ void debug_call64_jump_target(unsigned long target) {
 #else
 // Stub functions for 32-bit builds to satisfy assembly gadget references
 void debug_gret_jump(unsigned long target_addr, unsigned long ip_value) {}
+void debug_gret_exit(unsigned long gadget_addr) {}
 void debug_fiber_ip_value(unsigned long ip_value) {}
 void debug_fiber_ret_reached(void) {}
 void debug_poked_ptr_value(unsigned long ptr_value) {}
