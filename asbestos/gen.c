@@ -263,6 +263,9 @@ bool gen_addr(struct gen_state *state, struct modrm *modrm, bool seg_gs) {
 // really nicely in gcc using nested functions, but that won't work in clang,
 // so we explicitly pass 500 arguments. sorry for the mess
 static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg arg, struct modrm *modrm, uint64_t *imm, int size, bool seg_gs, dword_t addr_offset) {
+    if (state->orig_ip == 0x7ffe0003656c) {
+        fprintf(stderr, "DEBUG: gen_op entry - arg=%d, size=%d\n", arg, size);
+    }
     size = sz(size);
     gadgets = gadgets + size * arg_count;
     
@@ -296,6 +299,18 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
             fprintf(stderr, "DEBUG: gadget array base=%p, size=%d, final=%p\n", 
                     (void*)(gadgets - size * arg_count), size, (void*)gadgets);
         }
+        if (state->orig_ip == 0x7ffe0003656c) {
+            fprintf(stderr, "DEBUG: CMP R12 instruction gen_op failed at IP=0x%llx!\n", 
+                    (unsigned long long)state->orig_ip);
+            fprintf(stderr, "DEBUG: Raw arg passed to gen_op=%d\n", arg);
+            fprintf(stderr, "DEBUG: After switch processing: arg=%d (arg_imm=%d, arg_reg_r12=%d, arg_modrm_val=%d)\n", 
+                    arg, arg_imm, arg_reg_r12, arg_modrm_val);
+            fprintf(stderr, "DEBUG: gadgets=%p, gadgets[arg]=%p\n", 
+                    (void*)gadgets, (void*)(arg < arg_count ? gadgets[arg] : NULL));
+            fprintf(stderr, "DEBUG: modrm: type=%d, base=%d, index=%d, offset=%d\n",
+                    modrm->type, modrm->base, modrm->index, modrm->offset);
+            fprintf(stderr, "DEBUG: Looking for gadget in array at index %d\n", arg);
+        }
         UNDEFINED;
     }
     if (arg == arg_mem || arg == arg_addr) {
@@ -322,6 +337,10 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
 }
 #define op(type, thing, z) do { \
     extern gadget_t type##_gadgets[]; \
+    if (state->orig_ip == 0x7ffe0003656c) { \
+        fprintf(stderr, "DEBUG: op(" #type ", " #thing ", %d) called\n", z); \
+        fprintf(stderr, "DEBUG: arg_" #thing " = %d\n", arg_##thing); \
+    } \
     if (!gen_op(state, type##_gadgets, arg_##thing, &modrm, &imm, z, seg_gs, addr_offset)) return false; \
 } while (0)
 
