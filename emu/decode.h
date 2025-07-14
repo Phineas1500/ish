@@ -121,8 +121,18 @@ restart:
         if (rex_x) TRACE(" X");
         if (rex_b) TRACE(" B");
         TRACE(" ");
+        
+        if (state->ip >= 0x7ffe0003656c && state->ip <= 0x7ffe00036570) {
+            fprintf(stderr, "DEBUG: REX prefix 0x%02x parsed at IP=0x%llx\n", insn, (unsigned long long)(state->ip - 1));
+            fprintf(stderr, "DEBUG: REX bits - W:%d R:%d X:%d B:%d\n", rex_w, rex_r, rex_x, rex_b);
+        }
+        
         // Read actual instruction after REX prefix
         READINSN;
+        
+        if (state->ip >= 0x7ffe0003656c && state->ip <= 0x7ffe00036570) {
+            fprintf(stderr, "DEBUG: After REX, insn=0x%02x at IP=0x%llx\n", insn, (unsigned long long)(state->ip - 1));
+        }
         
         // Simplified debug for critical REX instruction
         if (state->orig_ip == 0x7ffe00036560) {
@@ -135,6 +145,12 @@ restart:
     }
 #else
     READINSN;
+#endif
+#ifdef ISH_64BIT
+    // Debug: Log when we hit specific instruction bytes
+    if (state->ip >= 0x7ffe0003656c && state->ip <= 0x7ffe00036570) {
+        fprintf(stderr, "DEBUG: main decode switch - insn=0x%02x at IP=0x%llx\n", insn, (unsigned long long)state->ip);
+    }
 #endif
     switch (insn) {
 #define MAKE_OP(x, OP, op) \
@@ -901,7 +917,26 @@ restart:
         case 0x80: TRACEI("grp1 imm8, modrm8");
                    READMODRM; READIMM8; GRP1(imm, modrm_val,8); break;
         case 0x81: TRACEI("grp1 imm, modrm");
-                   READMODRM; READIMM; GRP1(imm, modrm_val,EFFECTIVE_OZ); break;
+#ifdef ISH_64BIT
+                   if (state->ip >= 0x7ffe0003656c && state->ip <= 0x7ffe00036570) {
+                       fprintf(stderr, "DEBUG: 0x81 at IP=0x%llx, about to READMODRM\n", (unsigned long long)state->ip);
+                   }
+#endif
+                   READMODRM;
+#ifdef ISH_64BIT
+                   if (state->ip >= 0x7ffe0003656c && state->ip <= 0x7ffe00036570) {
+                       fprintf(stderr, "DEBUG: After READMODRM, modrm.base=%d, modrm.type=%d\n", modrm.base, modrm.type);
+                       fprintf(stderr, "DEBUG: About to READIMM\n");
+                   }
+#endif
+                   READIMM;
+#ifdef ISH_64BIT
+                   if (state->ip >= 0x7ffe0003656c && state->ip <= 0x7ffe00036570) {
+                       fprintf(stderr, "DEBUG: After READIMM, imm=0x%llx\n", (unsigned long long)imm);
+                       fprintf(stderr, "DEBUG: About to GRP1\n");
+                   }
+#endif
+                   GRP1(imm, modrm_val,EFFECTIVE_OZ); break;
         case 0x83: TRACEI("grp1 imm8, modrm");
                    READMODRM; READIMM8; GRP1(imm, modrm_val,EFFECTIVE_OZ); break;
 
