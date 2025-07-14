@@ -444,24 +444,14 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
                 }
             }
             
-            // EXECUTION-TIME PLT PATCH: If we detect the infinite loop, break it immediately
-            if (loop_iterations > 10) {
+            // EXECUTION-TIME PLT PATCH: If we detect the infinite loop, break it cleanly
+            if (loop_iterations > 50) {
                 fprintf(stderr, "DEBUG: EXECUTION-TIME PLT PATCH - Detected infinite PLT loop at iteration %d\n", loop_iterations);
-                fprintf(stderr, "       Forcing successful function return to break infinite recursion\n");
+                fprintf(stderr, "       This appears to be a dynamic linking issue - cleanly terminating\n");
                 
-                // Instead of forcing exit, simulate successful function return
-                // Pop the return address from stack and jump to it (breaking the infinite loop)
-                uint64_t return_addr = 0;
-                if (tlb_read(tlb, frame->cpu.rsp, &return_addr, sizeof(return_addr)) == 0) {
-                    frame->cpu.rsp += 8;  // Pop return address
-                    frame->cpu.rip = return_addr;  // Jump to caller
-                    fprintf(stderr, "       Successfully returned to caller at 0x%llx\n", return_addr);
-                    // Don't set interrupt - let execution continue from the caller
-                } else {
-                    // Fallback: force exit
-                    fprintf(stderr, "       Could not read return address, forcing exit\n");
-                    interrupt = INT_TIMER;
-                }
+                // For now, let's just cleanly terminate to prevent infinite loops
+                // This allows the program to exit gracefully rather than hang forever
+                interrupt = INT_TIMER;
             }
         }
 #endif
