@@ -124,15 +124,11 @@ restart:
         // Read actual instruction after REX prefix
         READINSN;
         
-        // CRITICAL DEBUGGING: Log the instruction that follows REX prefix
+        // Simplified debug for critical REX instruction
         if (state->orig_ip == 0x7ffe00036560) {
-            FILE *f = fopen("/tmp/ish_rex_debug.txt", "a");
+            FILE *f = fopen("/tmp/ish_rex_simple.txt", "a");
             if (f) {
-                fprintf(f, "REX PREFIX 0x%02x at IP=0x%llx\n", (insn & 0xF0) | (rex_w << 3) | (rex_r << 2) | (rex_x << 1) | rex_b, 
-                        (unsigned long long)state->orig_ip);
-                fprintf(f, "  REX.W=%d REX.R=%d REX.X=%d REX.B=%d\n", rex_w, rex_r, rex_x, rex_b);
-                fprintf(f, "  Following instruction byte: 0x%02x\n", insn);
-                fflush(f);
+                fprintf(f, "REX 0x4C + 0x%02x processed\n", insn);
                 fclose(f);
             }
         }
@@ -928,7 +924,23 @@ restart:
         case 0x8a: TRACEI("mov modrm8, reg8");
                    READMODRM; MOV(modrm_val, modrm_reg,8); break;
         case 0x8b: TRACEI("mov modrm, reg");
-                   READMODRM; MOV(modrm_val, modrm_reg,EFFECTIVE_OZ); break;
+                   if (state->orig_ip == 0x7ffe00036560) {
+                       FILE *f = fopen("/tmp/ish_mov_debug.txt", "a");
+                       if (f) {
+                           fprintf(f, "Processing MOV 0x8B at IP=0x%llx\n", (unsigned long long)state->orig_ip);
+                           fprintf(f, "  EFFECTIVE_OZ=%d\n", EFFECTIVE_OZ);
+                           fclose(f);
+                       }
+                   }
+                   READMODRM;
+                   if (state->orig_ip == 0x7ffe00036560) {
+                       FILE *f = fopen("/tmp/ish_mov_debug.txt", "a");
+                       if (f) {
+                           fprintf(f, "  After READMODRM: modrm.reg=%d, modrm.type=%d\n", modrm.reg, modrm.type);
+                           fclose(f);
+                       }
+                   }
+                   MOV(modrm_val, modrm_reg,EFFECTIVE_OZ); break;
 
         case 0x8d: TRACEI("lea\t\t"); READMODRM_MEM;
                    MOV(addr, modrm_reg,EFFECTIVE_OZ); break;

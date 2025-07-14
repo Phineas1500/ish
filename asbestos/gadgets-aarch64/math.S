@@ -1898,107 +1898,83 @@
     str _tmp, [_cpu, #CPU_r11]
     gret
 
-/* CRITICAL FIX: Missing load/store gadgets for R8-R10 (using ARM64 register aliases) */
-/* R8 gadgets (using ARM64 x4/w4) */
+/* CRITICAL FIX: Missing load/store gadgets for R8-R10 (direct ARM64 register access) */
+/* R8 gadgets (direct access to ARM64 x4/w4) */
 .gadget load8_reg_r8
-    mov w8, r8b
-    mov _tmp, w8
+    mov _tmp, r8b
     gret
 .gadget store8_reg_r8
-    mov w8, _tmp
-    mov r8b, w8
+    mov r8b, _tmp
     gret
 .gadget load16_reg_r8
-    mov w8, r8w
-    mov _tmp, w8
+    mov _tmp, r8w
     gret
 .gadget store16_reg_r8
-    mov w8, _tmp
-    mov r8w, w8
+    mov r8w, _tmp
     gret
 .gadget load32_reg_r8
-    mov w8, r8d
-    mov _tmp, w8
+    mov _tmp, r8d
     gret
 .gadget store32_reg_r8
-    mov w8, _tmp
-    mov r8d, w8
+    mov r8d, _tmp
     gret
 .gadget load64_reg_r8
-    mov x8, r8
-    mov _xtmp, x8
+    mov _xtmp, r8
     gret
 .gadget store64_reg_r8
-    mov x8, _xtmp
-    mov r8, x8
+    mov r8, _xtmp
     gret
 
-/* R9 gadgets (using ARM64 x5/w5) */
+/* R9 gadgets (direct access to ARM64 x5/w5) */
 .gadget load8_reg_r9
-    mov w8, r9b
-    mov _tmp, w8
+    mov _tmp, r9b
     gret
 .gadget store8_reg_r9
-    mov w8, _tmp
-    mov r9b, w8
+    mov r9b, _tmp
     gret
 .gadget load16_reg_r9
-    mov w8, r9w
-    mov _tmp, w8
+    mov _tmp, r9w
     gret
 .gadget store16_reg_r9
-    mov w8, _tmp
-    mov r9w, w8
+    mov r9w, _tmp
     gret
 .gadget load32_reg_r9
-    mov w8, r9d
-    mov _tmp, w8
+    mov _tmp, r9d
     gret
 .gadget store32_reg_r9
-    mov w8, _tmp
-    mov r9d, w8
+    mov r9d, _tmp
     gret
 .gadget load64_reg_r9
-    mov x8, r9
-    mov _xtmp, x8
+    mov _xtmp, r9
     gret
 .gadget store64_reg_r9
-    mov x8, _xtmp
-    mov r9, x8
+    mov r9, _xtmp
     gret
 
-/* R10 gadgets (using ARM64 x6/w6) */
+/* R10 gadgets (direct access to ARM64 x6/w6) */
 .gadget load8_reg_r10
-    mov w8, r10b
-    mov _tmp, w8
+    mov _tmp, r10b
     gret
 .gadget store8_reg_r10
-    mov w8, _tmp
-    mov r10b, w8
+    mov r10b, _tmp
     gret
 .gadget load16_reg_r10
-    mov w8, r10w
-    mov _tmp, w8
+    mov _tmp, r10w
     gret
 .gadget store16_reg_r10
-    mov w8, _tmp
-    mov r10w, w8
+    mov r10w, _tmp
     gret
 .gadget load32_reg_r10
-    mov w8, r10d
-    mov _tmp, w8
+    mov _tmp, r10d
     gret
 .gadget store32_reg_r10
-    mov w8, _tmp
-    mov r10d, w8
+    mov r10d, _tmp
     gret
 .gadget load64_reg_r10
-    mov x8, r10
-    mov _xtmp, x8
+    mov _xtmp, r10
     gret
 .gadget store64_reg_r10
-    mov x8, _xtmp
-    mov r10, x8
+    mov r10, _xtmp
     gret
 
 /* load/store for R11 */

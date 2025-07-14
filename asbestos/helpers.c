@@ -191,3 +191,8 @@ void helper_expand_flags(struct cpu_state *cpu) {
 void helper_collapse_flags(struct cpu_state *cpu) {
     collapse_flags(cpu);
 }
+void debug_store64_r8_reached(void) {
+    fprintf(stderr, "DEBUG: store64_reg_r8 gadget reached!\n");
+    fflush(stderr);
+}
+
