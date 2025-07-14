@@ -132,7 +132,11 @@ void gen_exit(struct gen_state *state) {
 #define RESTORE_IP state->ip = state->orig_ip
 #define _READIMM(name, size) do {\
     state->ip += size/8; \
-    if (!tlb_read(tlb, state->ip - size/8, &name, size/8)) SEGFAULT; \
+    if (!tlb_read(tlb, state->ip - size/8, &name, size/8)) { \
+        fprintf(stderr, "DEBUG: _READIMM failed at IP=0x%llx, trying to read %d bytes\n", \
+                (unsigned long long)(state->ip - size/8), size/8); \
+        SEGFAULT; \
+    } \
 } while (0)
 
 #ifdef ISH_64BIT

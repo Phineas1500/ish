@@ -500,6 +500,27 @@
 .gadget store64_reg_r10
     str _xtmp, [_cpu, CPU_r10]
     gret
+
+/* Essential immediate operations for R12 register (needed for CMP instructions) */
+.gadget sub32_imm_reg_r12
+    ldr w8, [_ip]
+    ldr w9, [_cpu, #CPU_r12]
+    sub w9, w9, w8
+    str w9, [_cpu, #CPU_r12]
+    gret 1
+
+.gadget add32_imm_reg_r12
+    ldr w8, [_ip]
+    ldr w9, [_cpu, #CPU_r12]
+    add w9, w9, w8
+    str w9, [_cpu, #CPU_r12]
+    gret 1
+
+.gadget cmp32_imm_reg_r12
+    ldr w8, [_ip]
+    ldr w9, [_cpu, #CPU_r12]
+    sub w9, w9, w8
+    gret 1
 #endif
 
 .irp op, load,store,xchg,add,sub,adc,sbb,and,or,xor
