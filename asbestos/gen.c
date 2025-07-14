@@ -233,8 +233,11 @@ bool gen_addr(struct gen_state *state, struct modrm *modrm, bool seg_gs) {
     else if (modrm->base == reg_rip) {
         // RIP-relative addressing: effective address = RIP + displacement
         // RIP points to the instruction AFTER the current instruction
-        addr_t rip_relative_addr = state->ip + modrm->offset;
-        gg(addr_rip, rip_relative_addr);
+        // In 64-bit mode, use actual RIP register value at runtime, not compile-time IP
+        fprintf(stderr, "DEBUG: RIP-relative addressing at compile IP=0x%llx, offset=0x%x\n", 
+                (unsigned long long)state->ip, modrm->offset);
+        fflush(stderr);
+        gg(addr_rip, modrm->offset);  // Pass offset to gadget, let it calculate RIP+offset at runtime
     }
 #endif
     else {

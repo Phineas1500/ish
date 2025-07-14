@@ -50,8 +50,19 @@
     ldr _addr, [_ip]
     gret 1
 .gadget addr_rip
+#ifdef ISH_64BIT
+    // RIP-relative addressing: _addr = RIP + displacement
+    ldr w0, [_ip]           // Load displacement from instruction stream
+    ldr rip, [_cpu, #CPU_rip] // Load current RIP value 
+    sxtw x0, w0             // Sign-extend displacement to 64-bit
+    add _xaddr, rip, x0     // Calculate effective address = RIP + displacement
+    mov _addr, w3           // Move lower 32 bits of result to _addr register
+    gret 1
+#else
+    // 32-bit mode: fallback to simple displacement
     ldr _addr, [_ip]
     gret 1
+#endif
 
 
 .gadget_list addr, REG_LIST
