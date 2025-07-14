@@ -393,6 +393,7 @@
             gret
     .endr
 
+
 .endm
 
 .irp op, load,store,xchg,add,sub,adc,sbb,and,or,xor
@@ -1898,84 +1899,10 @@
     str _tmp, [_cpu, #CPU_r11]
     gret
 
-/* CRITICAL FIX: Missing load/store gadgets for R8-R10 (CPU state memory access) */
-/* R8 gadgets (memory access like other registers) */
-.gadget load8_reg_r8
-    ldr _tmp, [_cpu, CPU_r8]
-    gret
-.gadget store8_reg_r8
-    str _tmp, [_cpu, CPU_r8]
-    gret
-.gadget load16_reg_r8
-    ldr _tmp, [_cpu, CPU_r8]
-    gret
-.gadget store16_reg_r8
-    str _tmp, [_cpu, CPU_r8]
-    gret
-.gadget load32_reg_r8
-    ldr _tmp, [_cpu, CPU_r8]
-    gret
-.gadget store32_reg_r8
-    str _tmp, [_cpu, CPU_r8]
-    gret
-.gadget load64_reg_r8
-    ldr _xtmp, [_cpu, CPU_r8]
-    gret
-.gadget store64_reg_r8
-    str _xtmp, [_cpu, CPU_r8]
-    gret
 
-/* R9 gadgets (memory access like other registers) */
-.gadget load8_reg_r9
-    ldr _tmp, [_cpu, CPU_r9]
-    gret
-.gadget store8_reg_r9
-    str _tmp, [_cpu, CPU_r9]
-    gret
-.gadget load16_reg_r9
-    ldr _tmp, [_cpu, CPU_r9]
-    gret
-.gadget store16_reg_r9
-    str _tmp, [_cpu, CPU_r9]
-    gret
-.gadget load32_reg_r9
-    ldr _tmp, [_cpu, CPU_r9]
-    gret
-.gadget store32_reg_r9
-    str _tmp, [_cpu, CPU_r9]
-    gret
-.gadget load64_reg_r9
-    ldr _xtmp, [_cpu, CPU_r9]
-    gret
-.gadget store64_reg_r9
-    str _xtmp, [_cpu, CPU_r9]
-    gret
 
-/* R10 gadgets (memory access like other registers) */
-.gadget load8_reg_r10
-    ldr _tmp, [_cpu, CPU_r10]
-    gret
-.gadget store8_reg_r10
-    str _tmp, [_cpu, CPU_r10]
-    gret
-.gadget load16_reg_r10
-    ldr _tmp, [_cpu, CPU_r10]
-    gret
-.gadget store16_reg_r10
-    str _tmp, [_cpu, CPU_r10]
-    gret
-.gadget load32_reg_r10
-    ldr _tmp, [_cpu, CPU_r10]
-    gret
-.gadget store32_reg_r10
-    str _tmp, [_cpu, CPU_r10]
-    gret
-.gadget load64_reg_r10
-    ldr _xtmp, [_cpu, CPU_r10]
-    gret
-.gadget store64_reg_r10
-    str _xtmp, [_cpu, CPU_r10]
-    gret
+
+
 
 /* load/store for R11 */
 .gadget load8_reg_r11
@@ -3783,6 +3710,14 @@
 .gadget store64_reg_r15
     str _xtmp, [_cpu, #CPU_r15]
     gret
+
+/* CRITICAL FIX: Override NULL gadget array entry for R8 store64 */
+.gadget store64_reg_r8_override
+    str _xtmp, [_cpu, CPU_r8]
+    gret
+
+/* Override the gadget array system to use our R8 store gadget */
+.set NAME(gadget_store64_reg_r8), NAME(store64_reg_r8_override)
 
 #endif /* ISH_64BIT */
 
