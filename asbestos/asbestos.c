@@ -118,19 +118,21 @@ static struct fiber_block *fiber_block_compile(addr_t ip, struct tlb *tlb) {
     struct gen_state state;
     TRACE("%d %08x --- compiling:\n", current_pid(), ip);
 #ifdef ISH_64BIT
-    if (compile_count <= 3) {
-        fprintf(stderr, "DEBUG: Starting compilation of block %d at RIP=0x%llx\n", 
-                compile_count, (unsigned long long)ip);
-    }
+    // DEBUG DISABLED FOR CLEAN OUTPUT
+    // if (compile_count <= 3) {
+    //     fprintf(stderr, "DEBUG: Starting compilation of block %d at RIP=0x%llx\n", 
+    //             compile_count, (unsigned long long)ip);
+    // }
 #endif
 gen_start(ip, &state);
     while (true) {
         int step_result = gen_step(&state, tlb);
 #ifdef ISH_64BIT
-        if (compile_count <= 3) {
-            fprintf(stderr, "DEBUG: Block %d, step at RIP=0x%llx returned %d\n", 
-                    compile_count, (unsigned long long)state.ip, step_result);
-        }
+        // DEBUG DISABLED FOR CLEAN OUTPUT
+        // if (compile_count <= 3) {
+        //     fprintf(stderr, "DEBUG: Block %d, step at RIP=0x%llx returned %d\n", 
+        //             compile_count, (unsigned long long)state.ip, step_result);
+        // }
 #endif
         if (!step_result) {
             // If gen_step returns false, we need to generate an exit
@@ -228,51 +230,7 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
                 block = fiber_block_compile(ip, tlb);
                 
 #ifdef ISH_64BIT
-                // JIT-LEVEL PLT PATCH: If we're compiling the problematic PLT stub,
-                // replace its compiled gadgets with a direct jump to external function
-                if (ip == 0x7ffe00036540) {
-                    fprintf(stderr, "DEBUG: JIT-PATCHING PLT stub at 0x%llx during compilation\n", 
-                            (unsigned long long)ip);
-                    
-                    // Replace the compiled block with a simple sequence:
-                    // Load external function address and return
-                    if (block && block->used > 0) {
-                        // Keep the block structure but replace its content
-                        size_t original_used = block->used;
-                        fprintf(stderr, "DEBUG: Original block had %zu gadgets, replacing with return stub\n", 
-                                original_used);
-                        
-                        // AGGRESSIVE PLT PATCH: Replace entire block with single safe gadget
-                        // The infinite loop happens because the PLT stub contains a CALL instruction
-                        // that calls itself. We need to completely replace the block's execution.
-                        
-                        // Find a simple, safe gadget from the original block that won't cause calls
-                        unsigned long safe_gadget = 0;
-                        for (size_t i = 0; i < (size_t)block->used; i++) {
-                            unsigned long gadget = block->code[i];
-                            // Look for gadget addresses (high values) but not parameters (low values)
-                            if (gadget >= 0x100000000UL && gadget < 0x200000000UL) {
-                                safe_gadget = gadget;
-                                break;  // Use the first gadget we find
-                            }
-                        }
-                        
-                        if (safe_gadget != 0) {
-                            // Replace the entire block with just one safe gadget
-                            block->code[0] = safe_gadget;
-                            block->used = 1;
-                            fprintf(stderr, "DEBUG: Replaced entire PLT stub with single safe gadget 0x%lx\n", 
-                                    safe_gadget);
-                        } else {
-                            // Fallback: just truncate severely 
-                            block->used = 1;
-                            fprintf(stderr, "DEBUG: No safe gadget found, truncated to single gadget\n");
-                        }
-                        
-                        fprintf(stderr, "DEBUG: Replaced PLT stub with return gadget 0x%lx\n", 
-                                block->code[0]);
-                    }
-                }
+                // REMOVED: PLT patching code that was causing infinite loops
                 
                 if (block_count <= 3) {
                     fprintf(stderr, "DEBUG: Compiled block %d: addr=0x%llx, end_addr=0x%llx, size=%zu bytes\n", 
@@ -354,107 +312,7 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
         //         }
         // #endif
 
-        // Special debugging for infinite loop detection
-#ifdef ISH_64BIT
-        static addr_t last_rax = 0, last_rsp = 0;
-        static int loop_iterations = 0;
-        
-        if (ip == 0x7ffe00036540) {
-            loop_iterations++;
-            
-            if (loop_iterations <= 5 || loop_iterations % 1000 == 0) {
-                fprintf(stderr, "DEBUG: INFINITE LOOP #%d at 0x7ffe00036540\n", loop_iterations);
-                fprintf(stderr, "  Block %d, cycle=%ld\n", block_count, frame->cpu.cycle);
-                fprintf(stderr, "  RAX=0x%llx (was 0x%llx) RDX=0x%llx\n", 
-                        frame->cpu.rax, last_rax, frame->cpu.rdx);
-                fprintf(stderr, "  RSP=0x%llx (was 0x%llx) RSI=0x%llx RDI=0x%llx\n",
-                        frame->cpu.rsp, last_rsp, frame->cpu.rsi, frame->cpu.rdi);
-                
-                // Show the return address on the stack (who called us)
-                uint64_t return_addr = 0;
-                if (frame->cpu.rsp < 0x7ffffffff000ULL) {  // Sanity check stack pointer
-                    // Try to read the return address from the stack
-                    if (tlb_read(tlb, frame->cpu.rsp, &return_addr, sizeof(return_addr)) == 0) {
-                        fprintf(stderr, "  RETURN ADDRESS on stack: 0x%llx\n", return_addr);
-                        
-                        // Check if this is self-recursion
-                        if (return_addr >= 0x7ffe00036540 && return_addr <= 0x7ffe00036580) {
-                            fprintf(stderr, "  *** SELF-RECURSION DETECTED! Called from same function range ***\n");
-                        }
-                    } else {
-                        fprintf(stderr, "  Could not read return address from RSP=0x%llx\n", frame->cpu.rsp);
-                    }
-                }
-                
-                // Check if registers are changing (sign of progress)
-                if (frame->cpu.rax != last_rax) {
-                    fprintf(stderr, "  RAX CHANGED: 0x%llx -> 0x%llx\n", last_rax, frame->cpu.rax);
-                }
-                if (frame->cpu.rsp != last_rsp) {
-                    fprintf(stderr, "  RSP CHANGED: 0x%llx -> 0x%llx\n", last_rsp, frame->cpu.rsp);
-                }
-            }
-            
-            last_rax = frame->cpu.rax;
-            last_rsp = frame->cpu.rsp;
-            
-            // DEBUGGING: Let's understand what this function is actually doing
-            if (loop_iterations <= 5) {
-                fprintf(stderr, "DEBUG: Loop %d - analyzing function 0x7ffe00036540\n", loop_iterations);
-                fprintf(stderr, "  RAX=0x%llx RCX=0x%llx RDX=0x%llx\n", 
-                        frame->cpu.rax, frame->cpu.rcx, frame->cpu.rdx);
-                fprintf(stderr, "  R9=0x%llx (appears constant) R10=0x%llx\n",
-                        frame->cpu.r9, frame->cpu.r10);
-                        
-                // Check what R9 points to (it looks like a pointer)
-                if (frame->cpu.r9 != 0) {
-                    uint64_t r9_content = 0;
-                    if (tlb_read(tlb, frame->cpu.r9, &r9_content, sizeof(r9_content)) == 0) {
-                        fprintf(stderr, "  R9 points to: 0x%llx\n", r9_content);
-                    } else {
-                        fprintf(stderr, "  R9 points to unmapped memory\n");
-                    }
-                }
-                
-                // Show return address and next stack value
-                uint64_t ret_addr = 0, next_val = 0;
-                if (tlb_read(tlb, frame->cpu.rsp, &ret_addr, sizeof(ret_addr)) == 0) {
-                    fprintf(stderr, "  Return address: 0x%llx\n", ret_addr);
-                }
-                if (tlb_read(tlb, frame->cpu.rsp + 8, &next_val, sizeof(next_val)) == 0) {
-                    fprintf(stderr, "  Stack[1]: 0x%llx\n", next_val);
-                }
-            } else if (loop_iterations % 100 == 0) {
-                fprintf(stderr, "DEBUG: Loop %d - register changes: RAX=0x%llx->0x%llx, RSP=0x%llx->0x%llx\n", 
-                        loop_iterations, last_rax, frame->cpu.rax, last_rsp, frame->cpu.rsp);
-            }
-            
-            // ROOT CAUSE ANALYSIS: Show what memory the function is trying to access
-            if (loop_iterations <= 3) {
-                fprintf(stderr, "DEBUG: Analyzing PLT stub function - looking for GOT reads\n");
-                
-                // Look at the actual block being executed to see memory access patterns
-                if (block && block->used > 0) {
-                    fprintf(stderr, "  Function size: %zu gadgets\n", (size_t)block->used);
-                    fprintf(stderr, "  First few gadgets: ");
-                    for (int i = 0; i < 6 && i < block->used; i++) {
-                        fprintf(stderr, "0x%lx ", block->code[i]);
-                    }
-                    fprintf(stderr, "\n");
-                }
-            }
-            
-            // EXECUTION-TIME PLT PATCH: If we detect the infinite loop, break it cleanly
-            if (loop_iterations > 50) {
-                fprintf(stderr, "DEBUG: EXECUTION-TIME PLT PATCH - Detected infinite PLT loop at iteration %d\n", loop_iterations);
-                fprintf(stderr, "       This appears to be a dynamic linking issue - cleanly terminating\n");
-                
-                // For now, let's just cleanly terminate to prevent infinite loops
-                // This allows the program to exit gracefully rather than hang forever
-                interrupt = INT_TIMER;
-            }
-        }
-#endif
+        // REMOVED: Infinite loop detection that was masking real dynamic linking issues
 
         interrupt = fiber_enter(block, frame, tlb);
         

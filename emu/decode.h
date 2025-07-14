@@ -956,6 +956,7 @@ restart:
         case 0x8a: TRACEI("mov modrm8, reg8");
                    READMODRM; MOV(modrm_val, modrm_reg,8); break;
         case 0x8b: TRACEI("mov modrm, reg");
+#ifdef ISH_64BIT
                    if (state->orig_ip == 0x7ffe00036560) {
                        FILE *f = fopen("/tmp/ish_mov_debug.txt", "a");
                        if (f) {
@@ -964,7 +965,9 @@ restart:
                            fclose(f);
                        }
                    }
+#endif
                    READMODRM;
+#ifdef ISH_64BIT
                    if (state->orig_ip == 0x7ffe00036560) {
                        FILE *f = fopen("/tmp/ish_mov_debug.txt", "a");
                        if (f) {
@@ -972,6 +975,7 @@ restart:
                            fclose(f);
                        }
                    }
+#endif
                    MOV(modrm_val, modrm_reg,EFFECTIVE_OZ); break;
 
         case 0x8d: TRACEI("lea\t\t"); READMODRM_MEM;

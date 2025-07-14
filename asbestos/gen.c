@@ -263,9 +263,11 @@ bool gen_addr(struct gen_state *state, struct modrm *modrm, bool seg_gs) {
 // really nicely in gcc using nested functions, but that won't work in clang,
 // so we explicitly pass 500 arguments. sorry for the mess
 static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg arg, struct modrm *modrm, uint64_t *imm, int size, bool seg_gs, dword_t addr_offset) {
+#ifdef ISH_64BIT
     if (state->orig_ip == 0x7ffe0003656c) {
         fprintf(stderr, "DEBUG: gen_op entry - arg=%d, size=%d\n", arg, size);
     }
+#endif
     size = sz(size);
     gadgets = gadgets + size * arg_count;
     
@@ -292,6 +294,7 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
             break;
     }
     if (arg >= arg_count || gadgets[arg] == NULL) {
+#ifdef ISH_64BIT
         if (state->orig_ip == 0x7ffe00036560) {
             fprintf(stderr, "DEBUG: CRITICAL - MOV R8,[RBP+0x10] gen_op failed!\n");
             fprintf(stderr, "DEBUG: arg=%d (0=reg_a,8=reg_r8,22=mem,23=addr), gadgets[arg]=%p\n", 
@@ -299,6 +302,7 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
             fprintf(stderr, "DEBUG: gadget array base=%p, size=%d, final=%p\n", 
                     (void*)(gadgets - size * arg_count), size, (void*)gadgets);
         }
+#endif
         // DEBUG: Removed debugging for clean output
         UNDEFINED;
     }

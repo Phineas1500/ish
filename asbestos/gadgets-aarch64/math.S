@@ -525,6 +525,7 @@
 
 
 # Manual R8 AND gadgets (defined before array generation to ensure inclusion)
+#ifdef ISH_64BIT
 .gadget and8_reg_r8
     ldrb w8, [_cpu, CPU_r8]
     do_op and, 8, w8
@@ -548,6 +549,7 @@
     do_op and, 64, x8
     str _xtmp, [_cpu, CPU_r8]
     gret
+#endif
 
 .irp op, load,store,xchg,add,sub,adc,sbb,and,or,xor
     .irp size, SIZE_LIST

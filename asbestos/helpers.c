@@ -12,32 +12,35 @@ static int gret_count = 0;
 void debug_gret_jump(unsigned long target_addr, unsigned long ip_value) {
     gret_count++;
     
+    // DEBUG DISABLED FOR PERFORMANCE
     // Show all gadget jumps for Block 2 (starts around gret 13)
-    if (gret_count >= 12) {  
-        fprintf(stderr, "DEBUG: gret %d ENTERING gadget 0x%lx, _ip=0x%lx\n", 
-                gret_count, target_addr, ip_value);
-        
-        // Check for obviously invalid jump targets
-        if (target_addr < 0x1000) {
-            fprintf(stderr, "ERROR: Invalid gadget address 0x%lx! This should be a parameter, not a gadget!\n", target_addr);
-        }
-        
-        // Force flush to see output before crash
-        fflush(stderr);
-    }
+    // if (gret_count >= 12) {  
+    //     fprintf(stderr, "DEBUG: gret %d ENTERING gadget 0x%lx, _ip=0x%lx\n", 
+    //             gret_count, target_addr, ip_value);
+    //     
+    //     // Check for obviously invalid jump targets
+    //     if (target_addr < 0x1000) {
+    //         fprintf(stderr, "ERROR: Invalid gadget address 0x%lx! This should be a parameter, not a gadget!\n", target_addr);
+    //     }
+    //     
+    //     // Force flush to see output before crash
+    //     fflush(stderr);
+    // }
 }
 
 void debug_gret_exit(unsigned long gadget_addr) {
-    if (gret_count >= 12) {
-        fprintf(stderr, "DEBUG: gret %d EXITING gadget 0x%lx\n", 
-                gret_count, gadget_addr);
-        fflush(stderr);
-    }
+    // DEBUG DISABLED FOR PERFORMANCE  
+    // if (gret_count >= 12) {
+    //     fprintf(stderr, "DEBUG: gret %d EXITING gadget 0x%lx\n", 
+    //             gret_count, gadget_addr);
+    //     fflush(stderr);
+    // }
 }
 
 
 void debug_call64_reached(void) {
-    fprintf(stderr, "DEBUG: Reached call64 gadget - about to execute\n");
+    // DEBUG DISABLED FOR PERFORMANCE
+    // fprintf(stderr, "DEBUG: Reached call64 gadget - about to execute\n");
 }
 
 void debug_call64_after_stack_setup(void) {
@@ -86,7 +89,8 @@ void debug_fiber_ret_chain_reached(unsigned long cpu_ptr) {}
 void debug_print_tlb(unsigned long tlb) {}
 void debug_print_tlb_setup(unsigned long tlb_base, unsigned long tlb_entries_ptr) {}
 void debug_track_interrupt_code(unsigned long interrupt_code) {
-    fprintf(stderr, "DEBUG_GADGET: Using %s gadget\n", interrupt_code == 32 ? "interrupt (32-bit)" : "interrupt64 (64-bit)");
+    // DEBUG DISABLED FOR PERFORMANCE
+    // fprintf(stderr, "DEBUG_GADGET: Using %s gadget\n", interrupt_code == 32 ? "interrupt (32-bit)" : "interrupt64 (64-bit)");
 }
 void debug_track_x1_fiber_exit(unsigned long x1_value) {}
 bool fixed_64bit_crosspage_read(void *tlb_ptr, uint64_t addr, void *value, unsigned size) {
@@ -164,7 +168,8 @@ void debug_fiber_ret_chain_reached(unsigned long cpu_ptr) {}
 void debug_print_tlb(unsigned long tlb) {}
 void debug_print_tlb_setup(unsigned long tlb_base, unsigned long tlb_entries_ptr) {}
 void debug_track_interrupt_code(unsigned long interrupt_code) {
-    fprintf(stderr, "DEBUG_GADGET: Using %s gadget\n", interrupt_code == 32 ? "interrupt (32-bit)" : "interrupt64 (64-bit)");
+    // DEBUG DISABLED FOR PERFORMANCE
+    // fprintf(stderr, "DEBUG_GADGET: Using %s gadget\n", interrupt_code == 32 ? "interrupt (32-bit)" : "interrupt64 (64-bit)");
 }
 void debug_track_x1_fiber_exit(unsigned long x1_value) {}
 bool fixed_64bit_crosspage_read(void *tlb_ptr, uint64_t addr, void *value, unsigned size) {
@@ -192,7 +197,8 @@ void helper_collapse_flags(struct cpu_state *cpu) {
     collapse_flags(cpu);
 }
 void debug_store64_r8_reached(void) {
-    fprintf(stderr, "DEBUG: store64_reg_r8 gadget reached!\n");
-    fflush(stderr);
+    // DEBUG DISABLED FOR PERFORMANCE
+    // fprintf(stderr, "DEBUG: store64_reg_r8 gadget reached!\n");
+    // fflush(stderr);
 }
 
