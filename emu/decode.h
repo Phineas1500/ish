@@ -123,6 +123,19 @@ restart:
         TRACE(" ");
         // Read actual instruction after REX prefix
         READINSN;
+        
+        // CRITICAL DEBUGGING: Log the instruction that follows REX prefix
+        if (state->orig_ip == 0x7ffe00036560) {
+            FILE *f = fopen("/tmp/ish_rex_debug.txt", "a");
+            if (f) {
+                fprintf(f, "REX PREFIX 0x%02x at IP=0x%llx\n", (insn & 0xF0) | (rex_w << 3) | (rex_r << 2) | (rex_x << 1) | rex_b, 
+                        (unsigned long long)state->orig_ip);
+                fprintf(f, "  REX.W=%d REX.R=%d REX.X=%d REX.B=%d\n", rex_w, rex_r, rex_x, rex_b);
+                fprintf(f, "  Following instruction byte: 0x%02x\n", insn);
+                fflush(f);
+                fclose(f);
+            }
+        }
     }
 #else
     READINSN;
