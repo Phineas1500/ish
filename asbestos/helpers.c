@@ -12,29 +12,28 @@ static int gret_count = 0;
 void debug_gret_jump(unsigned long target_addr, unsigned long ip_value) {
     gret_count++;
     
-    // DEBUG DISABLED FOR PERFORMANCE
-    // Show all gadget jumps for Block 2 (starts around gret 13)
-    // if (gret_count >= 12) {  
-    //     fprintf(stderr, "DEBUG: gret %d ENTERING gadget 0x%lx, _ip=0x%lx\n", 
-    //             gret_count, target_addr, ip_value);
-    //     
-    //     // Check for obviously invalid jump targets
-    //     if (target_addr < 0x1000) {
-    //         fprintf(stderr, "ERROR: Invalid gadget address 0x%lx! This should be a parameter, not a gadget!\n", target_addr);
-    //     }
-    //     
-    //     // Force flush to see output before crash
-    //     fflush(stderr);
-    // }
+    // Disable gret debugging for cleaner output
+    if (false && gret_count >= 12 && gret_count <= 30) {  
+        fprintf(stderr, "DEBUG: gret %d ENTERING gadget 0x%lx, _ip=0x%lx\n", 
+                gret_count, target_addr, ip_value);
+        
+        // Check for obviously invalid jump targets
+        if (target_addr < 0x1000) {
+            fprintf(stderr, "ERROR: Invalid gadget address 0x%lx! This should be a parameter, not a gadget!\n", target_addr);
+        }
+        
+        // Force flush to see output before crash
+        fflush(stderr);
+    }
 }
 
 void debug_gret_exit(unsigned long gadget_addr) {
-    // DEBUG DISABLED FOR PERFORMANCE  
-    // if (gret_count >= 12) {
-    //     fprintf(stderr, "DEBUG: gret %d EXITING gadget 0x%lx\n", 
-    //             gret_count, gadget_addr);
-    //     fflush(stderr);
-    // }
+    // Disable gret debugging for cleaner output
+    if (false && gret_count >= 12 && gret_count <= 30) {
+        fprintf(stderr, "DEBUG: gret %d EXITING gadget 0x%lx\n", 
+                gret_count, gadget_addr);
+        fflush(stderr);
+    }
 }
 
 
@@ -139,6 +138,12 @@ void debug_ret64_address(unsigned long ret_addr) {
 void debug_call64_jump_target(unsigned long target) {
     fprintf(stderr, "DEBUG: call64 jumping to target RIP = 0x%lx\n", target);
 }
+void debug_exit_rip_value(unsigned long rip_value) {
+    fprintf(stderr, "DEBUG: exit gadget loaded RIP = 0x%lx\n", rip_value);
+}
+void debug_fiber_ret_with_rip(unsigned long rip_value) {
+    fprintf(stderr, "DEBUG: fiber_ret reached with RIP = 0x%lx\n", rip_value);
+}
 #else
 // Stub functions for 32-bit builds to satisfy assembly gadget references
 void debug_gret_jump(unsigned long target_addr, unsigned long ip_value) {}
@@ -158,6 +163,8 @@ void debug_call64_params_1(unsigned long p1, unsigned long p2, unsigned long p3,
 void debug_call64_params_2(unsigned long p5, unsigned long ip) {}
 void debug_ret64_address(unsigned long ret_addr) {}
 void debug_call64_jump_target(unsigned long target) {}
+void debug_exit_rip_value(unsigned long rip_value) {}
+void debug_fiber_ret_with_rip(unsigned long rip_value) {}
 void debug_call64_reached(void) {}
 void debug_call64_after_stack_setup(void) {}
 void debug_call64_after_write_prep(void) {}

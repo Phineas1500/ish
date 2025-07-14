@@ -317,8 +317,8 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
         interrupt = fiber_enter(block, frame, tlb);
         
 #ifdef ISH_64BIT
-        if (block_count <= 10) {
-            fprintf(stderr, "64-bit: Block %d, after fiber_enter, interrupt=%d, new RIP=0x%llx (debug point 3)\n", 
+        if (false && block_count <= 10) {
+            fprintf(stderr, "64-bit: Block %d, after fiber_enter, interrupt=%d, frame->cpu.rip=0x%llx (debug point 3)\n", 
                     block_count, interrupt, (unsigned long long)frame->cpu.rip);
             
             // Additional debugging for crash detection
@@ -355,6 +355,13 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
             interrupt = INT_TIMER;
         if (interrupt == INT_NONE && ++frame->cpu.cycle % (1 << 10) == 0)
             interrupt = INT_TIMER;
+        
+#ifdef ISH_64BIT
+        if (block_count <= 10 && interrupt == INT_NONE) {
+            fprintf(stderr, "64-bit: Before next iteration, frame->cpu.rip=0x%llx\n", 
+                    (unsigned long long)frame->cpu.rip);
+        }
+#endif
         *cpu = frame->cpu;
     }
 

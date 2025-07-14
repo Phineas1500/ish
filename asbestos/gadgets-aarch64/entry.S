@@ -89,15 +89,20 @@ fiber_ret_chain:
     gret
 
 poke:
+#ifdef ISH_64BIT
+    ldr rip, [_ip, -FIBER_BLOCK_code+FIBER_BLOCK_addr]
+#else
     ldr eip, [_ip, -FIBER_BLOCK_code+FIBER_BLOCK_addr]
+#endif
     # fallthrough
 
 .global fiber_ret
 fiber_ret:
 #ifdef ISH_64BIT
-    // DEBUG: Track if we reach fiber_ret
+    // DEBUG: Track if we reach fiber_ret with RIP value
     stp x0, x1, [sp, -16]!
-    bl NAME(debug_fiber_ret_reached) 
+    mov x0, rip  // Pass current RIP value
+    bl NAME(debug_fiber_ret_with_rip) 
     ldp x0, x1, [sp], 16
 #endif
     # load -1
@@ -161,6 +166,11 @@ fiber_exit:
 .gadget exit
 #ifdef ISH_64BIT
     ldr rip, [_ip]
+    // DEBUG: Track the loaded RIP value
+    stp x0, x1, [sp, -16]!
+    mov x0, rip
+    bl NAME(debug_exit_rip_value)
+    ldp x0, x1, [sp], 16
 #else
     ldr eip, [_ip]
 #endif
