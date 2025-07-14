@@ -1898,83 +1898,83 @@
     str _tmp, [_cpu, #CPU_r11]
     gret
 
-/* CRITICAL FIX: Missing load/store gadgets for R8-R10 (direct ARM64 register access) */
-/* R8 gadgets (direct access to ARM64 x4/w4) */
+/* CRITICAL FIX: Missing load/store gadgets for R8-R10 (CPU state memory access) */
+/* R8 gadgets (memory access like other registers) */
 .gadget load8_reg_r8
-    mov _tmp, r8b
+    ldr _tmp, [_cpu, CPU_r8]
     gret
 .gadget store8_reg_r8
-    mov r8b, _tmp
+    str _tmp, [_cpu, CPU_r8]
     gret
 .gadget load16_reg_r8
-    mov _tmp, r8w
+    ldr _tmp, [_cpu, CPU_r8]
     gret
 .gadget store16_reg_r8
-    mov r8w, _tmp
+    str _tmp, [_cpu, CPU_r8]
     gret
 .gadget load32_reg_r8
-    mov _tmp, r8d
+    ldr _tmp, [_cpu, CPU_r8]
     gret
 .gadget store32_reg_r8
-    mov r8d, _tmp
+    str _tmp, [_cpu, CPU_r8]
     gret
 .gadget load64_reg_r8
-    mov _xtmp, r8
+    ldr _xtmp, [_cpu, CPU_r8]
     gret
 .gadget store64_reg_r8
-    mov r8, _xtmp
+    str _xtmp, [_cpu, CPU_r8]
     gret
 
-/* R9 gadgets (direct access to ARM64 x5/w5) */
+/* R9 gadgets (memory access like other registers) */
 .gadget load8_reg_r9
-    mov _tmp, r9b
+    ldr _tmp, [_cpu, CPU_r9]
     gret
 .gadget store8_reg_r9
-    mov r9b, _tmp
+    str _tmp, [_cpu, CPU_r9]
     gret
 .gadget load16_reg_r9
-    mov _tmp, r9w
+    ldr _tmp, [_cpu, CPU_r9]
     gret
 .gadget store16_reg_r9
-    mov r9w, _tmp
+    str _tmp, [_cpu, CPU_r9]
     gret
 .gadget load32_reg_r9
-    mov _tmp, r9d
+    ldr _tmp, [_cpu, CPU_r9]
     gret
 .gadget store32_reg_r9
-    mov r9d, _tmp
+    str _tmp, [_cpu, CPU_r9]
     gret
 .gadget load64_reg_r9
-    mov _xtmp, r9
+    ldr _xtmp, [_cpu, CPU_r9]
     gret
 .gadget store64_reg_r9
-    mov r9, _xtmp
+    str _xtmp, [_cpu, CPU_r9]
     gret
 
-/* R10 gadgets (direct access to ARM64 x6/w6) */
+/* R10 gadgets (memory access like other registers) */
 .gadget load8_reg_r10
-    mov _tmp, r10b
+    ldr _tmp, [_cpu, CPU_r10]
     gret
 .gadget store8_reg_r10
-    mov r10b, _tmp
+    str _tmp, [_cpu, CPU_r10]
     gret
 .gadget load16_reg_r10
-    mov _tmp, r10w
+    ldr _tmp, [_cpu, CPU_r10]
     gret
 .gadget store16_reg_r10
-    mov r10w, _tmp
+    str _tmp, [_cpu, CPU_r10]
     gret
 .gadget load32_reg_r10
-    mov _tmp, r10d
+    ldr _tmp, [_cpu, CPU_r10]
     gret
 .gadget store32_reg_r10
-    mov r10d, _tmp
+    str _tmp, [_cpu, CPU_r10]
     gret
 .gadget load64_reg_r10
-    mov _xtmp, r10
+    ldr _xtmp, [_cpu, CPU_r10]
     gret
 .gadget store64_reg_r10
-    mov r10, _xtmp
+    str _xtmp, [_cpu, CPU_r10]
     gret
 
 /* load/store for R11 */
