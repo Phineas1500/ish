@@ -14,6 +14,32 @@
 #define ELF_X86 3
 #define ELF_X86_64 62
 
+// Relocation types for x86_64
+#define R_X86_64_NONE     0
+#define R_X86_64_64       1
+#define R_X86_64_PC32     2
+#define R_X86_64_GOT32    3
+#define R_X86_64_PLT32    4
+#define R_X86_64_COPY     5
+#define R_X86_64_GLOB_DAT 6
+#define R_X86_64_JUMP_SLOT 7
+#define R_X86_64_RELATIVE 8
+
+// Dynamic section tags
+#define DT_NULL     0
+#define DT_NEEDED   1
+#define DT_PLTRELSZ 2
+#define DT_PLTGOT   3
+#define DT_HASH     4
+#define DT_STRTAB   5
+#define DT_SYMTAB   6
+#define DT_RELA     7
+#define DT_RELASZ   8
+#define DT_RELAENT  9
+#define DT_STRSZ    10
+#define DT_SYMENT   11
+#define DT_JMPREL   17
+
 struct elf_header {
     uint32_t magic;
     byte_t bitness;
@@ -196,5 +222,38 @@ struct elf_sym {
     byte_t other;
     uint16_t shndx;
 };
+
+// 64-bit relocation structures for dynamic linking
+struct elf_rela_64 {
+    uint64_t offset;
+    uint64_t info;
+    int64_t addend;
+};
+
+struct elf_rel_64 {
+    uint64_t offset;
+    uint64_t info;
+};
+
+struct elf_sym_64 {
+    uint32_t name;
+    uint8_t info;
+    uint8_t other;
+    uint16_t shndx;
+    uint64_t value;
+    uint64_t size;
+};
+
+struct elf_dyn_64 {
+    int64_t tag;
+    union {
+        uint64_t val;
+        uint64_t ptr;
+    } un;
+};
+
+// Macros for relocation info
+#define ELF_R_SYM(info) ((info) >> 32)
+#define ELF_R_TYPE(info) ((info) & 0xffffffff)
 
 #endif

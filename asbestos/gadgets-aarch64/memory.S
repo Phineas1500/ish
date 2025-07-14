@@ -56,7 +56,7 @@
     ldr rip, [_cpu, #CPU_rip] // Load current RIP value 
     sxtw x0, w0             // Sign-extend displacement to 64-bit
     add _xaddr, rip, x0     // Calculate effective address = RIP + displacement
-    mov _addr, w3           // Move lower 32 bits of result to _addr register
+    // _addr (w3) is already the lower 32 bits of _xaddr (x3) - no mov needed
     gret 1
 #else
     // 32-bit mode: fallback to simple displacement
