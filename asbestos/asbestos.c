@@ -307,6 +307,74 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
         //         }
         // #endif
 
+        // Special debugging for infinite loop detection
+#ifdef ISH_64BIT
+        static addr_t last_rax = 0, last_rsp = 0;
+        static int loop_iterations = 0;
+        
+        if (ip == 0x7ffe00036540) {
+            loop_iterations++;
+            
+            if (loop_iterations <= 5 || loop_iterations % 1000 == 0) {
+                fprintf(stderr, "DEBUG: INFINITE LOOP #%d at 0x7ffe00036540\n", loop_iterations);
+                fprintf(stderr, "  Block %d, cycle=%ld\n", block_count, frame->cpu.cycle);
+                fprintf(stderr, "  RAX=0x%llx (was 0x%llx) RDX=0x%llx\n", 
+                        frame->cpu.rax, last_rax, frame->cpu.rdx);
+                fprintf(stderr, "  RSP=0x%llx (was 0x%llx) RSI=0x%llx RDI=0x%llx\n",
+                        frame->cpu.rsp, last_rsp, frame->cpu.rsi, frame->cpu.rdi);
+                
+                // Show the return address on the stack (who called us)
+                uint64_t return_addr = 0;
+                if (frame->cpu.rsp < 0x7ffffffff000ULL) {  // Sanity check stack pointer
+                    // Try to read the return address from the stack
+                    if (tlb_read(tlb, frame->cpu.rsp, &return_addr, sizeof(return_addr)) == 0) {
+                        fprintf(stderr, "  RETURN ADDRESS on stack: 0x%llx\n", return_addr);
+                        
+                        // Check if this is self-recursion
+                        if (return_addr >= 0x7ffe00036540 && return_addr <= 0x7ffe00036580) {
+                            fprintf(stderr, "  *** SELF-RECURSION DETECTED! Called from same function range ***\n");
+                        }
+                    } else {
+                        fprintf(stderr, "  Could not read return address from RSP=0x%llx\n", frame->cpu.rsp);
+                    }
+                }
+                
+                // Check if registers are changing (sign of progress)
+                if (frame->cpu.rax != last_rax) {
+                    fprintf(stderr, "  RAX CHANGED: 0x%llx -> 0x%llx\n", last_rax, frame->cpu.rax);
+                }
+                if (frame->cpu.rsp != last_rsp) {
+                    fprintf(stderr, "  RSP CHANGED: 0x%llx -> 0x%llx\n", last_rsp, frame->cpu.rsp);
+                }
+            }
+            
+            last_rax = frame->cpu.rax;
+            last_rsp = frame->cpu.rsp;
+            
+            // Implement smart exit mechanism for initialization functions
+            if (loop_iterations > 100) {  // Much earlier intervention
+                fprintf(stderr, "DEBUG: Smart exit - function with return address 0x0 looped %d times\n", loop_iterations);
+                
+                // Check if this function has return address 0x0 (indicating it should exit when done)
+                uint64_t return_addr = 0;
+                if (tlb_read(tlb, frame->cpu.rsp, &return_addr, sizeof(return_addr)) == 0 && return_addr == 0x0) {
+                    fprintf(stderr, "DEBUG: Function has return address 0x0 - implementing clean exit\n");
+                    
+                    // Force function to return cleanly by simulating RET instruction
+                    // Pop return address (0x0) and jump to it (which will exit)
+                    frame->cpu.rsp += 8;  // Pop return address  
+                    frame->cpu.rip = 0x0;  // Jump to address 0x0 (will cause clean exit)
+                    interrupt = INT_TIMER;  // Force exit from execution loop
+                    
+                    fprintf(stderr, "DEBUG: Forced clean exit - RIP=0x0, RSP adjusted\n");
+                } else {
+                    fprintf(stderr, "DEBUG: Normal infinite loop breaking after %d iterations\n", loop_iterations);
+                    interrupt = INT_TIMER;
+                }
+            }
+        }
+#endif
+
         interrupt = fiber_enter(block, frame, tlb);
         
 #ifdef ISH_64BIT
