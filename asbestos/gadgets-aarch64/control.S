@@ -97,6 +97,10 @@
 #endif
     
     sub rsp, rsp, 8
+    
+    // Ensure 16-byte stack alignment for x86-64 ABI
+    and rsp, rsp, ~15  // Align to 16 bytes
+    
     mov w9, w8
     and w12, w9, 0x3fff
     write_done 64, call64
@@ -111,6 +115,14 @@
     ldr x8, [_ip, 32]
     
     // Clear the high bit if set (might be a marker)
+    and x8, x8, 0x7fffffffffff
+    
+    // DEBUG: Check the target address
+    stp x0, x1, [sp, -16]!
+    mov x0, x8
+    bl NAME(debug_call64_jump_target)
+    ldp x0, x1, [sp], 16
+    ldr x8, [_ip, 32]  // Reload
     and x8, x8, 0x7fffffffffff
     
     // Set RIP to the target address
@@ -148,6 +160,11 @@
     str x8, [_xaddr]
     // push stack pointer (8 bytes for 64-bit)
     sub rsp, rsp, 8
+    
+    // Ensure 16-byte stack alignment for x86-64 ABI
+    // The stack should be 16-byte aligned before the CALL
+    // After pushing 8 bytes, we need another 8 bytes for alignment
+    and rsp, rsp, ~15  // Align to 16 bytes
     // save ip-to-arguments to return cache (use lower 32 bits)
     mov w9, w8
     ubfx w12, w9, 4, 12
@@ -204,6 +221,12 @@
     ldr x8, [_ip, 8]
     add rsp, rsp, x8
     add rsp, rsp, 8  // remove extra alignment padding
+    // DEBUG: Check return address
+    stp x0, x1, [sp, -16]!
+    mov x0, _xtmp
+    bl NAME(debug_ret64_address)
+    ldp x0, x1, [sp], 16
+    
     // load saved ip in return cache (use lower 32 bits of 64-bit return address)
     mov w9, w0  // w0 is the 32-bit view of _xtmp (x0)
     ubfx w12, w9, 4, 12

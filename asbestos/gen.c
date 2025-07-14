@@ -38,6 +38,17 @@ static void gen(struct gen_state *state, unsigned long thing) {
         state->block = bigger_block;
     }
     assert(state->size < state->capacity);
+#ifdef ISH_64BIT
+    // Debug suspicious values being written as gadgets
+    if (thing > 0x1000000000000000UL && thing != (unsigned long)-1) {
+        static int suspicious_count = 0;
+        if (suspicious_count < 10) {
+            fprintf(stderr, "DEBUG: Suspicious value written to gadget array: 0x%lx at IP=0x%llx\n", 
+                    thing, (unsigned long long)state->ip);
+            suspicious_count++;
+        }
+    }
+#endif
     state->block->code[state->size++] = thing;
 }
 
@@ -258,9 +269,22 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
             return false;
     }
     GEN(gadgets[arg]);
-    if (arg == arg_imm)
+    if (arg == arg_imm) {
+#ifdef ISH_64BIT
+        // Debug: Log large immediates that might be incorrectly read
+        if (*imm > 0x100000000ULL && *imm != (uint64_t)-1) {
+            static int large_imm_count = 0;
+            if (large_imm_count < 5) {
+                fprintf(stderr, "DEBUG: Large immediate value: 0x%llx at IP=0x%llx (truncating to prevent crash)\n", 
+                        (unsigned long long)*imm, (unsigned long long)state->ip);
+                large_imm_count++;
+            }
+            // Temporary workaround: truncate large immediates
+            *imm = (uint32_t)*imm;
+        }
+#endif
         GEN(*imm);
-    else if (arg == arg_mem)
+    } else if (arg == arg_mem)
         GEN(state->orig_ip | state->orig_ip_extra);
     return true;
 }

@@ -111,6 +111,12 @@ void debug_call64_params_1(unsigned long p1, unsigned long p2, unsigned long p3,
 void debug_call64_params_2(unsigned long p5, unsigned long ip) {
     fprintf(stderr, "DEBUG: call64 params: p5=0x%lx, from _ip=0x%lx\n", p5, ip);
 }
+void debug_ret64_address(unsigned long ret_addr) {
+    fprintf(stderr, "DEBUG: ret64 return address = 0x%lx\n", ret_addr);
+}
+void debug_call64_jump_target(unsigned long target) {
+    fprintf(stderr, "DEBUG: call64 jumping to target RIP = 0x%lx\n", target);
+}
 #else
 // Stub functions for 32-bit builds to satisfy assembly gadget references
 void debug_gret_jump(unsigned long target_addr, unsigned long ip_value) {}
@@ -127,6 +133,8 @@ void debug_fiber_chain_gret(unsigned long gadget_addr, unsigned long ip_value, u
 void debug_call64_target_param(unsigned long target, unsigned long ip) {}
 void debug_call64_params_1(unsigned long p1, unsigned long p2, unsigned long p3, unsigned long p4) {}
 void debug_call64_params_2(unsigned long p5, unsigned long ip) {}
+void debug_ret64_address(unsigned long ret_addr) {}
+void debug_call64_jump_target(unsigned long target) {}
 void debug_call64_reached(void) {}
 void debug_call64_after_stack_setup(void) {}
 void debug_call64_after_write_prep(void) {}

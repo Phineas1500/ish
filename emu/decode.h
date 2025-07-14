@@ -44,7 +44,36 @@ __no_instrument DECODER_RET glue(DECODER_NAME, OP_SIZE)(DECODER_ARGS) {
 #define READINSN _READIMM(insn, 8); TRACE("%02x ", insn)
 #define READIMM READIMM_(imm, OP_SIZE)
 #define READIMMoz READIMM // there's nothing more permanent than a temporary hack
-#define READIMMEFFECTIVE_OZ READIMM // Support for token concatenation in macros
+#ifdef ISH_64BIT
+// In 64-bit mode, most instructions use 32-bit immediates even with 64-bit operands
+// Only MOV reg, imm64 can use a true 64-bit immediate
+#define READIMMEFFECTIVE_OZ do { \
+    if (EFFECTIVE_OZ == 64) { \
+        /* In x86-64, most instructions use 32-bit immediates sign-extended to 64 bits */ \
+        READIMM_(imm, 32); \
+        imm = (int64_t)(int32_t)imm; /* sign extend to 64 bits */ \
+    } else { \
+        READIMM_(imm, EFFECTIVE_OZ); \
+    } \
+} while(0)
+
+// Special case for MOV reg, imm - can use true 64-bit immediate with REX.W
+#define READIMM_MOV do { \
+    if (EFFECTIVE_OZ == 64 && rex_w) { \
+        /* MOV with REX.W can use 64-bit immediate */ \
+        READIMM_(imm, 64); \
+    } else if (EFFECTIVE_OZ == 64) { \
+        /* MOV without REX.W uses 32-bit immediate sign-extended */ \
+        READIMM_(imm, 32); \
+        imm = (int64_t)(int32_t)imm; \
+    } else { \
+        READIMM_(imm, EFFECTIVE_OZ); \
+    } \
+} while(0)
+#else
+#define READIMMEFFECTIVE_OZ READIMM // In 32-bit mode, just use READIMM
+#define READIMM_MOV READIMM
+#endif
 #define READIMM8 READIMM_(imm, 8); imm = (int8_t) (uint8_t) imm
 #define READIMM16 READIMM_(imm, 16)
 #define READIMM32 READIMM_(imm, 32); imm = (int32_t) (uint32_t) imm
@@ -54,13 +83,13 @@ __no_instrument DECODER_RET glue(DECODER_NAME, OP_SIZE)(DECODER_ARGS) {
 restart:
     TRACEIP();
 #ifdef ISH_64BIT
-    // Debug: Log first few instructions in 64-bit mode
+    // Debug: Log specific problematic addresses
     static int debug_count = 0;
-    if (debug_count < 10) {
+    if (state->ip >= 0x7ffe00036540 && state->ip <= 0x7ffe00036550) {
         FILE *f = fopen("/tmp/ish_decode_debug.txt", "a");
         if (f) {
-            fprintf(f, "Decoding at IP=0x%llx, orig_ip=0x%llx, end_block=%d\n", 
-                    (unsigned long long)state->ip, (unsigned long long)state->orig_ip, end_block);
+            fprintf(f, "CRITICAL: Decoding at problematic IP=0x%llx, orig_ip=0x%llx\n", 
+                    (unsigned long long)state->ip, (unsigned long long)state->orig_ip);
             fclose(f);
         }
         debug_count++;
@@ -977,21 +1006,21 @@ restart:
                    READIMM8; MOV(imm, reg_bh,8); break;
 
         case 0xb8: TRACEI("mov imm, oax\t");
-                   READIMM; MOV(imm, reg_a,EFFECTIVE_OZ); break;
+                   READIMM_MOV; MOV(imm, reg_a,EFFECTIVE_OZ); break;
         case 0xb9: TRACEI("mov imm, ocx\t");
-                   READIMM; MOV(imm, reg_c,EFFECTIVE_OZ); break;
+                   READIMM_MOV; MOV(imm, reg_c,EFFECTIVE_OZ); break;
         case 0xba: TRACEI("mov imm, odx\t");
-                   READIMM; MOV(imm, reg_d,EFFECTIVE_OZ); break;
+                   READIMM_MOV; MOV(imm, reg_d,EFFECTIVE_OZ); break;
         case 0xbb: TRACEI("mov imm, obx\t");
-                   READIMM; MOV(imm, reg_b,EFFECTIVE_OZ); break;
+                   READIMM_MOV; MOV(imm, reg_b,EFFECTIVE_OZ); break;
         case 0xbc: TRACEI("mov imm, osp\t");
-                   READIMM; MOV(imm, reg_sp,EFFECTIVE_OZ); break;
+                   READIMM_MOV; MOV(imm, reg_sp,EFFECTIVE_OZ); break;
         case 0xbd: TRACEI("mov imm, obp\t");
-                   READIMM; MOV(imm, reg_bp,EFFECTIVE_OZ); break;
+                   READIMM_MOV; MOV(imm, reg_bp,EFFECTIVE_OZ); break;
         case 0xbe: TRACEI("mov imm, osi\t");
-                   READIMM; MOV(imm, reg_si,EFFECTIVE_OZ); break;
+                   READIMM_MOV; MOV(imm, reg_si,EFFECTIVE_OZ); break;
         case 0xbf: TRACEI("mov imm, odi\t");
-                   READIMM; MOV(imm, reg_di,EFFECTIVE_OZ); break;
+                   READIMM_MOV; MOV(imm, reg_di,EFFECTIVE_OZ); break;
 
 #define GRP2(count, val,z) \
     switch (modrm.opcode) { \

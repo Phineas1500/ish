@@ -117,9 +117,22 @@ static struct fiber_block *fiber_block_compile(addr_t ip, struct tlb *tlb) {
     compile_count++;
     struct gen_state state;
     TRACE("%d %08x --- compiling:\n", current_pid(), ip);
+#ifdef ISH_64BIT
+    if (compile_count <= 3) {
+        fprintf(stderr, "DEBUG: Starting compilation of block %d at RIP=0x%llx\n", 
+                compile_count, (unsigned long long)ip);
+    }
+#endif
 gen_start(ip, &state);
     while (true) {
-        if (!gen_step(&state, tlb)) {
+        int step_result = gen_step(&state, tlb);
+#ifdef ISH_64BIT
+        if (compile_count <= 3) {
+            fprintf(stderr, "DEBUG: Block %d, step at RIP=0x%llx returned %d\n", 
+                    compile_count, (unsigned long long)state.ip, step_result);
+        }
+#endif
+        if (!step_result) {
             // If gen_step returns false, we need to generate an exit
             gen_exit(&state);
             break;
@@ -201,10 +214,8 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 #ifdef ISH_64BIT
         addr_t ip = frame->cpu.rip;
         block_count++;
-        // REDUCED DEBUG: Only show first few blocks
-        if (block_count <= 10) {
-            fprintf(stderr, "64-bit: Block %d, RIP=0x%llx\n", block_count, ip);
-        }
+        // DEBUG: Show all blocks to understand execution flow
+        fprintf(stderr, "64-bit: Block %d, RIP=0x%llx\n", block_count, ip);
 #else
         addr_t ip = frame->cpu.eip;
 #endif
@@ -221,6 +232,14 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
                             block_count, (unsigned long long)block->addr, 
                             (unsigned long long)block->end_addr, 
                             (size_t)(block->end_addr - block->addr));
+                    
+                    // Show the first few gadgets in the compiled block
+                    fprintf(stderr, "DEBUG: Block %d gadgets: 0x%lx, 0x%lx, 0x%lx (used=%zu)\n", 
+                            block_count, 
+                            block->code[0], 
+                            block->code[1],
+                            (size_t)block->used > 2 ? block->code[2] : 0,
+                            (size_t)block->used);
                 }
 #endif
                 fiber_insert(asbestos, block);
@@ -231,10 +250,8 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
             unlock(&asbestos->lock);
         }
 #ifdef ISH_64BIT
-        if (block_count <= 10) {
-            fprintf(stderr, "64-bit: Block %d, about to execute block at 0x%llx (debug point 2)\n", 
-                    block_count, (unsigned long long)block->addr);
-        }
+        fprintf(stderr, "64-bit: Block %d, about to execute block at 0x%llx (debug point 2)\n", 
+                block_count, (unsigned long long)block->addr);
 #endif
         struct fiber_block *last_block = frame->last_block;
         if (last_block != NULL &&
@@ -283,6 +300,14 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
         if (block_count <= 10) {
             fprintf(stderr, "64-bit: Block %d, after fiber_enter, interrupt=%d, new RIP=0x%llx (debug point 3)\n", 
                     block_count, interrupt, (unsigned long long)frame->cpu.rip);
+            
+            // Additional debugging for crash detection
+            if (interrupt != INT_NONE) {
+                fprintf(stderr, "64-bit: CRASH DETECTED! Block %d failed with interrupt=%d at RIP=0x%llx\n", 
+                        block_count, interrupt, (unsigned long long)frame->cpu.rip);
+                fprintf(stderr, "64-bit: Last successful block was at 0x%llx\n", 
+                        (unsigned long long)ip);
+            }
         }
 #endif
         
