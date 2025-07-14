@@ -122,10 +122,7 @@ restart:
         if (rex_b) TRACE(" B");
         TRACE(" ");
         
-        if (state->ip >= 0x7ffe0003656c && state->ip <= 0x7ffe00036570) {
-            fprintf(stderr, "DEBUG: REX prefix 0x%02x parsed at IP=0x%llx\n", insn, (unsigned long long)(state->ip - 1));
-            fprintf(stderr, "DEBUG: REX bits - W:%d R:%d X:%d B:%d\n", rex_w, rex_r, rex_x, rex_b);
-        }
+        // DEBUG: Removed REX debugging for clean output
         
         // Read actual instruction after REX prefix
         READINSN;

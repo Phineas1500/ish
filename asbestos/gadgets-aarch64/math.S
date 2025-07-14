@@ -394,7 +394,6 @@
             gret
     .endr
 
-
 .endm
 
 #ifdef ISH_64BIT
@@ -521,7 +520,34 @@
     ldr w9, [_cpu, #CPU_r12]
     sub w9, w9, w8
     gret 1
+
 #endif
+
+
+# Manual R8 AND gadgets (defined before array generation to ensure inclusion)
+.gadget and8_reg_r8
+    ldrb w8, [_cpu, CPU_r8]
+    do_op and, 8, w8
+    strb _tmp, [_cpu, CPU_r8]
+    gret
+
+.gadget and16_reg_r8
+    ldrh w8, [_cpu, CPU_r8]
+    do_op and, 16, w8
+    strh _tmp, [_cpu, CPU_r8]
+    gret
+
+.gadget and32_reg_r8
+    ldr w8, [_cpu, CPU_r8]
+    do_op and, 32, w8
+    str _tmp, [_cpu, CPU_r8]
+    gret
+
+.gadget and64_reg_r8
+    ldr x8, [_cpu, CPU_r8]
+    do_op and, 64, x8
+    str _xtmp, [_cpu, CPU_r8]
+    gret
 
 .irp op, load,store,xchg,add,sub,adc,sbb,and,or,xor
     .irp size, SIZE_LIST
@@ -649,6 +675,137 @@
             str _tmp, [_cpu, #CPU_gs]
         .endif
         gret
+.endr
+
+/* Essential CMP and TEST gadgets for R8-R10 registers - BEFORE gadget array generation */
+#ifdef ISH_64BIT
+.gadget cmp8_reg_r8
+    ldrb _tmp, [_cpu, CPU_r8]
+    do_op cmp, 8, _tmp
+    gret
+
+.gadget test8_reg_r8
+    ldrb _tmp, [_cpu, CPU_r8]
+    do_op test, 8, _tmp
+    gret
+
+.gadget cmp16_reg_r8
+    ldrh _tmp, [_cpu, CPU_r8]
+    do_op cmp, 16, _tmp
+    gret
+
+.gadget test16_reg_r8
+    ldrh _tmp, [_cpu, CPU_r8]
+    do_op test, 16, _tmp
+    gret
+
+.gadget cmp32_reg_r8
+    ldr _tmp, [_cpu, CPU_r8]
+    do_op cmp, 32, _tmp
+    gret
+
+.gadget test32_reg_r8
+    ldr _tmp, [_cpu, CPU_r8]
+    do_op test, 32, _tmp
+    gret
+
+.gadget cmp64_reg_r8
+    ldr _xtmp, [_cpu, CPU_r8]
+    do_op cmp, 64, _xtmp
+    gret
+
+.gadget test64_reg_r8
+    ldr _xtmp, [_cpu, CPU_r8]
+    do_op test, 64, _xtmp
+    gret
+
+.gadget cmp8_reg_r9
+    ldrb _tmp, [_cpu, CPU_r9]
+    do_op cmp, 8, _tmp
+    gret
+
+.gadget test8_reg_r9
+    ldrb _tmp, [_cpu, CPU_r9]
+    do_op test, 8, _tmp
+    gret
+
+.gadget cmp16_reg_r9
+    ldrh _tmp, [_cpu, CPU_r9]
+    do_op cmp, 16, _tmp
+    gret
+
+.gadget test16_reg_r9
+    ldrh _tmp, [_cpu, CPU_r9]
+    do_op test, 16, _tmp
+    gret
+
+.gadget cmp32_reg_r9
+    ldr _tmp, [_cpu, CPU_r9]
+    do_op cmp, 32, _tmp
+    gret
+
+.gadget test32_reg_r9
+    ldr _tmp, [_cpu, CPU_r9]
+    do_op test, 32, _tmp
+    gret
+
+.gadget cmp64_reg_r9
+    ldr _xtmp, [_cpu, CPU_r9]
+    do_op cmp, 64, _xtmp
+    gret
+
+.gadget test64_reg_r9
+    ldr _xtmp, [_cpu, CPU_r9]
+    do_op test, 64, _xtmp
+    gret
+
+.gadget cmp8_reg_r10
+    ldrb _tmp, [_cpu, CPU_r10]
+    do_op cmp, 8, _tmp
+    gret
+
+.gadget test8_reg_r10
+    ldrb _tmp, [_cpu, CPU_r10]
+    do_op test, 8, _tmp
+    gret
+
+.gadget cmp16_reg_r10
+    ldrh _tmp, [_cpu, CPU_r10]
+    do_op cmp, 16, _tmp
+    gret
+
+.gadget test16_reg_r10
+    ldrh _tmp, [_cpu, CPU_r10]
+    do_op test, 16, _tmp
+    gret
+
+.gadget cmp32_reg_r10
+    ldr _tmp, [_cpu, CPU_r10]
+    do_op cmp, 32, _tmp
+    gret
+
+.gadget test32_reg_r10
+    ldr _tmp, [_cpu, CPU_r10]
+    do_op test, 32, _tmp
+    gret
+
+.gadget cmp64_reg_r10
+    ldr _xtmp, [_cpu, CPU_r10]
+    do_op cmp, 64, _xtmp
+    gret
+
+.gadget test64_reg_r10
+    ldr _xtmp, [_cpu, CPU_r10]
+    do_op test, 64, _xtmp
+    gret
+#endif
+
+# Generate CMP and TEST gadget arrays (these operations need their own arrays)
+.irp op, cmp,test
+    .irp size, SIZE_LIST
+        ss \size, do_op_size, \op, \op
+    .endr
+    .gadget_array \op
 .endr
 
 # atomics. oof
@@ -1969,11 +2126,7 @@
     str _xtmp, [_cpu, CPU_r8]
     gret
 
-.gadget and64_reg_r8
-    ldr x8, [_cpu, CPU_r8]
-    do_op and, 64, x8
-    str _xtmp, [_cpu, CPU_r8]
-    gret
+# AND R8 gadgets defined earlier before array generation
 
 .gadget or64_reg_r8
     ldr x8, [_cpu, CPU_r8]
