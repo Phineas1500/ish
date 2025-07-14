@@ -1826,6 +1826,204 @@
 #ifdef ISH_64BIT
 
 /******************************************************************************
+ * R8-R10 gadgets (essential load/store operations for MOV instructions) 
+ ******************************************************************************/
+
+/* Essential load/store gadgets for R8 register */
+.gadget load8_reg_r8
+    ldrb _tmp, [_cpu, CPU_r8]
+    gret
+
+.gadget store8_reg_r8
+    strb _tmp, [_cpu, CPU_r8]
+    gret
+
+.gadget load16_reg_r8
+    ldrh _tmp, [_cpu, CPU_r8]
+    gret
+
+.gadget store16_reg_r8
+    strh _tmp, [_cpu, CPU_r8]
+    gret
+
+.gadget load32_reg_r8
+    ldr _tmp, [_cpu, CPU_r8]
+    gret
+
+.gadget store32_reg_r8
+    str _tmp, [_cpu, CPU_r8]
+    gret
+
+.gadget load64_reg_r8
+    ldr _xtmp, [_cpu, CPU_r8]
+    gret
+
+.gadget store64_reg_r8
+    str _xtmp, [_cpu, CPU_r8]
+    gret
+
+/* Essential load/store gadgets for R9 register */
+.gadget load8_reg_r9
+    ldrb _tmp, [_cpu, CPU_r9]
+    gret
+
+.gadget store8_reg_r9
+    strb _tmp, [_cpu, CPU_r9]
+    gret
+
+.gadget load16_reg_r9
+    ldrh _tmp, [_cpu, CPU_r9]
+    gret
+
+.gadget store16_reg_r9
+    strh _tmp, [_cpu, CPU_r9]
+    gret
+
+.gadget load32_reg_r9
+    ldr _tmp, [_cpu, CPU_r9]
+    gret
+
+.gadget store32_reg_r9
+    str _tmp, [_cpu, CPU_r9]
+    gret
+
+.gadget load64_reg_r9
+    ldr _xtmp, [_cpu, CPU_r9]
+    gret
+
+.gadget store64_reg_r9
+    str _xtmp, [_cpu, CPU_r9]
+    gret
+
+/* Essential load/store gadgets for R10 register */
+.gadget load8_reg_r10
+    ldrb _tmp, [_cpu, CPU_r10]
+    gret
+
+.gadget store8_reg_r10
+    strb _tmp, [_cpu, CPU_r10]
+    gret
+
+.gadget load16_reg_r10
+    ldrh _tmp, [_cpu, CPU_r10]
+    gret
+
+.gadget store16_reg_r10
+    strh _tmp, [_cpu, CPU_r10]
+    gret
+
+.gadget load32_reg_r10
+    ldr _tmp, [_cpu, CPU_r10]
+    gret
+
+.gadget store32_reg_r10
+    str _tmp, [_cpu, CPU_r10]
+    gret
+
+.gadget load64_reg_r10
+    ldr _xtmp, [_cpu, CPU_r10]
+    gret
+
+.gadget store64_reg_r10
+    str _xtmp, [_cpu, CPU_r10]
+    gret
+
+/* Additional arithmetic operations for R8-R10 to support complex MOV instructions */
+
+/* Basic arithmetic gadgets for R8 */
+.gadget add64_reg_r8
+    ldr x8, [_cpu, CPU_r8]
+    do_op add, 64, x8
+    str _xtmp, [_cpu, CPU_r8]
+    gret
+
+.gadget sub64_reg_r8
+    ldr x8, [_cpu, CPU_r8]
+    do_op sub, 64, x8
+    str _xtmp, [_cpu, CPU_r8]
+    gret
+
+.gadget and64_reg_r8
+    ldr x8, [_cpu, CPU_r8]
+    do_op and, 64, x8
+    str _xtmp, [_cpu, CPU_r8]
+    gret
+
+.gadget or64_reg_r8
+    ldr x8, [_cpu, CPU_r8]
+    do_op or, 64, x8
+    str _xtmp, [_cpu, CPU_r8]
+    gret
+
+.gadget xor64_reg_r8
+    ldr x8, [_cpu, CPU_r8]
+    do_op xor, 64, x8
+    str _xtmp, [_cpu, CPU_r8]
+    gret
+
+/* Basic arithmetic gadgets for R9 */
+.gadget add64_reg_r9
+    ldr x8, [_cpu, CPU_r9]
+    do_op add, 64, x8
+    str _xtmp, [_cpu, CPU_r9]
+    gret
+
+.gadget sub64_reg_r9
+    ldr x8, [_cpu, CPU_r9]
+    do_op sub, 64, x8
+    str _xtmp, [_cpu, CPU_r9]
+    gret
+
+.gadget and64_reg_r9
+    ldr x8, [_cpu, CPU_r9]
+    do_op and, 64, x8
+    str _xtmp, [_cpu, CPU_r9]
+    gret
+
+.gadget or64_reg_r9
+    ldr x8, [_cpu, CPU_r9]
+    do_op or, 64, x8
+    str _xtmp, [_cpu, CPU_r9]
+    gret
+
+.gadget xor64_reg_r9
+    ldr x8, [_cpu, CPU_r9]
+    do_op xor, 64, x8
+    str _xtmp, [_cpu, CPU_r9]
+    gret
+
+/* Basic arithmetic gadgets for R10 */
+.gadget add64_reg_r10
+    ldr x8, [_cpu, CPU_r10]
+    do_op add, 64, x8
+    str _xtmp, [_cpu, CPU_r10]
+    gret
+
+.gadget sub64_reg_r10
+    ldr x8, [_cpu, CPU_r10]
+    do_op sub, 64, x8
+    str _xtmp, [_cpu, CPU_r10]
+    gret
+
+.gadget and64_reg_r10
+    ldr x8, [_cpu, CPU_r10]
+    do_op and, 64, x8
+    str _xtmp, [_cpu, CPU_r10]
+    gret
+
+.gadget or64_reg_r10
+    ldr x8, [_cpu, CPU_r10]
+    do_op or, 64, x8
+    str _xtmp, [_cpu, CPU_r10]
+    gret
+
+.gadget xor64_reg_r10
+    ldr x8, [_cpu, CPU_r10]
+    do_op xor, 64, x8
+    str _xtmp, [_cpu, CPU_r10]
+    gret
+
+/******************************************************************************
  * R11 gadgets (memory-based) – arithmetic/logic + cmp/test + xchg
  ******************************************************************************/
 
@@ -3711,13 +3909,6 @@
     str _xtmp, [_cpu, #CPU_r15]
     gret
 
-/* CRITICAL FIX: Override NULL gadget array entry for R8 store64 */
-.gadget store64_reg_r8_override
-    str _xtmp, [_cpu, CPU_r8]
-    gret
-
-/* Override the gadget array system to use our R8 store gadget */
-.set NAME(gadget_store64_reg_r8), NAME(store64_reg_r8_override)
 
 #endif /* ISH_64BIT */
 
