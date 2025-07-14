@@ -271,16 +271,14 @@ static inline bool gen_op(struct gen_state *state, gadget_t *gadgets, enum arg a
     GEN(gadgets[arg]);
     if (arg == arg_imm) {
 #ifdef ISH_64BIT
-        // Debug: Log large immediates that might be incorrectly read
+        // Debug: Monitor for any remaining large immediates
         if (*imm > 0x100000000ULL && *imm != (uint64_t)-1) {
             static int large_imm_count = 0;
-            if (large_imm_count < 5) {
-                fprintf(stderr, "DEBUG: Large immediate value: 0x%llx at IP=0x%llx (truncating to prevent crash)\n", 
+            if (large_imm_count < 3) {
+                fprintf(stderr, "DEBUG: Remaining large immediate: 0x%llx at IP=0x%llx\n", 
                         (unsigned long long)*imm, (unsigned long long)state->ip);
                 large_imm_count++;
             }
-            // Temporary workaround: truncate large immediates
-            *imm = (uint32_t)*imm;
         }
 #endif
         GEN(*imm);

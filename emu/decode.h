@@ -42,36 +42,37 @@ __no_instrument DECODER_RET glue(DECODER_NAME, OP_SIZE)(DECODER_ARGS) {
 
 #define READIMM_(name, size) _READIMM(name, size); TRACE("imm %llx ", (long long) name)
 #define READINSN _READIMM(insn, 8); TRACE("%02x ", insn)
-#define READIMM READIMM_(imm, OP_SIZE)
-#define READIMMoz READIMM // there's nothing more permanent than a temporary hack
 #ifdef ISH_64BIT
-// In 64-bit mode, most instructions use 32-bit immediates even with 64-bit operands
-// Only MOV reg, imm64 can use a true 64-bit immediate
-#define READIMMEFFECTIVE_OZ do { \
-    if (EFFECTIVE_OZ == 64) { \
-        /* In x86-64, most instructions use 32-bit immediates sign-extended to 64 bits */ \
+// In x86-64, most instructions use 32-bit immediates sign-extended to 64 bits
+// Only specific MOV instructions can use true 64-bit immediates
+#define READIMM do { \
+    if (OP_SIZE == 64) { \
+        /* x86-64: Read 32-bit immediate and sign-extend to 64 bits */ \
         READIMM_(imm, 32); \
-        imm = (int64_t)(int32_t)imm; /* sign extend to 64 bits */ \
+        imm = (int64_t)(int32_t)imm; \
     } else { \
-        READIMM_(imm, EFFECTIVE_OZ); \
+        READIMM_(imm, OP_SIZE); \
     } \
 } while(0)
+#else
+#define READIMM READIMM_(imm, OP_SIZE)
+#endif
+#define READIMMoz READIMM // there's nothing more permanent than a temporary hack
+// READIMMEFFECTIVE_OZ can now just use the smart READIMM
+#define READIMMEFFECTIVE_OZ READIMM
 
+#ifdef ISH_64BIT
 // Special case for MOV reg, imm - can use true 64-bit immediate with REX.W
 #define READIMM_MOV do { \
     if (EFFECTIVE_OZ == 64 && rex_w) { \
         /* MOV with REX.W can use 64-bit immediate */ \
         READIMM_(imm, 64); \
-    } else if (EFFECTIVE_OZ == 64) { \
-        /* MOV without REX.W uses 32-bit immediate sign-extended */ \
-        READIMM_(imm, 32); \
-        imm = (int64_t)(int32_t)imm; \
     } else { \
-        READIMM_(imm, EFFECTIVE_OZ); \
+        /* Use the smart READIMM for other cases */ \
+        READIMM; \
     } \
 } while(0)
 #else
-#define READIMMEFFECTIVE_OZ READIMM // In 32-bit mode, just use READIMM
 #define READIMM_MOV READIMM
 #endif
 #define READIMM8 READIMM_(imm, 8); imm = (int8_t) (uint8_t) imm
