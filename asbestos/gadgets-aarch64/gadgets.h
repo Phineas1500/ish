@@ -140,7 +140,7 @@ rip .req x19
 _tmp .req w0
 _xtmp .req x0
 _cpu .req x1
-_tlb .req x29
+_tlb .req x2
 _addr .req w3
 _xaddr .req x3
 

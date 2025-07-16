@@ -211,13 +211,6 @@ typedef void (*gadget_t)(void);
 #define h_read(h, z) do { g_addr(); ggg(helper_read##z, state->orig_ip, h##z); } while (0)
 #define h_write(h, z) do { g_addr(); ggg(helper_write##z, state->orig_ip, h##z); } while (0)
 #define UNDEFINED do { \
-    fprintf(stderr, "DEBUG: UNDEFINED instruction at IP=0x%llx (this instruction is not implemented in 64-bit mode)\n", \
-            (unsigned long long)state->orig_ip); \
-    fprintf(stderr, "DEBUG: Current state->ip=0x%llx, state->orig_ip=0x%llx\n", \
-            (unsigned long long)state->ip, (unsigned long long)state->orig_ip); \
-    fprintf(stderr, "DEBUG: Instruction length: %lld bytes\n", \
-            (unsigned long long)(state->ip - state->orig_ip)); \
-    fflush(stderr); \
     gggg(interrupt, INT_UNDEFINED, state->orig_ip, state->orig_ip); \
     return false; \
 } while (0)

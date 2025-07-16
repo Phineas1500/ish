@@ -6,7 +6,11 @@
 #include "xX_main_Xx.h"
 
 int main(int argc, char *const argv[]) {
+#ifdef ISH_64BIT
     fprintf(stderr, "ISH 64-bit: main() reached with argc=%d\n", argc);
+#else
+    fprintf(stderr, "ISH: main() reached with argc=%d\n", argc);
+#endif
     printf("main: ENTRY with argc=%d\n", argc);
     char envp[100] = {0};
     if (getenv("TERM")) {
