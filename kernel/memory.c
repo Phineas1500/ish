@@ -20,6 +20,115 @@
 static void mem_changed(struct mem *mem);
 static struct mmu_ops mem_mmu_ops;
 
+#ifdef ISH_GUEST_64BIT
+// 64-bit: Hash table implementation for sparse page lookups
+
+static inline size_t page_hash(page_t page) {
+    // Simple hash function - XOR folding
+    return ((page >> MEM_HASH_BITS) ^ page) & (MEM_HASH_SIZE - 1);
+}
+
+void mem_init(struct mem *mem) {
+    mem->hash_table = calloc(MEM_HASH_SIZE, sizeof(struct pt_hash_entry *));
+    mem->pages_mapped = 0;
+    mem->mmu.ops = &mem_mmu_ops;
+    mem->mmu.asbestos = asbestos_new(&mem->mmu);
+    mem->mmu.changes = 0;
+    wrlock_init(&mem->lock);
+}
+
+void mem_destroy(struct mem *mem) {
+    write_wrlock(&mem->lock);
+    // Free all hash entries
+    for (size_t i = 0; i < MEM_HASH_SIZE; i++) {
+        struct pt_hash_entry *entry = mem->hash_table[i];
+        while (entry != NULL) {
+            struct pt_hash_entry *next = entry->next;
+            // Handle data cleanup
+            if (entry->entry.data != NULL) {
+                struct data *data = entry->entry.data;
+                if (--data->refcount == 0) {
+                    if (data->data != vdso_data) {
+                        munmap(data->data, data->size);
+                    }
+                    if (data->fd != NULL) {
+                        fd_close(data->fd);
+                    }
+                    free(data);
+                }
+            }
+            free(entry);
+            entry = next;
+        }
+    }
+    asbestos_free(mem->mmu.asbestos);
+    free(mem->hash_table);
+    write_wrunlock(&mem->lock);
+    wrlock_destroy(&mem->lock);
+}
+
+static struct pt_entry *mem_pt_new(struct mem *mem, page_t page) {
+    size_t hash = page_hash(page);
+
+    // Check if entry already exists
+    struct pt_hash_entry *entry = mem->hash_table[hash];
+    while (entry != NULL) {
+        if (entry->page == page)
+            return &entry->entry;
+        entry = entry->next;
+    }
+
+    // Create new entry
+    entry = calloc(1, sizeof(struct pt_hash_entry));
+    entry->page = page;
+    entry->next = mem->hash_table[hash];
+    mem->hash_table[hash] = entry;
+    mem->pages_mapped++;
+    return &entry->entry;
+}
+
+struct pt_entry *mem_pt(struct mem *mem, page_t page) {
+    size_t hash = page_hash(page);
+    struct pt_hash_entry *entry = mem->hash_table[hash];
+    while (entry != NULL) {
+        if (entry->page == page) {
+            if (entry->entry.data == NULL)
+                return NULL;
+            return &entry->entry;
+        }
+        entry = entry->next;
+    }
+    return NULL;
+}
+
+static void mem_pt_del(struct mem *mem, page_t page) {
+    size_t hash = page_hash(page);
+    struct pt_hash_entry **prev = &mem->hash_table[hash];
+    struct pt_hash_entry *entry = *prev;
+
+    while (entry != NULL) {
+        if (entry->page == page) {
+            *prev = entry->next;
+            free(entry);
+            mem->pages_mapped--;
+            return;
+        }
+        prev = &entry->next;
+        entry = entry->next;
+    }
+}
+
+void mem_next_page(struct mem *mem, page_t *page) {
+    // For 64-bit, we need to iterate through the hash table
+    // This is less efficient than 32-bit but necessary for sparse address space
+    (*page)++;
+    // In 64-bit mode, just increment and let caller check if page exists
+    // A more sophisticated implementation would track mapped ranges
+}
+
+#else
+// 32-bit: Traditional 2-level page table implementation
+
 void mem_init(struct mem *mem) {
     mem->pgdir = calloc(MEM_PGDIR_SIZE, sizeof(struct pt_entry *));
     mem->pgdir_used = 0;
@@ -77,12 +186,24 @@ void mem_next_page(struct mem *mem, page_t *page) {
     while (*page < MEM_PAGES && mem->pgdir[PGDIR_TOP(*page)] == NULL)
         *page = (*page - PGDIR_BOTTOM(*page)) + MEM_PGDIR_SIZE;
 }
+#endif
 
 page_t pt_find_hole(struct mem *mem, pages_t size) {
     page_t hole_end = 0; // this can never be used before initializing but gcc doesn't realize
     bool in_hole = false;
-    for (page_t page = 0xf7ffd; page > 0x40000; page--) {
-        // I don't know how this works but it does
+
+#ifdef ISH_GUEST_64BIT
+    // For 64-bit, search in typical mmap region (below stack, above heap)
+    // Linux x86_64 typically uses 0x7f0000000000 - 0x7fffffffffff for mmap
+    // We'll use a smaller range for efficiency
+    page_t search_start = 0x7f0000000ULL;  // ~127 TB
+    page_t search_end = 0x400000ULL;       // 16 GB (above typical heap)
+#else
+    page_t search_start = 0xf7ffd;
+    page_t search_end = 0x40000;
+#endif
+
+    for (page_t page = search_start; page > search_end; page--) {
         if (!in_hole && mem_pt(mem, page) == NULL) {
             in_hole = true;
             hole_end = page + 1;
@@ -321,8 +442,35 @@ void mem_coredump(struct mem *mem, const char *file) {
         perror("open");
         return;
     }
+
+#ifdef ISH_GUEST_64BIT
+    // For 64-bit, iterate through hash table instead of entire address space
+    int pages = 0;
+    for (size_t i = 0; i < MEM_HASH_SIZE; i++) {
+        struct pt_hash_entry *entry = mem->hash_table[i];
+        while (entry != NULL) {
+            if (entry->entry.data != NULL) {
+                pages++;
+                off_t offset = (off_t)entry->page << PAGE_BITS;
+                if (lseek(fd, offset, SEEK_SET) < 0) {
+                    perror("lseek");
+                    close(fd);
+                    return;
+                }
+                if (write(fd, entry->entry.data->data + entry->entry.offset, PAGE_SIZE) < 0) {
+                    perror("write");
+                    close(fd);
+                    return;
+                }
+            }
+            entry = entry->next;
+        }
+    }
+    printk("dumped %d pages\n", pages);
+#else
     if (ftruncate(fd, 0xffffffff) < 0) {
         perror("ftruncate");
+        close(fd);
         return;
     }
 
@@ -334,13 +482,16 @@ void mem_coredump(struct mem *mem, const char *file) {
         pages++;
         if (lseek(fd, page << PAGE_BITS, SEEK_SET) < 0) {
             perror("lseek");
+            close(fd);
             return;
         }
         if (write(fd, entry->data->data, PAGE_SIZE) < 0) {
             perror("write");
+            close(fd);
             return;
         }
     }
     printk("dumped %d pages\n", pages);
+#endif
     close(fd);
 }

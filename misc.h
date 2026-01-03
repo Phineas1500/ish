@@ -109,7 +109,21 @@ typedef int32_t sdword_t;
 typedef uint16_t word_t;
 typedef uint8_t byte_t;
 
-typedef dword_t addr_t;
+// Guest architecture-dependent types
+#ifdef ISH_GUEST_64BIT
+typedef qword_t addr_t;       // 64-bit guest addresses
+typedef qword_t ureg_t;       // unsigned register type
+typedef sqword_t sreg_t;      // signed register type
+#define ADDR_MAX UINT64_MAX
+#define ADDR_FMT "0x%016llx"
+#else
+typedef dword_t addr_t;       // 32-bit guest addresses
+typedef dword_t ureg_t;       // unsigned register type
+typedef sdword_t sreg_t;      // signed register type
+#define ADDR_MAX UINT32_MAX
+#define ADDR_FMT "0x%08x"
+#endif
+
 typedef dword_t uint_t;
 typedef sdword_t int_t;
 

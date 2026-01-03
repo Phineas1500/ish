@@ -27,11 +27,11 @@ struct exec_args {
     const char *args;
 };
 
-static inline dword_t align_stack(dword_t sp);
-static inline ssize_t user_strlen(dword_t p);
+static inline addr_t align_stack(addr_t sp);
+static inline ssize_t user_strlen(addr_t p);
 static inline int user_memset(addr_t start, byte_t val, dword_t len);
-static inline dword_t copy_string(dword_t sp, const char *string);
-static inline dword_t args_copy(dword_t sp, struct exec_args args);
+static inline addr_t copy_string(addr_t sp, const char *string);
+static inline addr_t args_copy(addr_t sp, struct exec_args args);
 static size_t args_size(struct exec_args args);
 
 static int read_header(struct fd *fd, struct elf_header *header) {
@@ -435,18 +435,18 @@ static size_t args_size(struct exec_args args) {
     return args_end - args.args;
 }
 
-static inline dword_t align_stack(addr_t sp) {
+static inline addr_t align_stack(addr_t sp) {
     return sp &~ 0xf;
 }
 
-static inline dword_t copy_string(addr_t sp, const char *string) {
+static inline addr_t copy_string(addr_t sp, const char *string) {
     sp -= strlen(string) + 1;
     if (user_write_string(sp, string))
         return 0;
     return sp;
 }
 
-static inline dword_t args_copy(addr_t sp, struct exec_args args) {
+static inline addr_t args_copy(addr_t sp, struct exec_args args) {
     size_t size = args_size(args);
     sp -= size;
     if (user_write(sp, args.args, size))

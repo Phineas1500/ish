@@ -13,3 +13,9 @@
 #define INT_GPF 13
 #define INT_TIMER 32
 #define INT_SYSCALL 0x80
+
+#ifdef ISH_GUEST_64BIT
+// x86_64 uses the syscall instruction instead of int 0x80
+// This is a synthetic interrupt number used internally
+#define INT_SYSCALL64 0x100
+#endif

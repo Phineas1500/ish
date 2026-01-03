@@ -22,6 +22,24 @@ endforeach
 add_project_arguments('-DLOG_HANDLER_' + get_option('log_handler').to_upper() + '=1', language: 'c')
 add_project_arguments('-DENGINE_' + get_option('engine').to_upper() + '=1', language: 'c')
 
+# Guest architecture (x86 or x86_64)
+if get_option('guest_arch') == 'x86_64'
+    add_project_arguments('-DISH_GUEST_64BIT=1', language: 'c')
+    # Zydis for x86_64 instruction decoding
+    zydis_options = [
+        'default_library=static',
+        'examples=disabled',
+        'tools=disabled',
+        'tests=disabled',
+        'doc=disabled',
+        'man=disabled',
+    ]
+    zydis_proj = subproject('zydis', default_options: zydis_options)
+    zydis_dep = zydis_proj.get_variable('zydis_dep')
+else
+    zydis_dep = []
+endif
+
 if get_option('no_crlf')
     add_project_arguments('-DNO_CRLF', language: 'c')
 endif
@@ -66,7 +84,16 @@ emu_src += [
     offsets,
 ]
 
-libish_emu = library('ish_emu', emu_src, include_directories: includes)
+# Add zydis dependency and decoder for 64-bit builds
+emu_deps = []
+if get_option('guest_arch') == 'x86_64'
+    emu_deps += zydis_dep
+    emu_src += 'emu/decode64.c'
+endif
+
+libish_emu = library('ish_emu', emu_src,
+    include_directories: includes,
+    dependencies: emu_deps)
 
 libfakefs = library('fakefs',
     ['fs/fake-db.c', 'fs/fake-migrate.c', 'fs/fake-rebuild.c'],

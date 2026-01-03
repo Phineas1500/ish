@@ -38,6 +38,33 @@ struct cpu_state {
 
     // general registers
     // assumes little endian (as does literally everything)
+#ifdef ISH_GUEST_64BIT
+    // 64-bit register macros - provide access to rXX, eXX, XX, Xl, Xh
+#define _REG(n) \
+    union { \
+        qword_t r##n; \
+        dword_t e##n; \
+        word_t n; \
+    }
+#define _REGX(n) \
+    union { \
+        qword_t r##n##x; \
+        dword_t e##n##x; \
+        word_t n##x; \
+        struct { \
+            byte_t n##l; \
+            byte_t n##h; \
+        }; \
+    }
+#define _REG64(n) \
+    union { \
+        qword_t r##n; \
+        dword_t r##n##d; \
+        word_t r##n##w; \
+        byte_t r##n##b; \
+    }
+#else
+    // 32-bit register macros - provide access to eXX, XX, Xl, Xh
 #define _REG(n) \
     union { \
         dword_t e##n; \
@@ -52,6 +79,7 @@ struct cpu_state {
             byte_t n##h; \
         }; \
     }
+#endif
 
     union {
         struct {
@@ -64,12 +92,37 @@ struct cpu_state {
             _REG(si);
             _REG(di);
         };
+#ifdef ISH_GUEST_64BIT
+        qword_t regs[8];
+#else
         dword_t regs[8];
+#endif
     };
-#undef REGX
-#undef REG
+#ifdef ISH_GUEST_64BIT
+    // x86_64 additional registers r8-r15
+    _REG64(8);
+    _REG64(9);
+    _REG64(10);
+    _REG64(11);
+    _REG64(12);
+    _REG64(13);
+    _REG64(14);
+    _REG64(15);
+#endif
+#undef _REGX
+#undef _REG
+#ifdef ISH_GUEST_64BIT
+#undef _REG64
+#endif
 
+#ifdef ISH_GUEST_64BIT
+    union {
+        qword_t rip;
+        dword_t eip;  // Low 32 bits accessible as eip
+    };
+#else
     dword_t eip;
+#endif
 
     // flags
     union {
@@ -120,7 +173,11 @@ struct cpu_state {
     };
 
     union mm_reg mm[8];
+#ifdef ISH_GUEST_64BIT
+    union xmm_reg xmm[16];  // x86_64 has 16 XMM registers
+#else
     union xmm_reg xmm[8];
+#endif
 
     // fpu
     float80 fp[8];
@@ -162,6 +219,11 @@ struct cpu_state {
     // TLS bullshit
     word_t gs;
     addr_t tls_ptr;
+#ifdef ISH_GUEST_64BIT
+    // x86_64 uses FS/GS base registers directly for TLS
+    qword_t fs_base;
+    qword_t gs_base;
+#endif
 
     // for the page fault handler
     addr_t segfault_addr;
@@ -175,6 +237,16 @@ struct cpu_state {
 
 #define CPU_OFFSET(field) offsetof(struct cpu_state, field)
 
+#ifdef ISH_GUEST_64BIT
+static_assert(CPU_OFFSET(rax) == CPU_OFFSET(regs[0]), "register order");
+static_assert(CPU_OFFSET(rcx) == CPU_OFFSET(regs[1]), "register order");
+static_assert(CPU_OFFSET(rdx) == CPU_OFFSET(regs[2]), "register order");
+static_assert(CPU_OFFSET(rbx) == CPU_OFFSET(regs[3]), "register order");
+static_assert(CPU_OFFSET(rsp) == CPU_OFFSET(regs[4]), "register order");
+static_assert(CPU_OFFSET(rbp) == CPU_OFFSET(regs[5]), "register order");
+static_assert(CPU_OFFSET(rsi) == CPU_OFFSET(regs[6]), "register order");
+static_assert(CPU_OFFSET(rdi) == CPU_OFFSET(regs[7]), "register order");
+#else
 static_assert(CPU_OFFSET(eax) == CPU_OFFSET(regs[0]), "register order");
 static_assert(CPU_OFFSET(ecx) == CPU_OFFSET(regs[1]), "register order");
 static_assert(CPU_OFFSET(edx) == CPU_OFFSET(regs[2]), "register order");
@@ -183,6 +255,7 @@ static_assert(CPU_OFFSET(esp) == CPU_OFFSET(regs[4]), "register order");
 static_assert(CPU_OFFSET(ebp) == CPU_OFFSET(regs[5]), "register order");
 static_assert(CPU_OFFSET(esi) == CPU_OFFSET(regs[6]), "register order");
 static_assert(CPU_OFFSET(edi) == CPU_OFFSET(regs[7]), "register order");
+#endif
 static_assert(sizeof(struct cpu_state) < 0xffff, "cpu struct is too big for vector gadgets");
 
 // flags
@@ -231,5 +304,45 @@ static inline const char *reg32_name(enum reg32 reg) {
         default: return "?";
     }
 }
+
+#ifdef ISH_GUEST_64BIT
+enum reg64 {
+    reg_rax = 0, reg_rcx, reg_rdx, reg_rbx, reg_rsp, reg_rbp, reg_rsi, reg_rdi,
+    reg_r8, reg_r9, reg_r10, reg_r11, reg_r12, reg_r13, reg_r14, reg_r15,
+    reg64_count,
+    reg64_none = reg64_count,
+};
+
+static inline const char *reg64_name(enum reg64 reg) {
+    switch (reg) {
+        case reg_rax: return "rax";
+        case reg_rcx: return "rcx";
+        case reg_rdx: return "rdx";
+        case reg_rbx: return "rbx";
+        case reg_rsp: return "rsp";
+        case reg_rbp: return "rbp";
+        case reg_rsi: return "rsi";
+        case reg_rdi: return "rdi";
+        case reg_r8:  return "r8";
+        case reg_r9:  return "r9";
+        case reg_r10: return "r10";
+        case reg_r11: return "r11";
+        case reg_r12: return "r12";
+        case reg_r13: return "r13";
+        case reg_r14: return "r14";
+        case reg_r15: return "r15";
+        default: return "?";
+    }
+}
+#endif
+
+// Portable register access macros
+#ifdef ISH_GUEST_64BIT
+#define CPU_IP(cpu) ((cpu)->rip)
+#define CPU_SP(cpu) ((cpu)->rsp)
+#else
+#define CPU_IP(cpu) ((cpu)->eip)
+#define CPU_SP(cpu) ((cpu)->esp)
+#endif
 
 #endif

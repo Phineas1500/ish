@@ -1,5 +1,7 @@
 #include <string.h>
 #include "kernel/calls.h"
+#include "kernel/task.h"
+#include "emu/cpu.h"
 
 #define PRCTL_SET_KEEPCAPS_ 8
 #define PRCTL_SET_NAME_ 15
@@ -24,9 +26,43 @@ int_t sys_prctl(dword_t option, uint_t arg2, uint_t UNUSED(arg3), uint_t UNUSED(
     }
 }
 
+// arch_prctl codes
+#define ARCH_SET_GS 0x1001
+#define ARCH_SET_FS 0x1002
+#define ARCH_GET_FS 0x1003
+#define ARCH_GET_GS 0x1004
+
 int_t sys_arch_prctl(int_t code, addr_t addr) {
+#ifdef ISH_GUEST_64BIT
+    struct cpu_state *cpu = &current->cpu;
+    switch (code) {
+        case ARCH_SET_FS:
+            STRACE("arch_prctl(ARCH_SET_FS, " ADDR_FMT ")", addr);
+            cpu->fs_base = addr;
+            return 0;
+        case ARCH_GET_FS:
+            STRACE("arch_prctl(ARCH_GET_FS, " ADDR_FMT ")", addr);
+            if (user_put(addr, cpu->fs_base))
+                return _EFAULT;
+            return 0;
+        case ARCH_SET_GS:
+            STRACE("arch_prctl(ARCH_SET_GS, " ADDR_FMT ")", addr);
+            cpu->gs_base = addr;
+            return 0;
+        case ARCH_GET_GS:
+            STRACE("arch_prctl(ARCH_GET_GS, " ADDR_FMT ")", addr);
+            if (user_put(addr, cpu->gs_base))
+                return _EFAULT;
+            return 0;
+        default:
+            STRACE("arch_prctl(%#x, " ADDR_FMT ")", code, addr);
+            return _EINVAL;
+    }
+#else
+    // 32-bit x86 doesn't use arch_prctl for TLS (uses set_thread_area instead)
     STRACE("arch_prctl(%#x, %#x)", code, addr);
     return _EINVAL;
+#endif
 }
 
 #define REBOOT_MAGIC1 0xfee1dead

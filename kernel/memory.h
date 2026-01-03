@@ -9,30 +9,13 @@
 #include "util/sync.h"
 #include "misc.h"
 
-struct mem {
-    struct pt_entry **pgdir;
-    int pgdir_used;
-
-    struct mmu mmu;
-
-    wrlock_t lock;
-};
-#define MEM_PGDIR_SIZE (1 << 10)
-
-// Initialize the address space
-void mem_init(struct mem *mem);
-// Uninitialize the address space
-void mem_destroy(struct mem *mem);
-// Return the pagetable entry for the given page
-struct pt_entry *mem_pt(struct mem *mem, page_t page);
-// Increment *page, skipping over unallocated page directories. Intended to be
-// used as the incremenent in a for loop to traverse mappings.
-void mem_next_page(struct mem *mem, page_t *page);
-
 #define BYTES_ROUND_DOWN(bytes) (PAGE(bytes) << PAGE_BITS)
 #define BYTES_ROUND_UP(bytes) (PAGE_ROUND_UP(bytes) << PAGE_BITS)
 
 #define LEAK_DEBUG 0
+
+// Forward declaration for struct fd
+struct fd;
 
 struct data {
     void *data; // immutable
@@ -48,12 +31,57 @@ struct data {
     addr_t dest;
 #endif
 };
+
 struct pt_entry {
     struct data *data;
     size_t offset;
     unsigned flags;
     struct list blocks[2];
 };
+
+#ifdef ISH_GUEST_64BIT
+// 64-bit: Use a hash table for sparse page lookups
+// Hash table size should be power of 2, sized for typical program usage
+#define MEM_HASH_BITS 16
+#define MEM_HASH_SIZE (1 << MEM_HASH_BITS)
+
+struct pt_hash_entry {
+    page_t page;
+    struct pt_entry entry;
+    struct pt_hash_entry *next;  // Chaining for collisions
+};
+
+struct mem {
+    struct pt_hash_entry **hash_table;  // Hash table of page entries
+    int pages_mapped;  // Count of mapped pages
+
+    struct mmu mmu;
+    wrlock_t lock;
+};
+
+#else
+// 32-bit: Use traditional 2-level page table
+#define MEM_PGDIR_SIZE (1 << 10)
+
+struct mem {
+    struct pt_entry **pgdir;
+    int pgdir_used;
+
+    struct mmu mmu;
+
+    wrlock_t lock;
+};
+#endif
+
+// Initialize the address space
+void mem_init(struct mem *mem);
+// Uninitialize the address space
+void mem_destroy(struct mem *mem);
+// Return the pagetable entry for the given page
+struct pt_entry *mem_pt(struct mem *mem, page_t page);
+// Increment *page, skipping over unallocated page directories. Intended to be
+// used as the incremenent in a for loop to traverse mappings.
+void mem_next_page(struct mem *mem, page_t *page);
 // page flags
 // P_READ and P_EXEC are ignored for now
 #define P_READ (1 << 0)

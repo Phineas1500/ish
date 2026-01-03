@@ -9,3 +9,6 @@
 	url = https://github.com/ish-app/linux
 	update = none
 	shallow = true
+[submodule "deps/zydis"]
+	path = deps/zydis
+	url = https://github.com/zyantific/zydis
