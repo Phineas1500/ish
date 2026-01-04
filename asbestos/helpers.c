@@ -41,6 +41,7 @@ void helper_debug_load(uint64_t value, uint64_t addr) {
     }
 }
 
+#ifdef ISH_GUEST_64BIT
 void helper_debug_add_r9(uint64_t xtmp, uint64_t x8, struct cpu_state *cpu) {
     static int count = 0;
     if (count < 10) {
@@ -50,6 +51,7 @@ void helper_debug_add_r9(uint64_t xtmp, uint64_t x8, struct cpu_state *cpu) {
                 (unsigned long long)cpu->r9);
     }
 }
+#endif
 
 // Debug: trace actual ARM64 x23 register (rdx alias)
 void helper_debug_rdx(uint64_t rdx_value, uint64_t xtmp_value) {
