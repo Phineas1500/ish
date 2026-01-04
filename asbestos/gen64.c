@@ -124,6 +124,12 @@ extern void gadget_load8_mem(void);
 extern void gadget_store16_mem(void);
 extern void gadget_store8_mem(void);
 
+// DIV/IDIV gadgets
+extern void gadget_div32(void);
+extern void gadget_div64(void);
+extern void gadget_idiv32(void);
+extern void gadget_idiv64(void);
+
 // Shift gadgets
 extern void gadget_shr64_one(void);
 extern void gadget_shr64_cl(void);
@@ -1609,6 +1615,57 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     GEN(load64_gadgets[10]); // load64_addr - load _addr into _xtmp
                     gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
                     if (store) GEN(store);
+                } else if (inst.operands[1].type == arg64_mem &&
+                           inst.operands[1].mem.base >= arg64_r8 &&
+                           inst.operands[1].mem.base <= arg64_r15) {
+                    // LEA reg, [r8-r15 + index*scale + disp] or [r8-r15 + disp]
+                    // Need to load base (r8-r15) first, then add scaled index and displacement
+                    gadget_t load_base = get_load64_reg_gadget(inst.operands[1].mem.base);
+                    if (!load_base) {
+                        g(interrupt);
+                        GEN(INT_UNDEFINED);
+                        GEN(state->orig_ip);
+                        GEN(state->orig_ip);
+                        return 0;
+                    }
+                    GEN(load_base); // Load r8-r15 into _xtmp
+
+                    // Add displacement
+                    if (inst.operands[1].mem.disp != 0) {
+                        GEN(gadget_add64_imm);
+                        GEN(inst.operands[1].mem.disp);
+                    }
+
+                    // If there's a scaled index, add it
+                    if (inst.operands[1].mem.index != arg64_invalid &&
+                        inst.operands[1].mem.index >= arg64_rax &&
+                        inst.operands[1].mem.index <= arg64_rdi) {
+                        int scale_idx = get_scale_idx(inst.operands[1].mem.scale);
+                        if (scale_idx >= 0) {
+                            // Save _xtmp (base+disp) to x8
+                            GEN(gadget_save_xtmp_to_x8);
+                            // Load index register
+                            gadget_t load_idx = get_load64_reg_gadget(inst.operands[1].mem.index);
+                            if (load_idx) GEN(load_idx);
+                            // Scale it
+                            if (inst.operands[1].mem.scale == 2) {
+                                GEN(gadget_shl64_imm);
+                                GEN(1);
+                            } else if (inst.operands[1].mem.scale == 4) {
+                                GEN(gadget_shl64_imm);
+                                GEN(2);
+                            } else if (inst.operands[1].mem.scale == 8) {
+                                GEN(gadget_shl64_imm);
+                                GEN(3);
+                            }
+                            // Add scaled index to base+disp (x8)
+                            GEN(gadget_add64_x8);
+                        }
+                    }
+
+                    // Store result
+                    gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
+                    if (store) GEN(store);
                 } else {
                     // More complex LEA forms not yet supported
                     g(interrupt);
@@ -2081,6 +2138,93 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                 GEN(gadget_neg64);
                 GEN(store64_gadgets[9]); // store64_mem
                 GEN(state->orig_ip);
+            } else {
+                g(interrupt);
+                GEN(INT_UNDEFINED);
+                GEN(state->orig_ip);
+                GEN(state->orig_ip);
+                return 0;
+            }
+            break;
+
+        case ZYDIS_MNEMONIC_DIV:
+            // Unsigned divide: EDX:EAX / src -> EAX (quotient), EDX (remainder)
+            // For 64-bit: RDX:RAX / src -> RAX (quotient), RDX (remainder)
+            if (inst.operand_count >= 1) {
+                // Load divisor into _xtmp
+                if (is_gpr(inst.operands[0].type)) {
+                    gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
+                    if (load) GEN(load);
+                } else if (is_mem(inst.operands[0].type)) {
+                    if (!gen_addr(state, &inst.operands[0])) {
+                        g(interrupt);
+                        GEN(INT_UNDEFINED);
+                        GEN(state->orig_ip);
+                        GEN(state->orig_ip);
+                        return 0;
+                    }
+                    if (inst.operands[0].size == size64_32) {
+                        GEN(load32_gadgets[9]); // load32_mem
+                    } else {
+                        GEN(load64_gadgets[9]); // load64_mem
+                    }
+                    GEN(state->orig_ip);
+                } else {
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
+                }
+                // Perform division (RAX/RDX are implicitly used)
+                if (inst.operands[0].size == size64_32) {
+                    GEN(gadget_div32);
+                } else {
+                    GEN(gadget_div64);
+                }
+            } else {
+                g(interrupt);
+                GEN(INT_UNDEFINED);
+                GEN(state->orig_ip);
+                GEN(state->orig_ip);
+                return 0;
+            }
+            break;
+
+        case ZYDIS_MNEMONIC_IDIV:
+            // Signed divide: EDX:EAX / src -> EAX (quotient), EDX (remainder)
+            if (inst.operand_count >= 1) {
+                // Load divisor into _xtmp
+                if (is_gpr(inst.operands[0].type)) {
+                    gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
+                    if (load) GEN(load);
+                } else if (is_mem(inst.operands[0].type)) {
+                    if (!gen_addr(state, &inst.operands[0])) {
+                        g(interrupt);
+                        GEN(INT_UNDEFINED);
+                        GEN(state->orig_ip);
+                        GEN(state->orig_ip);
+                        return 0;
+                    }
+                    if (inst.operands[0].size == size64_32) {
+                        GEN(load32_gadgets[9]); // load32_mem
+                    } else {
+                        GEN(load64_gadgets[9]); // load64_mem
+                    }
+                    GEN(state->orig_ip);
+                } else {
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
+                }
+                // Perform signed division
+                if (inst.operands[0].size == size64_32) {
+                    GEN(gadget_idiv32);
+                } else {
+                    GEN(gadget_idiv64);
+                }
             } else {
                 g(interrupt);
                 GEN(INT_UNDEFINED);

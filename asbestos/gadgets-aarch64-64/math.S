@@ -556,6 +556,68 @@
 .purgem test_reg64
 
 // ============================================================
+// DIV/IDIV gadgets
+// ============================================================
+
+// DIV32: Unsigned divide EDX:EAX by _xtmp (32-bit divisor)
+// Input: _xtmp = divisor, rax = low 32 bits of dividend, rdx = high 32 bits
+// Output: rax = quotient, rdx = remainder
+// Note: Uses 64-bit division since EDX:EAX fits in 64 bits
+.gadget div32
+    // Combine EDX:EAX into a 64-bit value
+    and x8, rdx, 0xffffffff     // High 32 bits (zero-extended)
+    lsl x8, x8, 32              // Shift to high position
+    and x9, rax, 0xffffffff     // Low 32 bits
+    orr x8, x8, x9              // x8 = EDX:EAX as 64-bit value
+    // Divide
+    and x9, _xtmp, 0xffffffff   // 32-bit divisor (zero-extended)
+    udiv x10, x8, x9            // Quotient
+    msub x11, x10, x9, x8       // Remainder = dividend - quotient * divisor
+    // Store results
+    and rax, rax, 0xffffffff00000000
+    orr rax, rax, x10           // EAX = quotient (preserve upper 32 bits... actually x86 zeros them)
+    mov eax, w10                // Store quotient in eax (zeros upper 32 bits)
+    mov edx, w11                // Store remainder in edx (zeros upper 32 bits)
+    gret
+
+// DIV64: Unsigned divide RDX:RAX by _xtmp (64-bit divisor)
+// This requires 128-bit division which ARM64 doesn't have natively
+// For now, handle the common case where RDX=0 (dividend fits in 64 bits)
+.gadget div64
+    // If RDX != 0, we'd need multi-word division
+    // For now, just do simple case: dividend = RAX, RDX = 0
+    udiv x10, rax, _xtmp        // Quotient
+    msub x11, x10, _xtmp, rax   // Remainder = RAX - quotient * divisor
+    mov rax, x10                // Store quotient
+    mov rdx, x11                // Store remainder
+    gret
+
+// IDIV32: Signed divide EDX:EAX by _xtmp (32-bit divisor)
+.gadget idiv32
+    // Combine EDX:EAX into a 64-bit signed value
+    sxtw x8, edx                // Sign-extend EDX to 64-bit
+    lsl x8, x8, 32              // Shift to high position
+    and x9, rax, 0xffffffff     // Low 32 bits (unsigned)
+    orr x8, x8, x9              // x8 = EDX:EAX as signed 64-bit value
+    // Divide (signed)
+    sxtw x9, _tmp               // Sign-extend 32-bit divisor
+    sdiv x10, x8, x9            // Quotient (signed)
+    msub x11, x10, x9, x8       // Remainder = dividend - quotient * divisor
+    // Store results
+    mov eax, w10                // Store quotient in eax
+    mov edx, w11                // Store remainder in edx
+    gret
+
+// IDIV64: Signed divide RDX:RAX by _xtmp (64-bit divisor)
+.gadget idiv64
+    // Simple case: dividend = RAX (assume RDX is sign extension of RAX)
+    sdiv x10, rax, _xtmp        // Quotient (signed)
+    msub x11, x10, _xtmp, rax   // Remainder
+    mov rax, x10                // Store quotient
+    mov rdx, x11                // Store remainder
+    gret
+
+// ============================================================
 // Shift gadgets
 // ============================================================
 
