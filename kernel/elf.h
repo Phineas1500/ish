@@ -12,7 +12,20 @@
 #define ELF_EXECUTABLE 2
 #define ELF_DYNAMIC 3
 #define ELF_X86 3
+#define ELF_X86_64 62
 
+// ELF identification header (common to 32 and 64-bit)
+struct elf_ident {
+    uint32_t magic;
+    byte_t bitness;
+    byte_t endian;
+    byte_t elfversion1;
+    byte_t abi;
+    byte_t abi_version;
+    byte_t padding[7];
+};
+
+// 32-bit ELF header
 struct elf_header {
     uint32_t magic;
     byte_t bitness;
@@ -46,6 +59,7 @@ struct elf_header {
 #define PT_TLS 7
 #define PT_NUM 8
 
+// 32-bit program header
 struct prg_header {
     uint32_t type;
     dword_t offset;
@@ -56,6 +70,50 @@ struct prg_header {
     uint32_t flags;
     dword_t alignment; // must be power of 2
 };
+
+#ifdef ISH_GUEST_64BIT
+// 64-bit ELF header
+struct elf_header64 {
+    uint32_t magic;
+    byte_t bitness;
+    byte_t endian;
+    byte_t elfversion1;
+    byte_t abi;
+    byte_t abi_version;
+    byte_t padding[7];
+    uint16_t type;
+    uint16_t machine;
+    uint32_t elfversion2;
+    uint64_t entry_point;
+    uint64_t prghead_off;
+    uint64_t secthead_off;
+    uint32_t flags;
+    uint16_t header_size;
+    uint16_t phent_size;
+    uint16_t phent_count;
+    uint16_t shent_size;
+    uint16_t shent_count;
+    uint16_t sectname_index;
+};
+
+// 64-bit program header (note: different order than 32-bit!)
+struct prg_header64 {
+    uint32_t type;
+    uint32_t flags;      // flags moved here in 64-bit
+    uint64_t offset;
+    uint64_t vaddr;
+    uint64_t paddr;
+    uint64_t filesize;
+    uint64_t memsize;
+    uint64_t alignment;
+};
+
+// 64-bit auxiliary vector entry
+struct aux_ent64 {
+    uint64_t type;
+    uint64_t value;
+};
+#endif
 
 #define PH_R (1 << 2)
 #define PH_W (1 << 1)

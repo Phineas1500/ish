@@ -69,10 +69,16 @@ emu_src = [
     'emu/float80.c',
 
 ]
-gadgets = 'asbestos/gadgets-' + host_machine.cpu_family()
+# Select gadget directory based on host and guest architecture
+# For 64-bit guest, use gadgets-<host>-64 directory
+if get_option('guest_arch') == 'x86_64'
+    gadgets = 'asbestos/gadgets-' + host_machine.cpu_family() + '-64'
+else
+    gadgets = 'asbestos/gadgets-' + host_machine.cpu_family()
+endif
+
 emu_src += [
     'asbestos/asbestos.c',
-    'asbestos/gen.c',
     'asbestos/helpers.c',
     gadgets+'/entry.S',
     gadgets+'/memory.S',
@@ -83,6 +89,13 @@ emu_src += [
     gadgets+'/misc.S',
     offsets,
 ]
+
+# Use gen64.c for 64-bit guest, gen.c for 32-bit guest
+if get_option('guest_arch') == 'x86_64'
+    emu_src += 'asbestos/gen64.c'
+else
+    emu_src += 'asbestos/gen.c'
+endif
 
 # Add zydis dependency and decoder for 64-bit builds
 emu_deps = []

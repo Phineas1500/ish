@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "emu/cpu.h"
 #include "emu/tlb.h"
 
@@ -66,5 +67,7 @@ __no_instrument void *tlb_handle_miss(struct tlb *tlb, addr_t addr, int type) {
         // 1 is not a valid page so this won't look like a hit
         tlb_ent->page_if_writable = TLB_PAGE_EMPTY;
     tlb_ent->data_minus_addr = (uintptr_t) ptr - TLB_PAGE(addr);
-    return (void *) (tlb_ent->data_minus_addr + addr);
+
+    void *result = (void *) (tlb_ent->data_minus_addr + addr);
+    return result;
 }

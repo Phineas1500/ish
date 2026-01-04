@@ -6,8 +6,103 @@
 #include "emu/cpu.h"
 #include "emu/interrupt.h"
 #include "util/list.h"
+#include <stdio.h>
 
 extern int current_pid(void);
+
+#ifdef ISH_GUEST_64BIT
+// Debug function called when load64_mem loads a suspicious value
+void debug_load64_suspicious(uint64_t value, uint64_t guest_ip, uint64_t host_addr, uint64_t guest_addr) {
+    fprintf(stderr, "SUSPICIOUS LOAD: val=0x%llx from guest=0x%llx (host=%p) at IP=0x%llx\n",
+            (unsigned long long)value, (unsigned long long)guest_addr, (void*)host_addr, (unsigned long long)guest_ip);
+}
+
+// Debug function called when load64_mem loads a suspicious value (extended with guest addr)
+void debug_load64_suspicious_ext(uint64_t value, uint64_t guest_ip, uint64_t guest_addr) {
+    fprintf(stderr, "SUSPICIOUS LOAD: val=0x%llx from guest=0x%llx at IP=0x%llx\n",
+            (unsigned long long)value, (unsigned long long)guest_ip, (unsigned long long)guest_addr);
+}
+
+// Debug function to check if a loaded value is suspicious
+void debug_load64_check(uint64_t value, uint64_t guest_addr, uint64_t guest_ip) {
+    fprintf(stderr, "HOST PTR LOAD: val=%llx from guest=%llx at IP=%llx\n",
+            (unsigned long long)value, (unsigned long long)guest_addr, (unsigned long long)guest_ip);
+}
+
+// Debug: trace writes to Dso.base at guest addr 0x7effffffcd78
+static uint64_t dso_base_addr = 0x7effffffcd78;
+static int write_count = 0;
+void debug_dso_base_write(uint64_t value, uint64_t guest_addr, uint64_t guest_ip) {
+    // Log ALL writes to high addresses for first 200 writes
+    if (write_count < 200 && (guest_addr >> 32) != 0) {
+        write_count++;
+        fprintf(stderr, "STORE[%d]: addr=%llx val=%llx at IP=%llx\n",
+                write_count, (unsigned long long)guest_addr, (unsigned long long)value,
+                (unsigned long long)guest_ip);
+    }
+}
+
+// Debug: trace fiber_ret_chain
+static int chain_count = 0;
+void debug_fiber_ret_chain(uint64_t ip, uint64_t rip) {
+    if (chain_count < 50) {
+        chain_count++;
+        fprintf(stderr, "CHAIN[%d]: ip=%llx rip=%llx\n",
+                chain_count, (unsigned long long)ip, (unsigned long long)rip);
+    }
+}
+
+// Debug: trace reads from Dso.base
+void debug_dso_base_read(uint64_t value, uint64_t guest_addr, uint64_t guest_ip) {
+    if (guest_addr == dso_base_addr || guest_addr == dso_base_addr + 8) {
+        fprintf(stderr, "DSO READ: addr=%llx val=%llx at IP=%llx\n",
+                (unsigned long long)guest_addr, (unsigned long long)value,
+                (unsigned long long)guest_ip);
+    }
+}
+
+// Debug function called when store64_mem stores a suspicious value
+// Now also takes host_addr to verify the store
+void debug_store64_suspicious(uint64_t value, uint64_t guest_ip, uint64_t guest_addr, uint64_t host_addr) {
+    // Read back the value to verify it was stored correctly
+    uint64_t readback = *(volatile uint64_t*)host_addr;
+    fprintf(stderr, "SUSPICIOUS STORE: val=0x%llx to guest=0x%llx (host=%p) at IP=0x%llx [readback=0x%llx]\n",
+            (unsigned long long)value, (unsigned long long)guest_addr, (void*)host_addr,
+            (unsigned long long)guest_ip, (unsigned long long)readback);
+    if (readback != value) {
+        fprintf(stderr, "  *** MISMATCH! Store did not persist! ***\n");
+    }
+}
+
+// Debug function called when RDX gets a suspicious value
+void debug_rdx_suspicious(uint64_t rdx_val, uint64_t rip_val) {
+    fprintf(stderr, "SUSPICIOUS RDX: rdx=0x%llx at rip=0x%llx\n",
+            (unsigned long long)rdx_val, (unsigned long long)rip_val);
+}
+
+// Debug function to print registers from assembly
+// Takes cpu_state pointer as first arg to also print r8-r15
+void debug_print_regs(struct cpu_state *cpu, uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx,
+                      uint64_t rsi, uint64_t rdi, uint64_t rbp, uint64_t rsp) {
+    static int call_count = 0;
+    if (call_count < 0) {  // Disabled - change to > 0 to enable
+        call_count++;
+        fprintf(stderr, "fiber_exit[%d]: rax=%llx rbx=%llx rcx=%llx rdx=%llx\n",
+                call_count,
+                (unsigned long long)rax, (unsigned long long)rbx,
+                (unsigned long long)rcx, (unsigned long long)rdx);
+        fprintf(stderr, "               rsi=%llx rdi=%llx rbp=%llx rsp=%llx\n",
+                (unsigned long long)rsi, (unsigned long long)rdi,
+                (unsigned long long)rbp, (unsigned long long)rsp);
+        fprintf(stderr, "               r8=%llx r9=%llx r10=%llx r11=%llx\n",
+                (unsigned long long)cpu->r8, (unsigned long long)cpu->r9,
+                (unsigned long long)cpu->r10, (unsigned long long)cpu->r11);
+        fprintf(stderr, "               r12=%llx r13=%llx r14=%llx r15=%llx\n",
+                (unsigned long long)cpu->r12, (unsigned long long)cpu->r13,
+                (unsigned long long)cpu->r14, (unsigned long long)cpu->r15);
+    }
+}
+#endif
 
 static void fiber_block_disconnect(struct asbestos *asbestos, struct fiber_block *block);
 static void fiber_block_free(struct asbestos *asbestos, struct fiber_block *block);
@@ -187,7 +282,7 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 
     int interrupt = INT_NONE;
     while (interrupt == INT_NONE) {
-        addr_t ip = frame->cpu.eip;
+        addr_t ip = CPU_IP(&frame->cpu);
         size_t cache_index = fiber_cache_hash(ip);
         struct fiber_block *block = cache[cache_index];
         if (block == NULL || block->addr != ip) {
@@ -244,7 +339,7 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 
 static int cpu_single_step(struct cpu_state *cpu, struct tlb *tlb) {
     struct gen_state state;
-    gen_start(cpu->eip, &state);
+    gen_start(CPU_IP(cpu), &state);
     gen_step(&state, tlb);
     gen_exit(&state);
     gen_end(&state);

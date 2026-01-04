@@ -474,6 +474,7 @@ void dump_stack(int lines);
 
 void handle_interrupt(int interrupt) {
     struct cpu_state *cpu = &current->cpu;
+    fprintf(stderr, "handle_interrupt(%d) at ip=0x%llx\n", interrupt, (unsigned long long)CPU_IP(cpu));
 #ifdef ISH_GUEST_64BIT
     // x86_64: syscall instruction (INT_SYSCALL64) with different ABI
     if (interrupt == INT_SYSCALL64) {
@@ -511,6 +512,27 @@ void handle_interrupt(int interrupt) {
         }
     } else if (interrupt == INT_GPF) {
 #endif
+        fprintf(stderr, "INT_GPF: segfault_addr=0x%llx ip=0x%llx was_write=%d\n",
+                (unsigned long long)cpu->segfault_addr,
+                (unsigned long long)CPU_IP(cpu),
+                cpu->segfault_was_write);
+        // Print instruction bytes at IP
+        read_wrlock(&current->mem->lock);
+        uint8_t *ip_ptr = mem_ptr(current->mem, CPU_IP(cpu), MEM_READ);
+        if (ip_ptr) {
+            fprintf(stderr, "  bytes at IP: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+                    ip_ptr[0], ip_ptr[1], ip_ptr[2], ip_ptr[3],
+                    ip_ptr[4], ip_ptr[5], ip_ptr[6], ip_ptr[7]);
+        }
+        read_wrunlock(&current->mem->lock);
+#ifdef ISH_GUEST_64BIT
+        fprintf(stderr, "  rax=%llx rbx=%llx rcx=%llx rdx=%llx\n",
+                (unsigned long long)cpu->rax, (unsigned long long)cpu->rbx,
+                (unsigned long long)cpu->rcx, (unsigned long long)cpu->rdx);
+        fprintf(stderr, "  rsi=%llx rdi=%llx rbp=%llx rsp=%llx\n",
+                (unsigned long long)cpu->rsi, (unsigned long long)cpu->rdi,
+                (unsigned long long)cpu->rbp, (unsigned long long)cpu->rsp);
+#endif
         // some page faults, such as stack growing or CoW clones, are handled by mem_ptr
         read_wrlock(&current->mem->lock);
         void *ptr = mem_ptr(current->mem, cpu->segfault_addr, cpu->segfault_was_write ? MEM_WRITE : MEM_READ);
@@ -525,6 +547,15 @@ void handle_interrupt(int interrupt) {
             deliver_signal(current, SIGSEGV_, info);
         }
     } else if (interrupt == INT_UNDEFINED) {
+        fprintf(stderr, "UNDEFINED at 0x%llx: ", (unsigned long long)CPU_IP(cpu));
+        read_wrlock(&current->mem->lock);
+        uint8_t *ptr = mem_ptr(current->mem, CPU_IP(cpu), MEM_READ);
+        if (ptr) {
+            for (int i = 0; i < 15; i++)
+                fprintf(stderr, "%02x ", ptr[i]);
+        }
+        read_wrunlock(&current->mem->lock);
+        fprintf(stderr, "\n");
         printk("%d illegal instruction at " ADDR_FMT ": ", current->pid, CPU_IP(cpu));
         for (int i = 0; i < 8; i++) {
             uint8_t b;

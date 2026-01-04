@@ -4,6 +4,38 @@
 #include "emu/tlb.h"
 
 void cpu() {
+#ifdef ISH_GUEST_64BIT
+    // 64-bit registers
+    OFFSET(CPU, cpu_state, rax);
+    OFFSET(CPU, cpu_state, rbx);
+    OFFSET(CPU, cpu_state, rcx);
+    OFFSET(CPU, cpu_state, rdx);
+    OFFSET(CPU, cpu_state, rsi);
+    OFFSET(CPU, cpu_state, rdi);
+    OFFSET(CPU, cpu_state, rbp);
+    OFFSET(CPU, cpu_state, rsp);
+    OFFSET(CPU, cpu_state, r8);
+    OFFSET(CPU, cpu_state, r9);
+    OFFSET(CPU, cpu_state, r10);
+    OFFSET(CPU, cpu_state, r11);
+    OFFSET(CPU, cpu_state, r12);
+    OFFSET(CPU, cpu_state, r13);
+    OFFSET(CPU, cpu_state, r14);
+    OFFSET(CPU, cpu_state, r15);
+    OFFSET(CPU, cpu_state, rip);
+    // 32-bit low parts (via union)
+    OFFSET(CPU, cpu_state, eax);
+    OFFSET(CPU, cpu_state, ebx);
+    OFFSET(CPU, cpu_state, ecx);
+    OFFSET(CPU, cpu_state, edx);
+    OFFSET(CPU, cpu_state, esi);
+    OFFSET(CPU, cpu_state, edi);
+    OFFSET(CPU, cpu_state, ebp);
+    OFFSET(CPU, cpu_state, esp);
+    // TLS base registers
+    OFFSET(CPU, cpu_state, fs_base);
+    OFFSET(CPU, cpu_state, gs_base);
+#else
     OFFSET(CPU, cpu_state, eax);
     OFFSET(CPU, cpu_state, ebx);
     OFFSET(CPU, cpu_state, ecx);
@@ -23,6 +55,7 @@ void cpu() {
     OFFSET(CPU, cpu_state, eip);
     OFFSET(CPU, cpu_state, gs);
     OFFSET(CPU, cpu_state, tls_ptr);
+#endif
 
     OFFSET(CPU, cpu_state, eflags);
     OFFSET(CPU, cpu_state, of);

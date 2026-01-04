@@ -16,6 +16,7 @@
 #include "fs/fd.h"
 #include "kernel/elf.h"
 #include "kernel/vdso.h"
+#include "kernel/memory.h"
 #include "tools/ptraceomatic-config.h"
 
 #define ARGV_MAX 32 * PAGE_SIZE
@@ -33,6 +34,27 @@ static inline int user_memset(addr_t start, byte_t val, dword_t len);
 static inline addr_t copy_string(addr_t sp, const char *string);
 static inline addr_t args_copy(addr_t sp, struct exec_args args);
 static size_t args_size(struct exec_args args);
+
+#ifdef ISH_GUEST_64BIT
+static int read_header64(struct fd *fd, struct elf_header64 *header) {
+    int err;
+    if (fd->ops->lseek(fd, 0, SEEK_SET))
+        return _EIO;
+    if ((err = fd->ops->read(fd, header, sizeof(*header))) != sizeof(*header)) {
+        if (err < 0)
+            return _EIO;
+        return _ENOEXEC;
+    }
+    if (memcmp(&header->magic, ELF_MAGIC, sizeof(header->magic)) != 0
+            || (header->type != ELF_EXECUTABLE && header->type != ELF_DYNAMIC)
+            || header->bitness != ELF_64BIT
+            || header->endian != ELF_LITTLEENDIAN
+            || header->elfversion1 != 1
+            || header->machine != ELF_X86_64)
+        return _ENOEXEC;
+    return 0;
+}
+#endif
 
 static int read_header(struct fd *fd, struct elf_header *header) {
     int err;
@@ -52,6 +74,29 @@ static int read_header(struct fd *fd, struct elf_header *header) {
         return _ENOEXEC;
     return 0;
 }
+
+#ifdef ISH_GUEST_64BIT
+static int read_prg_headers64(struct fd *fd, struct elf_header64 header, struct prg_header64 **ph_out) {
+    ssize_t ph_size = sizeof(struct prg_header64) * header.phent_count;
+    struct prg_header64 *ph = malloc(ph_size);
+    if (ph == NULL)
+        return _ENOMEM;
+
+    if (fd->ops->lseek(fd, header.prghead_off, SEEK_SET) < 0) {
+        free(ph);
+        return _EIO;
+    }
+    if (fd->ops->read(fd, ph, ph_size) != ph_size) {
+        free(ph);
+        if (errno != 0)
+            return _EIO;
+        return _ENOEXEC;
+    }
+
+    *ph_out = ph;
+    return 0;
+}
+#endif
 
 static int read_prg_headers(struct fd *fd, struct elf_header header, struct prg_header **ph_out) {
     ssize_t ph_size = sizeof(struct prg_header) * header.phent_count;
@@ -73,6 +118,447 @@ static int read_prg_headers(struct fd *fd, struct elf_header header, struct prg_
     *ph_out = ph;
     return 0;
 }
+
+#ifdef ISH_GUEST_64BIT
+static int load_entry64(struct prg_header64 ph, addr_t bias, struct fd *fd) {
+    int err;
+
+    addr_t addr = ph.vaddr + bias;
+    addr_t offset = ph.offset;
+    addr_t memsize = ph.memsize;
+    addr_t filesize = ph.filesize;
+
+    fprintf(stderr, "ELF64: load_entry64 vaddr=%llx offset=%llx filesz=%llx memsz=%llx\n",
+            (unsigned long long)ph.vaddr, (unsigned long long)offset,
+            (unsigned long long)filesize, (unsigned long long)memsize);
+
+    // For now, always make segments writable so dynamic linker can apply relocations
+    // TODO: properly handle RELRO - make read-only after relocations are done
+    int flags = P_READ | P_WRITE;
+    // if (ph.flags & PH_W) flags |= P_WRITE;
+
+    if ((err = fd->ops->mmap(fd, current->mem, PAGE(addr),
+                    PAGE_ROUND_UP(filesize + PGOFFSET(addr)),
+                    offset - PGOFFSET(addr), flags, MMAP_PRIVATE)) < 0)
+        return err;
+    mem_pt(current->mem, PAGE(addr))->data->fd = fd_retain(fd);
+    mem_pt(current->mem, PAGE(addr))->data->file_offset = offset - PGOFFSET(addr);
+
+    if (memsize > filesize) {
+        addr_t bss_size = memsize - filesize;
+        addr_t file_end = addr + filesize;
+        addr_t tail_size = PAGE_SIZE - PGOFFSET(file_end);
+        if (tail_size == PAGE_SIZE)
+            tail_size = 0;
+
+        fprintf(stderr, "ELF64: BSS addr=%llx file_end=%llx bss_size=%llx tail_size=%llx\n",
+                (unsigned long long)addr, (unsigned long long)file_end,
+                (unsigned long long)bss_size, (unsigned long long)tail_size);
+
+        if (tail_size != 0) {
+            write_wrunlock(&current->mem->lock);
+            user_memset(file_end, 0, tail_size);
+            write_wrlock(&current->mem->lock);
+        }
+        if (tail_size > bss_size)
+            tail_size = bss_size;
+
+        if (bss_size - tail_size != 0) {
+            fprintf(stderr, "ELF64: pt_map_nothing start_page=%llx pages=%llx\n",
+                    (unsigned long long)PAGE_ROUND_UP(addr + filesize),
+                    (unsigned long long)PAGE_ROUND_UP(bss_size - tail_size));
+            if ((err = pt_map_nothing(current->mem, PAGE_ROUND_UP(addr + filesize),
+                    PAGE_ROUND_UP(bss_size - tail_size), flags)) < 0)
+                return err;
+
+            // Debug: dump some BSS memory to verify it's zero
+            page_t bss_page = PAGE_ROUND_UP(addr + filesize);
+            addr_t bss_addr = bss_page << 12;
+            fprintf(stderr, "ELF64: checking BSS page=%llx addr=%llx\n",
+                    (unsigned long long)bss_page, (unsigned long long)bss_addr);
+            struct pt_entry *bss_entry = mem_pt(current->mem, bss_page);
+            fprintf(stderr, "ELF64: mem_pt returned %p\n", (void *)bss_entry);
+            void *bss_ptr = mem_ptr(current->mem, bss_addr, MEM_READ);
+            if (bss_ptr) {
+                uint64_t *p = (uint64_t *)bss_ptr;
+                fprintf(stderr, "ELF64: BSS at %llx: %llx %llx %llx %llx\n",
+                        (unsigned long long)bss_addr,
+                        (unsigned long long)p[0], (unsigned long long)p[1],
+                        (unsigned long long)p[2], (unsigned long long)p[3]);
+            } else {
+                fprintf(stderr, "ELF64: mem_ptr returned NULL for bss_addr=%llx\n",
+                        (unsigned long long)bss_addr);
+            }
+
+            // Also check page 0x7efffffff where corruption happens
+            page_t check_page = bss_page + 1;
+            addr_t check_addr = check_page << 12;
+            void *check_ptr = mem_ptr(current->mem, check_addr + 0x910, MEM_READ);
+            if (check_ptr) {
+                uint64_t *p = (uint64_t *)check_ptr;
+                fprintf(stderr, "ELF64: Checking addr %llx (page %llx+0x910): %llx\n",
+                        (unsigned long long)(check_addr + 0x910),
+                        (unsigned long long)check_page,
+                        (unsigned long long)p[0]);
+            }
+        }
+    }
+    return 0;
+}
+
+static addr_t find_hole_for_elf64(struct elf_header64 *header, struct prg_header64 *ph) {
+    struct prg_header64 *first = NULL, *last = NULL;
+    for (int i = 0; i < header->phent_count; i++) {
+        if (ph[i].type == PT_LOAD) {
+            if (first == NULL)
+                first = &ph[i];
+            last = &ph[i];
+        }
+    }
+    pages_t size = 0;
+    if (first != NULL) {
+        pages_t a = PAGE_ROUND_UP(last->vaddr + last->memsize);
+        pages_t b = PAGE(first->vaddr);
+        size = a - b;
+    }
+    return pt_find_hole(current->mem, size) << PAGE_BITS;
+}
+
+static int elf_exec64(struct fd *fd, const char *file, struct exec_args argv, struct exec_args envp) {
+    int err = 0;
+
+    // read the headers
+    struct elf_header64 header;
+    if ((err = read_header64(fd, &header)) < 0)
+        return err;
+    struct prg_header64 *ph;
+    if ((err = read_prg_headers64(fd, header, &ph)) < 0)
+        return err;
+
+    // look for an interpreter
+    char *interp_name = NULL;
+    struct fd *interp_fd = NULL;
+    struct elf_header64 interp_header;
+    struct prg_header64 *interp_ph = NULL;
+    for (unsigned i = 0; i < header.phent_count; i++) {
+        if (ph[i].type != PT_INTERP)
+            continue;
+        if (interp_name) {
+            err = _EINVAL;
+            goto out_free_interp;
+        }
+
+        interp_name = malloc(ph[i].filesize);
+        err = _ENOMEM;
+        if (interp_name == NULL)
+            goto out_free_ph;
+
+        err = _EIO;
+        if (fd->ops->lseek(fd, ph[i].offset, SEEK_SET) < 0)
+            goto out_free_interp;
+        if (fd->ops->read(fd, interp_name, ph[i].filesize) != (ssize_t)ph[i].filesize)
+            goto out_free_interp;
+
+        interp_fd = generic_open(interp_name, O_RDONLY, 0);
+        if (IS_ERR(interp_fd)) {
+            err = PTR_ERR(interp_fd);
+            goto out_free_interp;
+        }
+        if ((err = read_header64(interp_fd, &interp_header)) < 0) {
+            if (err == _ENOEXEC) err = _ELIBBAD;
+            goto out_free_interp;
+        }
+        if ((err = read_prg_headers64(interp_fd, interp_header, &interp_ph)) < 0) {
+            if (err == _ENOEXEC) err = _ELIBBAD;
+            goto out_free_interp;
+        }
+    }
+
+    // free the process's memory
+    lock(&current->general_lock);
+    mm_release(current->mm);
+    task_set_mm(current, mm_new());
+    unlock(&current->general_lock);
+    write_wrlock(&current->mem->lock);
+
+    current->mm->exefile = fd_retain(fd);
+
+    addr_t load_addr = 0;
+    bool load_addr_set = false;
+    addr_t bias = 0;
+
+    // map segments
+    for (unsigned i = 0; i < header.phent_count; i++) {
+        if (ph[i].type != PT_LOAD)
+            continue;
+
+        if (!load_addr_set && header.type == ELF_DYNAMIC) {
+            if (interp_name)
+                bias = 0x555555554000; // standard PIE base for x86_64
+            else
+                bias = find_hole_for_elf64(&header, ph);
+        }
+
+        if ((err = load_entry64(ph[i], bias, fd)) < 0)
+            goto beyond_hope;
+
+        if (!load_addr_set) {
+            load_addr = bias + ph[i].vaddr - ph[i].offset;
+            load_addr_set = true;
+        }
+
+        addr_t brk = bias + ph[i].vaddr + ph[i].memsize;
+        if (brk > current->mm->start_brk)
+            current->mm->start_brk = current->mm->brk = BYTES_ROUND_UP(brk);
+    }
+
+    addr_t entry = bias + header.entry_point;
+    addr_t interp_base = 0;
+
+    if (interp_name) {
+        interp_base = find_hole_for_elf64(&interp_header, interp_ph);
+        fprintf(stderr, "ELF64: loading interpreter at base=%llx\n", (unsigned long long)interp_base);
+        for (int i = interp_header.phent_count - 1; i >= 0; i--) {
+            if (interp_ph[i].type != PT_LOAD)
+                continue;
+            fprintf(stderr, "ELF64: interp segment vaddr=%llx memsz=%llx flags=%x\n",
+                    (unsigned long long)interp_ph[i].vaddr,
+                    (unsigned long long)interp_ph[i].memsize,
+                    interp_ph[i].flags);
+            if ((err = load_entry64(interp_ph[i], interp_base, interp_fd)) < 0)
+                goto beyond_hope;
+        }
+        entry = interp_base + interp_header.entry_point;
+    }
+
+    // For 64-bit, we skip vdso for now (it's 32-bit)
+    // TODO: create 64-bit vdso
+    current->mm->vdso = 0;
+
+    // STACK TIME - 64-bit uses higher addresses
+    // Allocate 18 pages of stack: 16 for data + 2 guard pages at top for safety
+    // Some code accesses above RSP temporarily
+    err = _ENOMEM;
+    #define INIT_STACK_PAGES 18
+    page_t stack_page = pt_find_hole(current->mem, INIT_STACK_PAGES);
+    if (stack_page == BAD_PAGE)
+        goto beyond_hope;
+    // Map all pages - the lowest one has P_GROWSDOWN for future growth
+    if ((err = pt_map_nothing(current->mem, stack_page, 1, P_WRITE | P_GROWSDOWN)) < 0)
+        goto beyond_hope;
+    if ((err = pt_map_nothing(current->mem, stack_page + 1, INIT_STACK_PAGES - 1, P_WRITE)) < 0)
+        goto beyond_hope;
+    write_wrunlock(&current->mem->lock);
+
+    // sp points to leave 2 pages above for guard space
+    addr_t sp = ((addr_t)stack_page + INIT_STACK_PAGES - 2) << PAGE_BITS;
+    fprintf(stderr, "ELF64: stack_page=%llx sp=%llx top_page=%llx\n",
+            (unsigned long long)stack_page, (unsigned long long)sp,
+            (unsigned long long)(stack_page + INIT_STACK_PAGES - 1));
+    addr_t initial_sp = sp;
+
+    err = _EFAULT;
+    // copy strings pointed to by argv/envp/auxv
+    addr_t file_addr = sp = copy_string(sp, file);
+    if (sp == 0)
+        goto beyond_hope;
+    addr_t envp_addr = sp = args_copy(sp, envp);
+    if (sp == 0)
+        goto beyond_hope;
+    current->mm->argv_end = sp;
+    addr_t argv_addr = sp = args_copy(sp, argv);
+    if (sp == 0)
+        goto beyond_hope;
+    current->mm->argv_start = sp;
+    sp = align_stack(sp);
+
+    addr_t platform_addr = sp = copy_string(sp, "x86_64");
+    if (sp == 0)
+        goto beyond_hope;
+
+    char random[16] = {};
+    get_random(random, sizeof(random));
+    addr_t random_addr = sp -= sizeof(random);
+    if (user_put(sp, random))
+        goto beyond_hope;
+
+    fprintf(stderr, "ELF64: file_addr=%llx argv_addr=%llx envp_addr=%llx platform=%llx random=%llx\n",
+            (unsigned long long)file_addr, (unsigned long long)argv_addr,
+            (unsigned long long)envp_addr, (unsigned long long)platform_addr,
+            (unsigned long long)random_addr);
+    fprintf(stderr, "ELF64: load_addr=%llx interp_base=%llx bias=%llx entry=%llx\n",
+            (unsigned long long)load_addr, (unsigned long long)interp_base,
+            (unsigned long long)bias, (unsigned long long)(bias + header.entry_point));
+
+    // 64-bit auxiliary vector
+    struct aux_ent64 aux[] = {
+        {AX_HWCAP, 0x00000000},
+        {AX_PAGESZ, PAGE_SIZE},
+        {AX_CLKTCK, 0x64},
+        {AX_PHDR, load_addr + header.prghead_off},
+        {AX_PHENT, sizeof(struct prg_header64)},
+        {AX_PHNUM, header.phent_count},
+        {AX_BASE, interp_base},
+        {AX_FLAGS, 0},
+        {AX_ENTRY, bias + header.entry_point},
+        {AX_UID, 0},
+        {AX_EUID, 0},
+        {AX_GID, 0},
+        {AX_EGID, 0},
+        {AX_SECURE, 0},
+        {AX_RANDOM, random_addr},
+        {AX_HWCAP2, 0},
+        {AX_EXECFN, file_addr},
+        {AX_PLATFORM, platform_addr},
+        {0, 0}
+    };
+
+    // Calculate stack space needed - 64-bit uses 8-byte pointers
+    sp -= ((argv.count + 1) + (envp.count + 1) + 1) * sizeof(uint64_t);
+    sp -= sizeof(aux);
+    sp &= ~0xf;  // 16-byte align
+
+    addr_t p = sp;
+
+    // argc (64-bit)
+    uint64_t argc64 = argv.count;
+    if (user_put(p, argc64))
+        return _EFAULT;
+    p += sizeof(uint64_t);
+
+    // argv pointers (64-bit)
+    size_t argc = argv.count;
+    while (argc-- > 0) {
+        uint64_t ptr = argv_addr;
+        if (user_put(p, ptr))
+            return _EFAULT;
+        argv_addr += user_strlen(argv_addr) + 1;
+        p += sizeof(uint64_t);
+    }
+    // null terminator for argv
+    uint64_t null_ptr = 0;
+    if (user_put(p, null_ptr))
+        return _EFAULT;
+    p += sizeof(uint64_t);
+
+    // envp pointers (64-bit)
+    size_t envc = envp.count;
+    while (envc-- > 0) {
+        uint64_t ptr = envp_addr;
+        if (user_put(p, ptr))
+            return _EFAULT;
+        envp_addr += user_strlen(envp_addr) + 1;
+        p += sizeof(uint64_t);
+    }
+    // null terminator for envp
+    if (user_put(p, null_ptr))
+        return _EFAULT;
+    p += sizeof(uint64_t);
+
+    // auxv
+    current->mm->auxv_start = p;
+    if (user_put(p, aux))
+        goto beyond_hope;
+    p += sizeof(aux);
+    current->mm->auxv_end = p;
+
+    // Debug: dump the auxv entries we just wrote
+    fprintf(stderr, "ELF64: auxv written at %llx:\n", (unsigned long long)current->mm->auxv_start);
+    for (int i = 0; aux[i].type != 0; i++) {
+        fprintf(stderr, "  aux[%d]: type=%llu value=%llx\n", i,
+                (unsigned long long)aux[i].type, (unsigned long long)aux[i].value);
+    }
+
+    current->mm->stack_start = sp;
+    current->cpu.rsp = sp;
+    current->cpu.rip = entry;
+    fprintf(stderr, "ELF64: final sp=%llx entry=%llx\n", (unsigned long long)sp, (unsigned long long)entry);
+
+    // Debug: check several BSS addresses before execution
+    // Address 0xa1f10 is in BSS and gets loaded early in _dlstart
+    // Address 0x9ed78 is the DYNAMIC section (not Dso)
+    addr_t bss_addr1 = interp_base + 0xa1f10;
+    addr_t dynamic_addr = interp_base + 0x9ed78;
+    fprintf(stderr, "ELF64: BSS at 0xa1f10 -> %llx\n", (unsigned long long)bss_addr1);
+    fprintf(stderr, "ELF64: DYNAMIC at 0x9ed78 -> %llx\n", (unsigned long long)dynamic_addr);
+
+    uint64_t val1 = 0, val2 = 0;
+    if (!user_get(bss_addr1, val1)) {
+        fprintf(stderr, "ELF64: [0x%llx] = %llx (should be 0)\n", (unsigned long long)bss_addr1, (unsigned long long)val1);
+    } else {
+        fprintf(stderr, "ELF64: Could not read BSS at 0x%llx\n", (unsigned long long)bss_addr1);
+    }
+    if (!user_get(dynamic_addr, val2)) {
+        fprintf(stderr, "ELF64: [0x%llx] = %llx (DYNAMIC section)\n", (unsigned long long)dynamic_addr, (unsigned long long)val2);
+    }
+
+    // Check a few more BSS addresses
+    for (int i = 0; i < 8; i++) {
+        addr_t addr = bss_addr1 + i * 8;
+        uint64_t v = 0;
+        if (!user_get(addr, v)) {
+            fprintf(stderr, "ELF64: [0x%llx] = %llx\n", (unsigned long long)addr, (unsigned long long)v);
+        }
+    }
+
+    // Check the specific address that will get corrupted during execution
+    addr_t corrupt_addr = 0x7efffffff910;
+    uint64_t corrupt_val = 0xDEADBEEF;
+    if (!user_get(corrupt_addr, corrupt_val)) {
+        fprintf(stderr, "ELF64: BEFORE EXEC [0x%llx] = %llx (should be 0)\n",
+                (unsigned long long)corrupt_addr, (unsigned long long)corrupt_val);
+    }
+
+    // Debug: dump first 16 quadwords on stack
+    fprintf(stderr, "ELF64: stack dump at %llx:\n", (unsigned long long)sp);
+    read_wrlock(&current->mem->lock);
+    uint64_t *stack_ptr = (uint64_t *)mem_ptr(current->mem, sp, MEM_READ);
+    if (stack_ptr) {
+        for (int i = 0; i < 16; i++) {
+            fprintf(stderr, "  [%llx]: %llx\n",
+                    (unsigned long long)(sp + i*8),
+                    (unsigned long long)stack_ptr[i]);
+        }
+    }
+    read_wrunlock(&current->mem->lock);
+    current->cpu.fcw = 0x37f;
+
+    // Clear all registers (x86_64 ABI)
+    current->cpu.rax = 0;
+    current->cpu.rbx = 0;
+    current->cpu.rcx = 0;
+    current->cpu.rdx = 0;
+    current->cpu.rsi = 0;
+    current->cpu.rdi = 0;
+    current->cpu.rbp = 0;
+    current->cpu.r8 = 0;
+    current->cpu.r9 = 0;
+    current->cpu.r10 = 0;
+    current->cpu.r11 = 0;
+    current->cpu.r12 = 0;
+    current->cpu.r13 = 0;
+    current->cpu.r14 = 0;
+    current->cpu.r15 = 0;
+    collapse_flags(&current->cpu);
+    current->cpu.eflags = 0;
+
+    err = 0;
+out_free_interp:
+    if (interp_name != NULL)
+        free(interp_name);
+    if (interp_fd != NULL && !IS_ERR(interp_fd))
+        fd_close(interp_fd);
+    if (interp_ph != NULL)
+        free(interp_ph);
+out_free_ph:
+    free(ph);
+    return err;
+
+beyond_hope:
+    write_wrunlock(&current->mem->lock);
+    goto out_free_interp;
+}
+#endif
 
 static int load_entry(struct prg_header ph, addr_t bias, struct fd *fd) {
     int err;
@@ -473,9 +959,16 @@ static inline int user_memset(addr_t start, byte_t val, dword_t len) {
 }
 
 static int format_exec(struct fd *fd, const char *file, struct exec_args argv, struct exec_args envp) {
+#ifdef ISH_GUEST_64BIT
+    // For 64-bit guest, try 64-bit ELF first
+    int err = elf_exec64(fd, file, argv, envp);
+    if (err != _ENOEXEC)
+        return err;
+#else
     int err = elf_exec(fd, file, argv, envp);
     if (err != _ENOEXEC)
         return err;
+#endif
     // other formats would go here
     return _ENOEXEC;
 }
