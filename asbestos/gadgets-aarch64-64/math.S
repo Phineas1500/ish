@@ -129,6 +129,20 @@
     gret 1
     write_bullshit 32, store32_mem
 
+.gadget store16_mem
+    write_prep 16, store16_mem
+    strh _tmp, [_addr]
+    write_done 16, store16_mem
+    gret 1
+    write_bullshit 16, store16_mem
+
+.gadget store8_mem
+    write_prep 8, store8_mem
+    strb _tmp, [_addr]
+    write_done 8, store8_mem
+    gret 1
+    write_bullshit 8, store8_mem
+
 // Store to r8-r15 (stored in memory, not ARM64 registers)
 .gadget store64_r8
     str _xtmp, [_cpu, CPU_r8]
@@ -338,6 +352,17 @@
     setf_zsp
     gret
 
+// AND with register (for reg, reg - xtmp = xtmp & other_reg)
+.macro and_reg64 name, reg64, reg32
+    .gadget and64_\name
+        ands _xtmp, _xtmp, \reg64
+        clearf_oc
+        setf_zsp
+        gret
+.endm
+.each_reg64 and_reg64
+.purgem and_reg64
+
 // AND memory operand (read from _addr, AND with value in x8)
 .gadget and64_mem
     read_prep 64, and64_mem
@@ -417,6 +442,24 @@
     setf_zsp w, x9        // Use the subtraction result
     gret 1
 
+.gadget cmp16_imm
+    ldrh w8, [_ip]
+    and w10, _tmp, 0xffff       // Mask to 16 bits
+    subs w9, w10, w8            // Compare 16-bit values
+    setf_oc
+    sxth x9, w9                 // Sign-extend for SF/PF
+    setf_zsp h, x9
+    gret 1
+
+.gadget cmp8_imm
+    ldrb w8, [_ip]
+    and w10, _tmp, 0xff         // Mask to 8 bits
+    subs w9, w10, w8            // Compare 8-bit values
+    setf_oc
+    sxtb x9, w9                 // Sign-extend for SF/PF
+    setf_zsp b, x9
+    gret 1
+
 // CMP with register (index passed as immediate)
 .gadget cmp64_reg
     // Load register index
@@ -475,6 +518,42 @@
     clearf_oc
     setf_zsp w, x9
     gret 1
+
+.gadget test16_imm
+    ldrh w8, [_ip]
+    and w10, _tmp, 0xffff       // Mask to 16 bits
+    ands w9, w10, w8            // AND 16-bit values
+    clearf_oc
+    sxth x9, w9
+    setf_zsp h, x9
+    gret 1
+
+.gadget test8_imm
+    ldrb w8, [_ip]
+    and w10, _tmp, 0xff         // Mask to 8 bits
+    ands w9, w10, w8            // AND 8-bit values
+    clearf_oc
+    sxtb x9, w9
+    setf_zsp b, x9
+    gret 1
+
+// TEST with x8 (for TEST reg, reg where second reg loaded to x8)
+.gadget test64_x8
+    ands x9, _xtmp, x8
+    clearf_oc
+    setf_zsp , x9
+    gret
+
+// TEST with register (for reg, reg - xtmp & other_reg, set flags)
+.macro test_reg64 name, reg64, reg32
+    .gadget test64_\name
+        ands x9, _xtmp, \reg64
+        clearf_oc
+        setf_zsp , x9
+        gret
+.endm
+.each_reg64 test_reg64
+.purgem test_reg64
 
 // ============================================================
 // Shift gadgets
