@@ -76,6 +76,19 @@ extern void gadget_xor64_di(void);
 extern void gadget_xor64_imm(void);
 extern void gadget_xor32_imm(void);
 extern void gadget_and64_imm(void);
+extern void gadget_and64_x8(void);
+extern void gadget_and64_mem(void);
+extern void gadget_or64_imm(void);
+extern void gadget_or64_x8(void);
+extern void gadget_or64_mem(void);
+extern void gadget_or64_a(void);
+extern void gadget_or64_c(void);
+extern void gadget_or64_d(void);
+extern void gadget_or64_b(void);
+extern void gadget_or64_sp(void);
+extern void gadget_or64_bp(void);
+extern void gadget_or64_si(void);
+extern void gadget_or64_di(void);
 extern void gadget_and32_imm(void);
 extern void gadget_sign_extend8(void);
 extern void gadget_sign_extend16(void);
@@ -97,6 +110,22 @@ extern void gadget_sar64_one(void);
 extern void gadget_sar64_cl(void);
 extern void gadget_sar64_imm(void);
 
+// Bit test gadgets
+extern void gadget_bt64_reg(void);
+extern void gadget_bt64_imm(void);
+extern void gadget_bts64_reg(void);
+extern void gadget_bts64_imm(void);
+extern void gadget_btr64_reg(void);
+extern void gadget_btr64_imm(void);
+extern void gadget_btc64_reg(void);
+extern void gadget_btc64_imm(void);
+
+// NOT/NEG gadgets
+extern void gadget_not64(void);
+extern void gadget_not32(void);
+extern void gadget_neg64(void);
+extern void gadget_neg32(void);
+
 // Gadget arrays for register operations
 static gadget_t add64_gadgets[] = {
     gadget_add64_a, gadget_add64_c, gadget_add64_d, gadget_add64_b,
@@ -109,6 +138,10 @@ static gadget_t sub64_gadgets[] = {
 static gadget_t xor64_gadgets[] = {
     gadget_xor64_a, gadget_xor64_c, gadget_xor64_d, gadget_xor64_b,
     gadget_xor64_sp, gadget_xor64_bp, gadget_xor64_si, gadget_xor64_di
+};
+static gadget_t or64_gadgets[] = {
+    gadget_or64_a, gadget_or64_c, gadget_or64_d, gadget_or64_b,
+    gadget_or64_sp, gadget_or64_bp, gadget_or64_si, gadget_or64_di
 };
 
 // Conditional jump gadgets
@@ -341,6 +374,30 @@ static bool gen_addr(struct gen_state *state, struct decoded_op64 *op) {
         GEN(op->mem.disp);
         return true;
     }
+
+    // No base + scaled index: [index*scale + disp]
+    if (op->mem.base == arg64_invalid &&
+        op->mem.index >= arg64_rax && op->mem.index <= arg64_rdi) {
+        int scale_idx = get_scale_idx(op->mem.scale);
+        if (scale_idx < 0) return false;
+
+        // Start with displacement only
+        GEN(addr_gadgets[8]); // addr_none
+        GEN(op->mem.disp);
+
+        // Apply scaled index: _addr = _addr + index * scale
+        int si_index = (op->mem.index - arg64_rax) * 4 + scale_idx;
+        GEN(si_gadgets[si_index]);
+
+        return true;
+    }
+
+    // No base + scaled index with r8-r15 as index
+    // TODO: Add support for this when needed
+    // if (op->mem.base == arg64_invalid &&
+    //     op->mem.index >= arg64_r8 && op->mem.index <= arg64_r15) {
+    //     return false; // Not yet implemented
+    // }
 
     // Base + scaled index (base must be rax-rdi, index must be rax-rdi for now)
     if (op->mem.base >= arg64_rax && op->mem.base <= arg64_rdi &&
@@ -976,6 +1033,92 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             }
             break;
 
+        case ZYDIS_MNEMONIC_OR:
+            // OR instruction
+            if (inst.operand_count >= 2) {
+                if (is_gpr(inst.operands[0].type)) {
+                    // OR reg, ...
+                    gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
+                    if (load) GEN(load);
+
+                    if (inst.operands[1].type == arg64_imm) {
+                        GEN(gadget_or64_imm);
+                        GEN(inst.operands[1].imm);
+                    } else if (is_gpr(inst.operands[1].type)) {
+                        int reg_idx = inst.operands[1].type - arg64_rax;
+                        if (reg_idx >= 0 && reg_idx < 8) {
+                            GEN(or64_gadgets[reg_idx]);
+                        } else {
+                            // r8-r15: load to x8, use or64_x8
+                            gadget_t load2 = get_load64_reg_gadget(inst.operands[1].type);
+                            if (load2) {
+                                GEN(gadget_save_xtmp_to_x8);
+                                GEN(load2);
+                                // Swap: we want dst | src, but now _xtmp=src, x8=dst
+                                // or64_x8 does _xtmp | x8, so swap first
+                                GEN(gadget_or64_x8);
+                            }
+                        }
+                    } else if (is_mem(inst.operands[1].type)) {
+                        GEN(gadget_save_xtmp_to_x8);
+                        if (!gen_addr(state, &inst.operands[1])) {
+                            g(interrupt);
+                            GEN(INT_UNDEFINED);
+                            GEN(state->orig_ip);
+                            GEN(state->orig_ip);
+                            return 0;
+                        }
+                        GEN(load64_gadgets[9]); // load64_mem
+                        GEN(state->orig_ip);
+                        GEN(gadget_or64_x8);
+                    } else {
+                        g(interrupt);
+                        GEN(INT_UNDEFINED);
+                        GEN(state->orig_ip);
+                        GEN(state->orig_ip);
+                        return 0;
+                    }
+
+                    gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
+                    if (store) GEN(store);
+                } else if (is_mem(inst.operands[0].type)) {
+                    // OR mem, reg - need to load reg to x8 first
+                    if (is_gpr(inst.operands[1].type)) {
+                        gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
+                        if (load_src) GEN(load_src);
+                        GEN(gadget_save_xtmp_to_x8);
+                        if (!gen_addr(state, &inst.operands[0])) {
+                            g(interrupt);
+                            GEN(INT_UNDEFINED);
+                            GEN(state->orig_ip);
+                            GEN(state->orig_ip);
+                            return 0;
+                        }
+                        GEN(gadget_or64_mem);
+                        GEN(state->orig_ip);
+                    } else {
+                        g(interrupt);
+                        GEN(INT_UNDEFINED);
+                        GEN(state->orig_ip);
+                        GEN(state->orig_ip);
+                        return 0;
+                    }
+                } else {
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
+                }
+            } else {
+                g(interrupt);
+                GEN(INT_UNDEFINED);
+                GEN(state->orig_ip);
+                GEN(state->orig_ip);
+                return 0;
+            }
+            break;
+
         case ZYDIS_MNEMONIC_SHR:
             // Logical shift right
             if (inst.operand_count >= 1 && is_gpr(inst.operands[0].type)) {
@@ -1139,6 +1282,32 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
                     // Load base + displacement into _tmp via addr calculation
                     GEN(addr_gadgets[inst.operands[1].mem.base - arg64_rax]);
+                    GEN(inst.operands[1].mem.disp);
+
+                    // Apply scaled index
+                    int si_index = (inst.operands[1].mem.index - arg64_rax) * 4 + scale_idx;
+                    GEN(si_gadgets[si_index]);
+
+                    // _addr now has the effective address, load it into dst
+                    GEN(load64_gadgets[10]); // load64_addr - load _addr into _xtmp
+                    gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
+                    if (store) GEN(store);
+                } else if (inst.operands[1].type == arg64_mem &&
+                           inst.operands[1].mem.base == arg64_invalid &&
+                           inst.operands[1].mem.index >= arg64_rax &&
+                           inst.operands[1].mem.index <= arg64_rdi) {
+                    // LEA reg, [index*scale + disp] (no base register)
+                    int scale_idx = get_scale_idx(inst.operands[1].mem.scale);
+                    if (scale_idx < 0) {
+                        g(interrupt);
+                        GEN(INT_UNDEFINED);
+                        GEN(state->orig_ip);
+                        GEN(state->orig_ip);
+                        return 0;
+                    }
+
+                    // Start with displacement only
+                    GEN(addr_gadgets[8]); // addr_none - load displacement only
                     GEN(inst.operands[1].mem.disp);
 
                     // Apply scaled index
@@ -1357,6 +1526,181 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                 }
                 gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
                 if (store) GEN(store);
+            } else {
+                g(interrupt);
+                GEN(INT_UNDEFINED);
+                GEN(state->orig_ip);
+                GEN(state->orig_ip);
+                return 0;
+            }
+            break;
+
+        case ZYDIS_MNEMONIC_BT:
+        case ZYDIS_MNEMONIC_BTS:
+        case ZYDIS_MNEMONIC_BTR:
+        case ZYDIS_MNEMONIC_BTC:
+            // Bit test instructions: BT, BTS, BTR, BTC
+            // BT r/m64, r64: test bit (op2 % 64) in op1, set CF
+            // BTS: same but also set bit to 1
+            // BTR: same but also clear bit to 0
+            // BTC: same but also toggle bit
+            if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
+                // Load destination (value to test)
+                gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
+                if (load) GEN(load);
+                GEN(gadget_save_xtmp_to_x8);
+
+                if (is_gpr(inst.operands[1].type)) {
+                    // reg-reg form
+                    gadget_t load_idx = get_load64_reg_gadget(inst.operands[1].type);
+                    if (load_idx) GEN(load_idx);
+
+                    switch (inst.mnemonic) {
+                        case ZYDIS_MNEMONIC_BT:  GEN(gadget_bt64_reg); break;
+                        case ZYDIS_MNEMONIC_BTS: GEN(gadget_bts64_reg); break;
+                        case ZYDIS_MNEMONIC_BTR: GEN(gadget_btr64_reg); break;
+                        case ZYDIS_MNEMONIC_BTC: GEN(gadget_btc64_reg); break;
+                        default: break;
+                    }
+
+                    // BTS/BTR/BTC modify the value, store it back
+                    if (inst.mnemonic != ZYDIS_MNEMONIC_BT) {
+                        gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
+                        if (store) GEN(store);
+                    }
+                } else if (inst.operands[1].type == arg64_imm) {
+                    // immediate form - bit index is immediate
+                    switch (inst.mnemonic) {
+                        case ZYDIS_MNEMONIC_BT:  GEN(gadget_bt64_imm); break;
+                        case ZYDIS_MNEMONIC_BTS: GEN(gadget_bts64_imm); break;
+                        case ZYDIS_MNEMONIC_BTR: GEN(gadget_btr64_imm); break;
+                        case ZYDIS_MNEMONIC_BTC: GEN(gadget_btc64_imm); break;
+                        default: break;
+                    }
+                    GEN(inst.operands[1].imm);
+
+                    // BTS/BTR/BTC modify the value, store it back
+                    if (inst.mnemonic != ZYDIS_MNEMONIC_BT) {
+                        gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
+                        if (store) GEN(store);
+                    }
+                } else {
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
+                }
+            } else if (inst.operand_count >= 2 && inst.operands[0].type == arg64_mem) {
+                // Memory form - need to read, modify, write
+                if (!gen_addr(state, &inst.operands[0])) {
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
+                }
+                GEN(load64_gadgets[9]); // load64_mem
+                GEN(state->orig_ip);
+                GEN(gadget_save_xtmp_to_x8);
+
+                if (is_gpr(inst.operands[1].type)) {
+                    gadget_t load_idx = get_load64_reg_gadget(inst.operands[1].type);
+                    if (load_idx) GEN(load_idx);
+
+                    switch (inst.mnemonic) {
+                        case ZYDIS_MNEMONIC_BT:  GEN(gadget_bt64_reg); break;
+                        case ZYDIS_MNEMONIC_BTS: GEN(gadget_bts64_reg); break;
+                        case ZYDIS_MNEMONIC_BTR: GEN(gadget_btr64_reg); break;
+                        case ZYDIS_MNEMONIC_BTC: GEN(gadget_btc64_reg); break;
+                        default: break;
+                    }
+
+                    if (inst.mnemonic != ZYDIS_MNEMONIC_BT) {
+                        GEN(store64_gadgets[9]); // store64_mem
+                        GEN(state->orig_ip);
+                    }
+                } else if (inst.operands[1].type == arg64_imm) {
+                    switch (inst.mnemonic) {
+                        case ZYDIS_MNEMONIC_BT:  GEN(gadget_bt64_imm); break;
+                        case ZYDIS_MNEMONIC_BTS: GEN(gadget_bts64_imm); break;
+                        case ZYDIS_MNEMONIC_BTR: GEN(gadget_btr64_imm); break;
+                        case ZYDIS_MNEMONIC_BTC: GEN(gadget_btc64_imm); break;
+                        default: break;
+                    }
+                    GEN(inst.operands[1].imm);
+
+                    if (inst.mnemonic != ZYDIS_MNEMONIC_BT) {
+                        GEN(store64_gadgets[9]); // store64_mem
+                        GEN(state->orig_ip);
+                    }
+                } else {
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
+                }
+            } else {
+                g(interrupt);
+                GEN(INT_UNDEFINED);
+                GEN(state->orig_ip);
+                GEN(state->orig_ip);
+                return 0;
+            }
+            break;
+
+        case ZYDIS_MNEMONIC_NOT:
+            // NOT - one's complement
+            if (is_gpr(inst.operands[0].type)) {
+                gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
+                if (load) GEN(load);
+                GEN(gadget_not64);
+                gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
+                if (store) GEN(store);
+            } else if (inst.operands[0].type == arg64_mem) {
+                if (!gen_addr(state, &inst.operands[0])) {
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
+                }
+                GEN(load64_gadgets[9]); // load64_mem
+                GEN(state->orig_ip);
+                GEN(gadget_not64);
+                GEN(store64_gadgets[9]); // store64_mem
+                GEN(state->orig_ip);
+            } else {
+                g(interrupt);
+                GEN(INT_UNDEFINED);
+                GEN(state->orig_ip);
+                GEN(state->orig_ip);
+                return 0;
+            }
+            break;
+
+        case ZYDIS_MNEMONIC_NEG:
+            // NEG - two's complement
+            if (is_gpr(inst.operands[0].type)) {
+                gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
+                if (load) GEN(load);
+                GEN(gadget_neg64);
+                gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
+                if (store) GEN(store);
+            } else if (inst.operands[0].type == arg64_mem) {
+                if (!gen_addr(state, &inst.operands[0])) {
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
+                }
+                GEN(load64_gadgets[9]); // load64_mem
+                GEN(state->orig_ip);
+                GEN(gadget_neg64);
+                GEN(store64_gadgets[9]); // store64_mem
+                GEN(state->orig_ip);
             } else {
                 g(interrupt);
                 GEN(INT_UNDEFINED);

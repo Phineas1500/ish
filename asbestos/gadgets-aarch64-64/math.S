@@ -331,6 +331,74 @@
     setf_zsp w
     gret 1
 
+// AND with register (x8 contains value to AND)
+.gadget and64_x8
+    ands _xtmp, _xtmp, x8
+    clearf_oc
+    setf_zsp
+    gret
+
+// AND memory operand (read from _addr, AND with value in x8)
+.gadget and64_mem
+    read_prep 64, and64_mem
+    ldr x9, [_addr]
+    ands x9, x9, x8
+    str x9, [_addr]
+    clearf_oc
+    mov _xtmp, x9
+    setf_zsp
+    gret 1
+    read_bullshit 64, and64_mem
+
+// ============================================================
+// OR gadgets
+// ============================================================
+
+.gadget or64_imm
+    ldr x8, [_ip]
+    orr _xtmp, _xtmp, x8
+    clearf_oc
+    setf_zsp
+    gret 1
+
+.gadget or32_imm
+    ldr w8, [_ip]
+    orr _tmp, _tmp, w8
+    and _xtmp, _xtmp, 0xffffffff
+    clearf_oc
+    setf_zsp w
+    gret 1
+
+// OR with register (x8 contains value to OR)
+.gadget or64_x8
+    orr _xtmp, _xtmp, x8
+    clearf_oc
+    setf_zsp
+    gret
+
+// OR with register (for reg, reg - xtmp = xtmp | other_reg)
+.macro or_reg64 name, reg64, reg32
+    .gadget or64_\name
+        orr _xtmp, _xtmp, \reg64
+        clearf_oc
+        setf_zsp
+        gret
+.endm
+.each_reg64 or_reg64
+.purgem or_reg64
+
+// OR memory operand (read from _addr, OR with value in x8)
+.gadget or64_mem
+    read_prep 64, or64_mem
+    ldr x9, [_addr]
+    orr x9, x9, x8
+    str x9, [_addr]
+    clearf_oc
+    mov _xtmp, x9
+    setf_zsp
+    gret 1
+    read_bullshit 64, or64_mem
+
 // ============================================================
 // CMP gadgets (compare without storing)
 // ============================================================

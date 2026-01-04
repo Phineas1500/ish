@@ -249,10 +249,15 @@ int decode64_inst(const uint8_t *code, size_t code_size,
     inst->mnemonic = inst->raw_inst.mnemonic;
     inst->length = inst->raw_inst.length;
 
-    // Count visible operands (exclude hidden/implicit)
+    // Count visible operands (include implicit for instructions like CMP rax, imm)
     inst->operand_count = 0;
     for (int i = 0; i < inst->raw_inst.operand_count && i < 4; i++) {
-        if (inst->raw_operands[i].visibility == ZYDIS_OPERAND_VISIBILITY_EXPLICIT) {
+        ZydisOperandVisibility vis = inst->raw_operands[i].visibility;
+        // Include both EXPLICIT and IMPLICIT operands
+        // IMPLICIT operands are things like RAX in "CMP rax, imm" (opcode 3d)
+        // HIDDEN operands are things like FLAGS which we don't need
+        if (vis == ZYDIS_OPERAND_VISIBILITY_EXPLICIT ||
+            vis == ZYDIS_OPERAND_VISIBILITY_IMPLICIT) {
             decode_operand(&inst->raw_operands[i],
                           &inst->operands[inst->operand_count]);
             inst->operand_count++;

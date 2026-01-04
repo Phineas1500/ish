@@ -1,7 +1,141 @@
 #include "gadgets.h"
 
 // Bitwise operations for 64-bit
-// Phase 7a stub - will be expanded in Phase 7c
+
+// ============================================================
+// BT/BTS/BTR/BTC - Bit Test instructions
+// These test a bit and set CF to its value
+// BT:  just test
+// BTS: test and set the bit to 1
+// BTR: test and reset the bit to 0
+// BTC: test and complement (toggle) the bit
+// ============================================================
+
+// BT reg-reg: Test bit (_xtmp % 64) of x8
+// Entry: x8 = value to test, _xtmp = bit index
+// Exit: CF = bit value, x8 unchanged, _xtmp = x8
+.gadget bt64_reg
+    and x9, _xtmp, 63           // Bit position mod 64
+    lsr x10, x8, x9             // Shift bit to position 0
+    and w10, w10, 1             // Isolate the bit
+    strb w10, [_cpu, CPU_cf]    // Set CF
+    mov _xtmp, x8               // Return original value
+    gret
+
+// BTS reg-reg: Test and set bit (_xtmp % 64) of x8
+// Entry: x8 = value, _xtmp = bit index
+// Exit: CF = old bit value, _xtmp = value with bit set
+.gadget bts64_reg
+    and x9, _xtmp, 63           // Bit position mod 64
+    mov x11, 1
+    lsl x11, x11, x9            // Create mask with bit set
+    lsr x10, x8, x9             // Shift bit to position 0
+    and w10, w10, 1             // Isolate the bit
+    strb w10, [_cpu, CPU_cf]    // Set CF to old value
+    orr _xtmp, x8, x11          // Set the bit
+    gret
+
+// BTR reg-reg: Test and reset (clear) bit (_xtmp % 64) of x8
+// Entry: x8 = value, _xtmp = bit index
+// Exit: CF = old bit value, _xtmp = value with bit cleared
+.gadget btr64_reg
+    and x9, _xtmp, 63           // Bit position mod 64
+    mov x11, 1
+    lsl x11, x11, x9            // Create mask with bit set
+    lsr x10, x8, x9             // Shift bit to position 0
+    and w10, w10, 1             // Isolate the bit
+    strb w10, [_cpu, CPU_cf]    // Set CF to old value
+    bic _xtmp, x8, x11          // Clear the bit
+    gret
+
+// BTC reg-reg: Test and complement (toggle) bit (_xtmp % 64) of x8
+// Entry: x8 = value, _xtmp = bit index
+// Exit: CF = old bit value, _xtmp = value with bit toggled
+.gadget btc64_reg
+    and x9, _xtmp, 63           // Bit position mod 64
+    mov x11, 1
+    lsl x11, x11, x9            // Create mask with bit set
+    lsr x10, x8, x9             // Shift bit to position 0
+    and w10, w10, 1             // Isolate the bit
+    strb w10, [_cpu, CPU_cf]    // Set CF to old value
+    eor _xtmp, x8, x11          // Toggle the bit
+    gret
+
+// BT with immediate bit index
+// Entry: _xtmp = value to test, immediate = bit index
+.gadget bt64_imm
+    ldr w9, [_ip]               // Get immediate bit index
+    and w9, w9, 63              // Mod 64
+    lsr x10, _xtmp, x9          // Shift bit to position 0
+    and w10, w10, 1             // Isolate
+    strb w10, [_cpu, CPU_cf]    // Set CF
+    gret 1
+
+// BTS with immediate bit index
+.gadget bts64_imm
+    ldr w9, [_ip]               // Get immediate bit index
+    and w9, w9, 63              // Mod 64
+    mov x11, 1
+    lsl x11, x11, x9            // Create mask
+    lsr x10, _xtmp, x9          // Get old bit
+    and w10, w10, 1
+    strb w10, [_cpu, CPU_cf]
+    orr _xtmp, _xtmp, x11       // Set the bit
+    gret 1
+
+// BTR with immediate bit index
+.gadget btr64_imm
+    ldr w9, [_ip]               // Get immediate bit index
+    and w9, w9, 63              // Mod 64
+    mov x11, 1
+    lsl x11, x11, x9            // Create mask
+    lsr x10, _xtmp, x9          // Get old bit
+    and w10, w10, 1
+    strb w10, [_cpu, CPU_cf]
+    bic _xtmp, _xtmp, x11       // Clear the bit
+    gret 1
+
+// BTC with immediate bit index
+.gadget btc64_imm
+    ldr w9, [_ip]               // Get immediate bit index
+    and w9, w9, 63              // Mod 64
+    mov x11, 1
+    lsl x11, x11, x9            // Create mask
+    lsr x10, _xtmp, x9          // Get old bit
+    and w10, w10, 1
+    strb w10, [_cpu, CPU_cf]
+    eor _xtmp, _xtmp, x11       // Toggle the bit
+    gret 1
+
+// ============================================================
+// NOT - Bitwise NOT (one's complement)
+// ============================================================
+
+.gadget not64
+    mvn _xtmp, _xtmp
+    gret
+
+.gadget not32
+    mvn _tmp, _tmp
+    and _xtmp, _xtmp, 0xffffffff  // Zero-extend to 64-bit
+    gret
+
+// ============================================================
+// NEG - Two's complement negation
+// ============================================================
+
+.gadget neg64
+    negs _xtmp, _xtmp
+    setf_oc
+    setf_zsp
+    gret
+
+.gadget neg32
+    negs _tmp, _tmp
+    setf_oc
+    setf_zsp w
+    and _xtmp, _xtmp, 0xffffffff  // Zero-extend to 64-bit
+    gret
 
 // Placeholder gadget arrays to satisfy linker
 .pushsection_rodata
