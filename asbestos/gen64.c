@@ -53,6 +53,15 @@ extern void gadget_add64_imm(void);
 extern void gadget_add64_mem(void);
 extern void gadget_add64_x8(void);  // For adding r8-r15
 extern void gadget_add32_imm(void);
+extern void gadget_add32_mem(void);
+extern void gadget_add32_a(void);
+extern void gadget_add32_c(void);
+extern void gadget_add32_d(void);
+extern void gadget_add32_b(void);
+extern void gadget_add32_sp(void);
+extern void gadget_add32_bp(void);
+extern void gadget_add32_si(void);
+extern void gadget_add32_di(void);
 extern void gadget_sub64_a(void);
 extern void gadget_sub64_c(void);
 extern void gadget_sub64_d(void);
@@ -65,6 +74,15 @@ extern void gadget_sub64_imm(void);
 extern void gadget_sub64_mem(void);
 extern void gadget_sub64_x8(void);  // For subtracting r8-r15
 extern void gadget_sub32_imm(void);
+extern void gadget_sub32_mem(void);
+extern void gadget_sub32_a(void);
+extern void gadget_sub32_c(void);
+extern void gadget_sub32_d(void);
+extern void gadget_sub32_b(void);
+extern void gadget_sub32_sp(void);
+extern void gadget_sub32_bp(void);
+extern void gadget_sub32_si(void);
+extern void gadget_sub32_di(void);
 extern void gadget_xor64_a(void);
 extern void gadget_xor64_c(void);
 extern void gadget_xor64_d(void);
@@ -165,6 +183,14 @@ static gadget_t add64_gadgets[] = {
 static gadget_t sub64_gadgets[] = {
     gadget_sub64_a, gadget_sub64_c, gadget_sub64_d, gadget_sub64_b,
     gadget_sub64_sp, gadget_sub64_bp, gadget_sub64_si, gadget_sub64_di
+};
+static gadget_t add32_gadgets[] = {
+    gadget_add32_a, gadget_add32_c, gadget_add32_d, gadget_add32_b,
+    gadget_add32_sp, gadget_add32_bp, gadget_add32_si, gadget_add32_di
+};
+static gadget_t sub32_gadgets[] = {
+    gadget_sub32_a, gadget_sub32_c, gadget_sub32_d, gadget_sub32_b,
+    gadget_sub32_sp, gadget_sub32_bp, gadget_sub32_si, gadget_sub32_di
 };
 static gadget_t xor64_gadgets[] = {
     gadget_xor64_a, gadget_xor64_c, gadget_xor64_d, gadget_xor64_b,
@@ -497,15 +523,31 @@ static bool gen_mov(struct gen_state *state, struct decoded_inst64 *inst) {
     struct decoded_op64 *dst = &inst->operands[0];
     struct decoded_op64 *src = &inst->operands[1];
 
-    // Determine operand size
-    bool is64 = (dst->size == size64_64 || src->size == size64_64);
-    bool is32 = (dst->size == size64_32 || src->size == size64_32);
+    // Determine operand size from destination (or source for mem operands)
+    int size_bits = 0;
+    if (dst->size == size64_64 || src->size == size64_64) size_bits = 64;
+    else if (dst->size == size64_32 || src->size == size64_32) size_bits = 32;
+    else if (dst->size == size64_16 || src->size == size64_16) size_bits = 16;
+    else if (dst->size == size64_8 || src->size == size64_8) size_bits = 8;
+    else size_bits = 32; // default to 32-bit
 
     // MOV reg, reg (any GPR including r8-r15)
     if (is_gpr(dst->type) && is_gpr(src->type)) {
         gadget_t load_gadget = get_load64_reg_gadget(src->type);
         if (!load_gadget) return false;
         GEN(load_gadget);
+
+        // For 32-bit MOV, mask to zero-extend (x86_64 semantics)
+        if (size_bits == 32) {
+            GEN(gadget_and64_imm);
+            GEN(0xFFFFFFFF);
+        } else if (size_bits == 16) {
+            GEN(gadget_and64_imm);
+            GEN(0xFFFF);
+        } else if (size_bits == 8) {
+            GEN(gadget_and64_imm);
+            GEN(0xFF);
+        }
 
         gadget_t store_gadget = get_store64_reg_gadget(dst->type);
         if (!store_gadget) return false;
@@ -516,7 +558,7 @@ static bool gen_mov(struct gen_state *state, struct decoded_inst64 *inst) {
 
     // MOV reg, imm (any GPR including r8-r15)
     if (is_gpr(dst->type) && src->type == arg64_imm) {
-        if (is64) {
+        if (size_bits == 64) {
             GEN(load64_gadgets[8]); // load64_imm
         } else {
             GEN(load32_gadgets[8]); // load32_imm
@@ -533,10 +575,19 @@ static bool gen_mov(struct gen_state *state, struct decoded_inst64 *inst) {
     // MOV reg, [mem] (any GPR including r8-r15)
     if (is_gpr(dst->type) && is_mem(src->type)) {
         if (!gen_addr(state, src)) return false;
-        if (is64) {
-            GEN(load64_gadgets[9]); // load64_mem
-        } else {
-            GEN(load32_gadgets[9]); // load32_mem
+        switch (size_bits) {
+            case 64:
+                GEN(load64_gadgets[9]); // load64_mem
+                break;
+            case 32:
+                GEN(load32_gadgets[9]); // load32_mem
+                break;
+            case 16:
+                GEN(gadget_load16_mem);
+                break;
+            case 8:
+                GEN(gadget_load8_mem);
+                break;
         }
         GEN(state->orig_ip);
 
@@ -554,10 +605,19 @@ static bool gen_mov(struct gen_state *state, struct decoded_inst64 *inst) {
         GEN(load_gadget);
 
         if (!gen_addr(state, dst)) return false;
-        if (is64) {
-            GEN(store64_gadgets[9]); // store64_mem
-        } else {
-            GEN(store32_gadgets[9]); // store32_mem
+        switch (size_bits) {
+            case 64:
+                GEN(store64_gadgets[9]); // store64_mem
+                break;
+            case 32:
+                GEN(store32_gadgets[9]); // store32_mem
+                break;
+            case 16:
+                GEN(gadget_store16_mem);
+                break;
+            case 8:
+                GEN(gadget_store8_mem);
+                break;
         }
         GEN(state->orig_ip);
 
@@ -567,7 +627,7 @@ static bool gen_mov(struct gen_state *state, struct decoded_inst64 *inst) {
     // MOV [mem], imm
     if (is_mem(dst->type) && src->type == arg64_imm) {
         // Load immediate
-        if (is64) {
+        if (size_bits == 64) {
             GEN(load64_gadgets[8]); // load64_imm
         } else {
             GEN(load32_gadgets[8]); // load32_imm
@@ -576,10 +636,19 @@ static bool gen_mov(struct gen_state *state, struct decoded_inst64 *inst) {
 
         // Calculate address and store
         if (!gen_addr(state, dst)) return false;
-        if (is64) {
-            GEN(store64_gadgets[9]); // store64_mem
-        } else {
-            GEN(store32_gadgets[9]); // store32_mem
+        switch (size_bits) {
+            case 64:
+                GEN(store64_gadgets[9]); // store64_mem
+                break;
+            case 32:
+                GEN(store32_gadgets[9]); // store32_mem
+                break;
+            case 16:
+                GEN(gadget_store16_mem);
+                break;
+            case 8:
+                GEN(gadget_store8_mem);
+                break;
         }
         GEN(state->orig_ip);
 
@@ -850,18 +919,29 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
         case ZYDIS_MNEMONIC_ADD:
             if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
+                // Determine operand size
+                bool is64 = (inst.operands[0].size == size64_64);
+
                 // ADD reg, ...
                 gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
                 if (load) GEN(load);
 
                 if (inst.operands[1].type == arg64_imm) {
                     // ADD reg, imm
-                    GEN(gadget_add64_imm);
+                    if (is64) {
+                        GEN(gadget_add64_imm);
+                    } else {
+                        GEN(gadget_add32_imm);
+                    }
                     GEN(inst.operands[1].imm);
                 } else if (inst.operands[1].type >= arg64_rax &&
                            inst.operands[1].type <= arg64_rdi) {
                     // ADD reg, reg (rax-rdi)
-                    GEN(add64_gadgets[inst.operands[1].type - arg64_rax]);
+                    if (is64) {
+                        GEN(add64_gadgets[inst.operands[1].type - arg64_rax]);
+                    } else {
+                        GEN(add32_gadgets[inst.operands[1].type - arg64_rax]);
+                    }
                 } else if (inst.operands[1].type >= arg64_r8 &&
                            inst.operands[1].type <= arg64_r15) {
                     // ADD reg, r8-r15 (need to load r8-r15 from memory first)
@@ -875,7 +955,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                 } else if (is_mem(inst.operands[1].type)) {
                     // ADD reg, [mem]
                     // We have: _xtmp = dst value
-                    // Need: _addr = memory address, then add64_mem adds [_addr] to _xtmp
+                    // Need: _addr = memory address, then add_mem adds [_addr] to _xtmp
                     // gen_addr sets _addr and doesn't touch _xtmp
                     if (!gen_addr(state, &inst.operands[1])) {
                         g(interrupt);
@@ -884,7 +964,11 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                         GEN(state->orig_ip);
                         return 0;
                     }
-                    GEN(gadget_add64_mem);
+                    if (is64) {
+                        GEN(gadget_add64_mem);
+                    } else {
+                        GEN(gadget_add32_mem);
+                    }
                     GEN(state->orig_ip);
                 } else {
                     g(interrupt);
@@ -935,17 +1019,28 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
         case ZYDIS_MNEMONIC_SUB:
             if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
+                // Determine operand size
+                bool is64 = (inst.operands[0].size == size64_64);
+
                 gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
                 if (load) GEN(load);
 
                 if (inst.operands[1].type == arg64_imm) {
                     // SUB reg, imm
-                    GEN(gadget_sub64_imm);
+                    if (is64) {
+                        GEN(gadget_sub64_imm);
+                    } else {
+                        GEN(gadget_sub32_imm);
+                    }
                     GEN(inst.operands[1].imm);
                 } else if (inst.operands[1].type >= arg64_rax &&
                            inst.operands[1].type <= arg64_rdi) {
                     // SUB reg, reg (rax-rdi)
-                    GEN(sub64_gadgets[inst.operands[1].type - arg64_rax]);
+                    if (is64) {
+                        GEN(sub64_gadgets[inst.operands[1].type - arg64_rax]);
+                    } else {
+                        GEN(sub32_gadgets[inst.operands[1].type - arg64_rax]);
+                    }
                 } else if (inst.operands[1].type >= arg64_r8 &&
                            inst.operands[1].type <= arg64_r15) {
                     // SUB reg, r8-r15
@@ -965,7 +1060,11 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                         GEN(state->orig_ip);
                         return 0;
                     }
-                    GEN(gadget_sub64_mem);
+                    if (is64) {
+                        GEN(gadget_sub64_mem);
+                    } else {
+                        GEN(gadget_sub32_mem);
+                    }
                     GEN(state->orig_ip);
                 } else {
                     g(interrupt);
