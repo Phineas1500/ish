@@ -1139,10 +1139,7 @@ imul64_r8_r15 15, CPU_r15
 .gadget imul32_r\num
     ldr w8, [_cpu, \offset]    // Load r[n]d (32-bit) from cpu state
     mul w9, _tmp, w8           // result = _tmp * r[n]d (32-bit)
-    str w9, [_cpu, \offset]    // Store 32-bit result (zero-extends in memory)
-    // But we need to zero upper 32 bits explicitly
-    str xzr, [_cpu, \offset+4] // Zero upper 32 bits
-    // Actually, just store the full 64-bit zero-extended result
+    // Zero-extend to 64-bit and store full 64-bit value
     uxtw x9, w9                // Zero-extend to 64-bit
     str x9, [_cpu, \offset]    // Store full 64-bit value
     // Set flags
