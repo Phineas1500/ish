@@ -63,16 +63,18 @@ _waddr .req w3
 // Memory reading and writing for 64-bit addresses
 // TLB lookup uses 64-bit addresses but 4KB pages
 // TLB has 1024 entries (10 bits), indexed by XOR-folding page number bits
+// IMPORTANT: Uses x11 as scratch (not x8!) because x8 is used to pass values
+// between gadgets (e.g., save_xtmp_to_x8 for CMP reg, [mem])
 .irp type, read,write
 
 .macro \type\()_prep size, id
     // Check if access crosses page boundary
-    and x8, _addr, 0xfff
-    cmp x8, (0x1000-(\size/8))
+    and x11, _addr, 0xfff
+    cmp x11, (0x1000-(\size/8))
     b.hi crosspage_load_\id
     // Get page-aligned address
-    and x8, _addr, ~0xfff
-    str x8, [_tlb, (-TLB_entries+TLB_dirty_page)]
+    and x11, _addr, ~0xfff
+    str x11, [_tlb, (-TLB_entries+TLB_dirty_page)]
     // TLB index calculation (XOR fold for 64-bit addresses)
     // ubfx extracts 10 bits at position 12, giving us (addr >> 12) & 0x3ff
     ubfx x9, _addr, 12, 10
@@ -87,7 +89,7 @@ _waddr .req w3
     .else
         ldr x10, [x9, TLB_ENTRY_page_if_writable]
     .endif
-    cmp x8, x10
+    cmp x11, x10
     b.ne handle_miss_\id
     ldr x10, [x9, TLB_ENTRY_data_minus_addr]
     add _addr, x10, _addr
@@ -113,8 +115,8 @@ crosspage_store_\id :
 .endr
 
 .macro write_done size, id
-    add x8, _cpu, LOCAL_value
-    cmp x8, _addr
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
     b.eq crosspage_store_\id
 back_write_done_\id :
 .endm

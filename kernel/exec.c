@@ -472,6 +472,7 @@ static int elf_exec64(struct fd *fd, const char *file, struct exec_args argv, st
     current->mm->stack_start = sp;
     current->cpu.rsp = sp;
     current->cpu.rip = entry;
+    current->cpu.df_offset = 1;  // Direction flag: 1 = forward, -1 = backward
     fprintf(stderr, "ELF64: final sp=%llx entry=%llx\n", (unsigned long long)sp, (unsigned long long)entry);
 
     // Debug: check several BSS addresses before execution

@@ -117,6 +117,24 @@ enum arg64 zydis_reg_to_arg64(ZydisRegister reg) {
         // RIP for RIP-relative
         case ZYDIS_REGISTER_RIP: return arg64_rip_rel;
 
+        // XMM registers
+        case ZYDIS_REGISTER_XMM0:  return arg64_xmm0;
+        case ZYDIS_REGISTER_XMM1:  return arg64_xmm1;
+        case ZYDIS_REGISTER_XMM2:  return arg64_xmm2;
+        case ZYDIS_REGISTER_XMM3:  return arg64_xmm3;
+        case ZYDIS_REGISTER_XMM4:  return arg64_xmm4;
+        case ZYDIS_REGISTER_XMM5:  return arg64_xmm5;
+        case ZYDIS_REGISTER_XMM6:  return arg64_xmm6;
+        case ZYDIS_REGISTER_XMM7:  return arg64_xmm7;
+        case ZYDIS_REGISTER_XMM8:  return arg64_xmm8;
+        case ZYDIS_REGISTER_XMM9:  return arg64_xmm9;
+        case ZYDIS_REGISTER_XMM10: return arg64_xmm10;
+        case ZYDIS_REGISTER_XMM11: return arg64_xmm11;
+        case ZYDIS_REGISTER_XMM12: return arg64_xmm12;
+        case ZYDIS_REGISTER_XMM13: return arg64_xmm13;
+        case ZYDIS_REGISTER_XMM14: return arg64_xmm14;
+        case ZYDIS_REGISTER_XMM15: return arg64_xmm15;
+
         default:
             return arg64_invalid;
     }

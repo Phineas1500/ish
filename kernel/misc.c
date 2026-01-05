@@ -38,7 +38,12 @@ int_t sys_arch_prctl(int_t code, addr_t addr) {
     switch (code) {
         case ARCH_SET_FS:
             STRACE("arch_prctl(ARCH_SET_FS, " ADDR_FMT ")", addr);
+            fprintf(stderr, "ARCH_SET_FS: addr=0x%llx fs_base offset=%lu sizeof(fs_base)=%lu\n",
+                    (unsigned long long)addr, (unsigned long)offsetof(struct cpu_state, fs_base),
+                    (unsigned long)sizeof(cpu->fs_base));
             cpu->fs_base = addr;
+            fprintf(stderr, "ARCH_SET_FS: after store, fs_base=0x%llx\n",
+                    (unsigned long long)cpu->fs_base);
             return 0;
         case ARCH_GET_FS:
             STRACE("arch_prctl(ARCH_GET_FS, " ADDR_FMT ")", addr);

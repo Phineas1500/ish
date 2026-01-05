@@ -477,8 +477,11 @@ void handle_interrupt(int interrupt) {
     fprintf(stderr, "handle_interrupt(%d) at ip=0x%llx\n", interrupt, (unsigned long long)CPU_IP(cpu));
 #ifdef ISH_GUEST_64BIT
     // x86_64: syscall instruction (INT_SYSCALL64) with different ABI
+    fprintf(stderr, "INT_SYSCALL64=%d interrupt=%d\n", INT_SYSCALL64, interrupt);
     if (interrupt == INT_SYSCALL64) {
         unsigned syscall_num = cpu->rax;
+        fprintf(stderr, "syscall_num=%u NUM_SYSCALLS=%d table[num]=%p\n",
+                syscall_num, NUM_SYSCALLS, syscall_num < NUM_SYSCALLS ? syscall_table[syscall_num] : NULL);
         if (syscall_num >= NUM_SYSCALLS || syscall_table[syscall_num] == NULL) {
             printk("%d(%s) missing syscall %d\n", current->pid, current->comm, syscall_num);
             cpu->rax = _ENOSYS;
@@ -486,9 +489,14 @@ void handle_interrupt(int interrupt) {
             if (syscall_table[syscall_num] == (syscall_t) syscall_stub) {
                 printk("%d(%s) stub syscall %d\n", current->pid, current->comm, syscall_num);
             }
+            fprintf(stderr, "SYSCALL64 %d: rdi=0x%llx rsi=0x%llx rdx=0x%llx r10=0x%llx r8=0x%llx r9=0x%llx\n",
+                    syscall_num, (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi,
+                    (unsigned long long)cpu->rdx, (unsigned long long)cpu->r10,
+                    (unsigned long long)cpu->r8, (unsigned long long)cpu->r9);
             STRACE("%d call %-3d ", current->pid, syscall_num);
             // x86_64 argument order: rdi, rsi, rdx, r10, r8, r9
             int result = syscall_table[syscall_num](cpu->rdi, cpu->rsi, cpu->rdx, cpu->r10, cpu->r8, cpu->r9);
+            fprintf(stderr, "SYSCALL64 %d = 0x%x\n", syscall_num, result);
             STRACE(" = 0x%x\n", result);
             cpu->rax = result;
         }
@@ -532,6 +540,12 @@ void handle_interrupt(int interrupt) {
         fprintf(stderr, "  rsi=%llx rdi=%llx rbp=%llx rsp=%llx\n",
                 (unsigned long long)cpu->rsi, (unsigned long long)cpu->rdi,
                 (unsigned long long)cpu->rbp, (unsigned long long)cpu->rsp);
+        fprintf(stderr, "  r8=%llx r9=%llx r10=%llx r11=%llx\n",
+                (unsigned long long)cpu->r8, (unsigned long long)cpu->r9,
+                (unsigned long long)cpu->r10, (unsigned long long)cpu->r11);
+        fprintf(stderr, "  r12=%llx r13=%llx r14=%llx r15=%llx\n",
+                (unsigned long long)cpu->r12, (unsigned long long)cpu->r13,
+                (unsigned long long)cpu->r14, (unsigned long long)cpu->r15);
 #endif
         // some page faults, such as stack growing or CoW clones, are handled by mem_ptr
         read_wrlock(&current->mem->lock);

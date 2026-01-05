@@ -327,6 +327,54 @@
     setf_zsp w
     gret 1
 
+// XOR gadgets for r8-r15: _xtmp = _xtmp XOR r[N]
+.macro xor64_r8_r15 num, offset
+.gadget xor64_r\num
+    ldr x8, [_cpu, \offset]
+    eor _xtmp, _xtmp, x8
+    clearf_oc
+    setf_zsp
+    gret
+.gadget xor32_r\num
+    ldr w8, [_cpu, \offset]
+    eor _tmp, _tmp, w8
+    clearf_oc
+    setf_zsp w
+    gret
+.endm
+xor64_r8_r15 8, CPU_r8
+xor64_r8_r15 9, CPU_r9
+xor64_r8_r15 10, CPU_r10
+xor64_r8_r15 11, CPU_r11
+xor64_r8_r15 12, CPU_r12
+xor64_r8_r15 13, CPU_r13
+xor64_r8_r15 14, CPU_r14
+xor64_r8_r15 15, CPU_r15
+
+.pushsection_rodata
+.align 3
+.global NAME(xor64_r8_r15_gadgets)
+NAME(xor64_r8_r15_gadgets):
+    .quad NAME(gadget_xor64_r8)
+    .quad NAME(gadget_xor64_r9)
+    .quad NAME(gadget_xor64_r10)
+    .quad NAME(gadget_xor64_r11)
+    .quad NAME(gadget_xor64_r12)
+    .quad NAME(gadget_xor64_r13)
+    .quad NAME(gadget_xor64_r14)
+    .quad NAME(gadget_xor64_r15)
+.global NAME(xor32_r8_r15_gadgets)
+NAME(xor32_r8_r15_gadgets):
+    .quad NAME(gadget_xor32_r8)
+    .quad NAME(gadget_xor32_r9)
+    .quad NAME(gadget_xor32_r10)
+    .quad NAME(gadget_xor32_r11)
+    .quad NAME(gadget_xor32_r12)
+    .quad NAME(gadget_xor32_r13)
+    .quad NAME(gadget_xor32_r14)
+    .quad NAME(gadget_xor32_r15)
+.popsection
+
 // ============================================================
 // AND gadgets
 // ============================================================
@@ -501,6 +549,78 @@
     setf_zsp , x9
     gret 1
 
+// 32-bit CMP reg, reg - compare low 32 bits only
+// Uses same register aliases as cmp64_reg but with 32-bit (w) versions
+.gadget cmp32_reg
+    ldr x8, [_ip]
+    cmp x8, 0
+    b.eq 1f
+    cmp x8, 1
+    b.eq 2f
+    cmp x8, 2
+    b.eq 3f
+    cmp x8, 3
+    b.eq 4f
+    cmp x8, 4
+    b.eq 5f
+    cmp x8, 5
+    b.eq 6f
+    cmp x8, 6
+    b.eq 7f
+    // Default to edi (case 7)
+    subs w9, _tmp, edi
+    b 9f
+1:  subs w9, _tmp, eax
+    b 9f
+2:  subs w9, _tmp, ecx
+    b 9f
+3:  subs w9, _tmp, edx
+    b 9f
+4:  subs w9, _tmp, ebx
+    b 9f
+5:  subs w9, _tmp, esp
+    b 9f
+6:  subs w9, _tmp, ebp
+    b 9f
+7:  subs w9, _tmp, esi
+    b 9f
+9:  setf_oc
+    setf_zsp w, x9
+    gret 1
+
+// CMP _xtmp with x8 (for CMP [mem], reg where mem is loaded first)
+// This compares memory value (_xtmp) with saved register value (x8)
+// Flags are set based on: _xtmp - x8
+.gadget cmp64_x8
+    subs x9, _xtmp, x8
+    setf_oc
+    setf_zsp , x9
+    gret
+
+.gadget cmp32_x8
+    subs w9, _tmp, w8
+    setf_oc
+    setf_zsp w, x9
+    gret
+
+.gadget cmp16_x8
+    and w10, _tmp, 0xffff
+    and w11, w8, 0xffff
+    subs w9, w10, w11
+    setf_oc
+    sxth x9, w9
+    setf_zsp h, x9
+    gret
+
+.gadget cmp8_x8
+    and w10, _tmp, 0xff
+    and w11, w8, 0xff
+    subs w9, w10, w11
+    setf_oc
+    sxtb x9, w9
+    setf_zsp b, x9
+    gret
+
 // ============================================================
 // TEST gadgets (AND without storing, sets flags)
 // ============================================================
@@ -651,16 +771,18 @@
 1:  gret
 
 // SHR by immediate
+// NOTE: Uses x11 instead of x8 for shift count, because x8 may hold values
+// being passed between gadgets (e.g., from save_xtmp_to_x8 for LEA operations)
 .gadget shr64_imm
-    ldr w8, [_ip]
-    ands w8, w8, 63
+    ldr w11, [_ip]
+    ands w11, w11, 63
     b.eq 1f
     // Save MSB for OF
     lsr x9, _xtmp, 63
     strb w9, [_cpu, CPU_of]
     // Shift by (count-1), get CF from LSB, then shift by 1 more
-    sub w8, w8, 1
-    lsr _xtmp, _xtmp, x8
+    sub w11, w11, 1
+    lsr _xtmp, _xtmp, x11
     and x9, _xtmp, 1
     lsr _xtmp, _xtmp, 1
     strb w9, [_cpu, CPU_cf]
@@ -699,12 +821,14 @@
 1:  gret
 
 // SHL by immediate
+// NOTE: Uses x11 instead of x8 for shift count, because x8 may hold values
+// being passed between gadgets (e.g., from save_xtmp_to_x8 for LEA operations)
 .gadget shl64_imm
-    ldr w8, [_ip]
-    ands w8, w8, 63
+    ldr w11, [_ip]
+    ands w11, w11, 63
     b.eq 1f
-    sub w8, w8, 1
-    lsl _xtmp, _xtmp, x8
+    sub w11, w11, 1
+    lsl _xtmp, _xtmp, x11
     lsr x9, _xtmp, 63
     lsl _xtmp, _xtmp, 1
     lsr x10, _xtmp, 63
@@ -740,13 +864,15 @@
 1:  gret
 
 // SAR by immediate
+// NOTE: Uses x11 instead of x8 for shift count, because x8 may hold values
+// being passed between gadgets (e.g., from save_xtmp_to_x8 for LEA operations)
 .gadget sar64_imm
-    ldr w8, [_ip]
-    ands w8, w8, 63
+    ldr w11, [_ip]
+    ands w11, w11, 63
     b.eq 1f
     strb wzr, [_cpu, CPU_of]
-    sub w8, w8, 1
-    asr _xtmp, _xtmp, x8
+    sub w11, w11, 1
+    asr _xtmp, _xtmp, x11
     and x9, _xtmp, 1
     asr _xtmp, _xtmp, 1
     strb w9, [_cpu, CPU_cf]
@@ -855,3 +981,321 @@
     .quad 0  // gs
 
 .popsection
+
+// ============================================================
+// IMUL - Signed multiply
+// ============================================================
+
+// Two-operand form: IMUL dst, src
+// Result goes into dst (truncated to register size)
+// _xtmp has src, multiply with dst register
+
+// IMUL 64-bit: _xtmp * reg64 -> reg64
+.macro imul64_to name, reg64, reg32
+.gadget imul64_\name
+    mul _xtmp, _xtmp, \reg64
+    mov \reg64, _xtmp
+    // Set flags (simplified - OF/CF set if high bits would overflow)
+    smulh x8, _xtmp, \reg64    // Get high 64 bits of signed multiply
+    asr x9, \reg64, 63         // Sign extend of low result
+    cmp x8, x9
+    cset w10, ne               // OF = CF = (high bits != sign extension)
+    strb w10, [_cpu, CPU_of]
+    strb w10, [_cpu, CPU_cf]
+    gret
+.endm
+
+imul64_to a, rax, eax
+imul64_to c, rcx, ecx
+imul64_to d, rdx, edx
+imul64_to b, rbx, ebx
+imul64_to sp, rsp, esp
+imul64_to bp, rbp, ebp
+imul64_to si, rsi, esi
+imul64_to di, rdi, edi
+
+// IMUL 32-bit: _tmp * reg32 -> reg32
+.macro imul32_to name, reg32
+.gadget imul32_\name
+    // 32-bit multiply: src * dst, result in dst
+    mul w8, _tmp, \reg32
+    mov \reg32, w8
+    // Zero-extend to 64-bit (mov already does this)
+    // Set flags
+    smull x9, _tmp, \reg32     // Signed 32x32 -> 64 result
+    asr x10, x9, 32            // High 32 bits
+    asr w11, w8, 31            // Sign extension of low 32 bits
+    sxtw x11, w11
+    cmp x10, x11
+    cset w10, ne
+    strb w10, [_cpu, CPU_of]
+    strb w10, [_cpu, CPU_cf]
+    gret
+.endm
+
+imul32_to a, eax
+imul32_to c, ecx
+imul32_to d, edx
+imul32_to b, ebx
+imul32_to sp, esp
+imul32_to bp, ebp
+imul32_to si, esi
+imul32_to di, edi
+
+// IMUL 64-bit for r8-r15: _xtmp * r[n] -> r[n]
+// r8-r15 are stored in cpu_state, not ARM64 registers
+.macro imul64_r8_r15 num, offset
+.gadget imul64_r\num
+    ldr x8, [_cpu, \offset]    // Load r[n] from cpu state
+    mul x8, _xtmp, x8          // result = _xtmp * r[n]
+    str x8, [_cpu, \offset]    // Store result back
+    // Set flags (OF/CF if high bits would overflow)
+    smulh x9, _xtmp, x8        // Get high 64 bits
+    asr x10, x8, 63            // Sign extend of low result
+    cmp x9, x10
+    cset w11, ne
+    strb w11, [_cpu, CPU_of]
+    strb w11, [_cpu, CPU_cf]
+    gret
+.endm
+imul64_r8_r15 8, CPU_r8
+imul64_r8_r15 9, CPU_r9
+imul64_r8_r15 10, CPU_r10
+imul64_r8_r15 11, CPU_r11
+imul64_r8_r15 12, CPU_r12
+imul64_r8_r15 13, CPU_r13
+imul64_r8_r15 14, CPU_r14
+imul64_r8_r15 15, CPU_r15
+
+// IMUL 32-bit for r8-r15: _tmp * r[n]d -> r[n]d (32-bit)
+.macro imul32_r8_r15 num, offset
+.gadget imul32_r\num
+    ldr w8, [_cpu, \offset]    // Load r[n]d (32-bit) from cpu state
+    mul w9, _tmp, w8           // result = _tmp * r[n]d (32-bit)
+    str w9, [_cpu, \offset]    // Store 32-bit result (zero-extends in memory)
+    // But we need to zero upper 32 bits explicitly
+    str xzr, [_cpu, \offset+4] // Zero upper 32 bits
+    // Actually, just store the full 64-bit zero-extended result
+    uxtw x9, w9                // Zero-extend to 64-bit
+    str x9, [_cpu, \offset]    // Store full 64-bit value
+    // Set flags
+    smull x10, _tmp, w8        // Signed 32x32 -> 64
+    asr x11, x10, 32           // High 32 bits
+    asr w12, w9, 31            // Sign of 32-bit result
+    sxtw x12, w12
+    cmp x11, x12
+    cset w13, ne
+    strb w13, [_cpu, CPU_of]
+    strb w13, [_cpu, CPU_cf]
+    gret
+.endm
+imul32_r8_r15 8, CPU_r8
+imul32_r8_r15 9, CPU_r9
+imul32_r8_r15 10, CPU_r10
+imul32_r8_r15 11, CPU_r11
+imul32_r8_r15 12, CPU_r12
+imul32_r8_r15 13, CPU_r13
+imul32_r8_r15 14, CPU_r14
+imul32_r8_r15 15, CPU_r15
+
+.pushsection_rodata
+.align 3
+.global NAME(imul64_r8_r15_gadgets)
+NAME(imul64_r8_r15_gadgets):
+    .quad NAME(gadget_imul64_r8)
+    .quad NAME(gadget_imul64_r9)
+    .quad NAME(gadget_imul64_r10)
+    .quad NAME(gadget_imul64_r11)
+    .quad NAME(gadget_imul64_r12)
+    .quad NAME(gadget_imul64_r13)
+    .quad NAME(gadget_imul64_r14)
+    .quad NAME(gadget_imul64_r15)
+.global NAME(imul32_r8_r15_gadgets)
+NAME(imul32_r8_r15_gadgets):
+    .quad NAME(gadget_imul32_r8)
+    .quad NAME(gadget_imul32_r9)
+    .quad NAME(gadget_imul32_r10)
+    .quad NAME(gadget_imul32_r11)
+    .quad NAME(gadget_imul32_r12)
+    .quad NAME(gadget_imul32_r13)
+    .quad NAME(gadget_imul32_r14)
+    .quad NAME(gadget_imul32_r15)
+.popsection
+
+// IMUL with immediate: _xtmp = src, immediate from [_ip]
+// Result stored to destination register (specified by next gadget)
+.gadget imul64_imm
+    ldr x8, [_ip]              // Load immediate
+    mul _xtmp, _xtmp, x8
+    gret 1
+
+.gadget imul32_imm
+    ldr w8, [_ip]              // Load 32-bit immediate
+    mul _tmp, _tmp, w8         // 32-bit multiply
+    // Result in _tmp, zero-extended by 32-bit mul
+    gret 1
+
+// IMUL with memory operand: load from _addr, multiply with _xtmp
+.gadget imul64_mem
+    ldr x8, [_addr]
+    mul _xtmp, _xtmp, x8
+    gret
+
+// ============================================================
+// XMM/SSE register operations
+// ============================================================
+
+// MOVQ xmm, r/m64 - Move 64-bit value to lower half of XMM, zero upper
+// _xtmp = source value (64-bit), [_ip] = XMM register index (0-15)
+.gadget movq_to_xmm
+    ldr x8, [_ip]              // XMM register index (0-15)
+    lsl x8, x8, 4              // Multiply by 16 (sizeof xmm_reg)
+    add x8, x8, CPU_xmm        // Add xmm array offset
+    add x8, _cpu, x8           // Final address in cpu struct
+    str _xtmp, [x8]            // Store value to xmm[n].qw[0]
+    str xzr, [x8, 8]           // Zero upper 64 bits (xmm[n].qw[1])
+    gret 1
+
+// MOVQ r/m64, xmm - Move lower 64 bits of XMM to destination
+// [_ip] = XMM register index, result in _xtmp
+.gadget movq_from_xmm
+    ldr x8, [_ip]              // XMM register index (0-15)
+    lsl x8, x8, 4              // Multiply by 16 (sizeof xmm_reg)
+    add x8, x8, CPU_xmm        // Add xmm array offset
+    add x8, _cpu, x8           // Final address in cpu struct
+    ldr _xtmp, [x8]            // Load xmm[n].qw[0]
+    gret 1
+
+// PUNPCKLQDQ xmm, xmm - Unpack and interleave low quadwords
+// This is used for duplicating a value across the XMM register
+// _xtmp contains source XMM index, [_ip] = destination XMM index
+.gadget punpcklqdq
+    // Load destination XMM index
+    ldr x8, [_ip]              // Destination XMM index
+    lsl x9, x8, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[dst]
+
+    // Source is in _xtmp (XMM index)
+    lsl x8, _xtmp, 4           // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[src]
+
+    // xmm[dst].qw[1] = xmm[src].qw[0]
+    ldr x10, [x8]              // Load src.qw[0]
+    str x10, [x9, 8]           // Store to dst.qw[1]
+    // xmm[dst].qw[0] stays unchanged
+    gret 1
+
+// MOVAPS/MOVUPS xmm, [mem] - Load 128-bit from memory to XMM
+// _addr = memory address (GUEST address)
+// [_ip] = orig_ip (for segfault handler), [_ip+8] = XMM register index
+.gadget movaps_load
+    // Save guest address for second half (read_prep modifies _addr to host addr)
+    str _addr, [_cpu, LOCAL_value_addr]
+
+    // Load first 64 bits from memory (low half)
+    read_prep 64, movaps_load1
+    ldr x8, [_addr]            // Load low 64 bits
+    str x8, [_cpu, LOCAL_value]     // Temporarily store low
+
+    // Load second 64 bits - use saved guest address + 8
+    ldr _addr, [_cpu, LOCAL_value_addr]
+    add _addr, _addr, 8        // Second half is at guest_addr + 8
+    read_prep 64, movaps_load2
+    ldr x9, [_addr]            // Load high 64 bits
+    ldr x8, [_cpu, LOCAL_value]     // Restore low
+
+    // Store to XMM register
+    ldr x10, [_ip, 8]          // XMM register index (after orig_ip)
+    lsl x10, x10, 4            // Multiply by 16
+    add x10, x10, CPU_xmm
+    add x10, _cpu, x10         // x10 = &xmm[n]
+    str x8, [x10]              // Store low 64 bits
+    str x9, [x10, 8]           // Store high 64 bits
+    gret 2
+    read_bullshit 64, movaps_load1
+    read_bullshit 64, movaps_load2
+
+// MOVAPS/MOVUPS [mem], xmm - Store 128-bit from XMM to memory
+// _addr = memory address (GUEST address)
+// [_ip] = orig_ip (for segfault handler), [_ip+8] = XMM register index
+.gadget movaps_store
+    // Save guest address for second half (write_prep modifies _addr to host addr)
+    str _addr, [_cpu, LOCAL_value_addr]
+
+    // Load from XMM register
+    ldr x10, [_ip, 8]          // XMM register index (after orig_ip)
+    lsl x10, x10, 4            // Multiply by 16
+    add x10, x10, CPU_xmm
+    add x10, _cpu, x10         // x10 = &xmm[n]
+    ldr x8, [x10]              // Load low 64 bits
+    ldr x9, [x10, 8]           // Load high 64 bits
+
+    // Store to memory (16 bytes)
+    str x8, [_cpu, LOCAL_value]     // Temporarily store low
+    str x9, [_cpu, LOCAL_value+8]   // Temporarily store high
+
+    // First 64-bit store (low half)
+    write_prep 64, movaps_store1
+    ldr x8, [_cpu, LOCAL_value]     // Restore low
+    str x8, [_addr]            // Store low 64 bits
+    write_done 64, movaps_store1
+
+    // Second 64-bit store (high half) - use saved guest address + 8
+    ldr _addr, [_cpu, LOCAL_value_addr]
+    add _addr, _addr, 8        // Second half is at guest_addr + 8
+    write_prep 64, movaps_store2
+    ldr x9, [_cpu, LOCAL_value+8]   // Restore high
+    str x9, [_addr]            // Store high 64 bits
+    write_done 64, movaps_store2
+    gret 2
+    write_bullshit 64, movaps_store1
+    write_bullshit 64, movaps_store2
+
+// MOVAPS xmm, xmm - Copy 128 bits between XMM registers
+// _xtmp = source XMM index, [_ip] = destination XMM index
+.gadget movaps_xmm_xmm
+    // Source XMM
+    lsl x8, _xtmp, 4           // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[src]
+    ldr x10, [x8]              // Load low
+    ldr x11, [x8, 8]           // Load high (note: x11 is ok here, save_c preserves it)
+
+    // Destination XMM
+    ldr x9, [_ip]              // Destination XMM index
+    lsl x9, x9, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[dst]
+    str x10, [x9]              // Store low
+    str x11, [x9, 8]           // Store high
+    gret 1
+
+// PXOR xmm, xmm - XOR 128 bits between XMM registers
+// Used commonly as PXOR xmm, xmm to zero a register
+// _xtmp = source XMM index, [_ip] = destination XMM index
+.gadget pxor_xmm
+    // Destination XMM
+    ldr x9, [_ip]              // Destination XMM index
+    lsl x9, x9, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[dst]
+    ldr x10, [x9]              // Load dst low
+    ldr x12, [x9, 8]           // Load dst high (note: use x12, not x11 which is TLB scratch)
+
+    // Source XMM
+    lsl x8, _xtmp, 4           // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[src]
+    ldr x13, [x8]              // Load src low
+    ldr x14, [x8, 8]           // Load src high
+
+    // XOR
+    eor x10, x10, x13
+    eor x12, x12, x14
+
+    // Store result
+    str x10, [x9]              // Store low
+    str x12, [x9, 8]           // Store high
+    gret 1

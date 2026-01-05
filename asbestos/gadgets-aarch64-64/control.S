@@ -1,6 +1,11 @@
 #include "gadgets.h"
 #include "emu/interrupt.h"
 
+// Ensure INT_SYSCALL64 is defined for assembly (may not get ISH_GUEST_64BIT from meson)
+#ifndef INT_SYSCALL64
+#define INT_SYSCALL64 0x100
+#endif
+
 // ============================================================
 // CALL - push return address and jump
 // ============================================================
@@ -36,9 +41,18 @@
     write_done 64, call_indir
     add x13, _cpu, LOCAL_ret_cache
     str _ip, [x13, x12, lsl 3]
+    // Debug: check for NULL call target
+    cbnz _xtmp, 1f
+    save_c
+    mov x0, _xtmp    // target (should be 0)
+    mov x1, rsp      // current rsp
+    bl NAME(helper_debug_null_call_indir)
+    restore_c
+1:
     // Jump to target (address in _xtmp)
     mov rip, _xtmp
-    b fiber_ret
+    mvn _tmp, wzr    // return -1 (re-translate)
+    b fiber_exit
     write_bullshit 64, call_indir
 
 // ============================================================
@@ -61,22 +75,34 @@
     cbz _ip, 2f
     // Check if we jumped to the correct CALL instruction
     ldr x9, [_ip, 16]
-    ldr x8, [_ip, 8]
     cmp _xtmp, x9
-    b.ne 1f
+    b.ne 2f                     // Address mismatch - no chaining
+    // Check if chaining is available
+    ldr x9, [_ip, 24]           // Chain target (negative = no chaining)
+    cmp x9, 0
+    b.le 2f                     // No chaining available
+    // Check if block pointer is valid (not -1/unpatched)
+    ldr x8, [_ip, 8]
+    cmp x8, 0
+    b.lt 2f                     // Block pointer not patched yet
     // Good, do return chaining
-    ldr _ip, [_ip, 24]
-    cmp _ip, 0
-    b.lt 1f
-    sub x8, _ip, FIBER_BLOCK_code
+    sub x8, x9, FIBER_BLOCK_code
     str x8, [_cpu, LOCAL_last_block]
+    mov _ip, x9
     gret
-1:
-    str x8, [_cpu, LOCAL_last_block]
-    // fallthrough
 2:
+    // No return chaining - do normal fiber_ret
+    // Debug: check for NULL return address
+    cbnz _xtmp, 3f
+    save_c
+    mov x0, _xtmp    // target (should be 0)
+    mov x1, rsp      // current rsp
+    bl NAME(helper_debug_null_ret)
+    restore_c
+3:
     mov rip, _xtmp
-    b fiber_ret
+    mvn _tmp, wzr    // return -1 (re-translate)
+    b fiber_exit
     read_bullshit 64, ret
 
 // ============================================================
@@ -84,8 +110,17 @@
 // ============================================================
 
 .gadget jmp_indir
+    // Debug: check for NULL jump
+    cbnz _xtmp, 1f
+    save_c
+    mov x0, _xtmp    // target (should be 0)
+    mov x1, rsp      // current rsp
+    bl NAME(helper_debug_null_jmp_indir)
+    restore_c
+1:
     mov rip, _xtmp
-    b fiber_ret
+    mvn _tmp, wzr    // return -1 (re-translate)
+    b fiber_exit
 
 .gadget jmp
     ldr _ip, [_ip]
@@ -113,14 +148,22 @@
 
 .gadget syscall
     // RCX gets return address (current RIP)
-    ldr x8, [_ip]               // Get current IP from gadget args
-    str x8, [_cpu, CPU_rcx]     // Store in RCX
+    ldr x9, [_ip]               // Get current IP from gadget args (use x9 to avoid clobber)
+    str x9, [_cpu, CPU_rcx]     // Store in RCX
     // R11 gets RFLAGS (we'll let the kernel handle this)
     ldr w8, [_cpu, CPU_eflags]
     str x8, [_cpu, CPU_r11]
+    // Debug: check if syscall IP is 0
+    cbnz x9, 1f
+    save_c
+    mov x0, x9       // target (should be 0)
+    mov x1, rsp      // current rsp
+    bl NAME(helper_debug_syscall_null)
+    restore_c
+1:
     // Trigger syscall interrupt
     mov _tmp, INT_SYSCALL64
-    mov rip, x8                 // Set RIP to syscall location
+    mov rip, x9                 // Set RIP to return address
     b fiber_exit
 
 // ============================================================
@@ -236,6 +279,13 @@
 // Helper gadget: save _xtmp to x8 for cmov operations
 .gadget save_xtmp_to_x8
     mov x8, _xtmp
+    gret
+
+// Swap _xtmp and x8
+.gadget swap_xtmp_x8
+    mov x9, _xtmp
+    mov _xtmp, x8
+    mov x8, x9
     gret
 
 // CMOVcc gadgets - conditional move
@@ -362,5 +412,30 @@
     mov x0, x10     // x8 value
     mov x1, x9      // original _xtmp value
     bl NAME(helper_debug_save_x8)
+    restore_c
+    gret
+
+// Debug gadget for CMP reg, [mem] - called after swap, before cmp
+// _xtmp = reg value, x8 = mem value
+.gadget debug_cmp
+    mov x9, _xtmp   // preserve
+    mov x10, x8
+    save_c
+    mov x0, x9      // reg value
+    mov x1, x10     // mem value
+    bl NAME(helper_debug_cmp)
+    restore_c
+    gret
+
+// Debug gadget for LEA r8-r15 - trace result after add64_x8
+// _xtmp = result, x8 = base value (r9 etc), need to load IP too
+.gadget debug_lea
+    mov x9, _xtmp   // x9 = result (preserve before save_c)
+    mov x10, x8     // x10 = x8 (base value)
+    save_c
+    mov x0, x9      // result
+    mov x1, x10     // x8 (base)
+    mov x2, _ip     // IP (_ip survives save_c)
+    bl NAME(helper_debug_lea)
     restore_c
     gret

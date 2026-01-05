@@ -18,6 +18,11 @@ enum arg64 {
     arg64_rsp, arg64_rbp, arg64_rsi, arg64_rdi,
     arg64_r8,  arg64_r9,  arg64_r10, arg64_r11,
     arg64_r12, arg64_r13, arg64_r14, arg64_r15,
+    // XMM registers
+    arg64_xmm0,  arg64_xmm1,  arg64_xmm2,  arg64_xmm3,
+    arg64_xmm4,  arg64_xmm5,  arg64_xmm6,  arg64_xmm7,
+    arg64_xmm8,  arg64_xmm9,  arg64_xmm10, arg64_xmm11,
+    arg64_xmm12, arg64_xmm13, arg64_xmm14, arg64_xmm15,
     // Other operand types
     arg64_imm,      // Immediate value
     arg64_mem,      // Memory operand

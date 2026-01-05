@@ -55,52 +55,53 @@
     gret 1
 
 // Address calculation gadgets for r8-r15 (stored in CPU struct, not ARM64 registers)
+// IMPORTANT: Use x10 as scratch, not x8! x8 may hold saved values from earlier gadgets.
 .gadget addr_r8
     ldr _addr, [_ip]
-    ldr x8, [_cpu, CPU_r8]
-    add _addr, _addr, x8
+    ldr x10, [_cpu, CPU_r8]
+    add _addr, _addr, x10
     gret 1
 
 .gadget addr_r9
     ldr _addr, [_ip]
-    ldr x8, [_cpu, CPU_r9]
-    add _addr, _addr, x8
+    ldr x10, [_cpu, CPU_r9]
+    add _addr, _addr, x10
     gret 1
 
 .gadget addr_r10
     ldr _addr, [_ip]
-    ldr x8, [_cpu, CPU_r10]
-    add _addr, _addr, x8
+    ldr x10, [_cpu, CPU_r10]
+    add _addr, _addr, x10
     gret 1
 
 .gadget addr_r11
     ldr _addr, [_ip]
-    ldr x8, [_cpu, CPU_r11]
-    add _addr, _addr, x8
+    ldr x10, [_cpu, CPU_r11]
+    add _addr, _addr, x10
     gret 1
 
 .gadget addr_r12
     ldr _addr, [_ip]
-    ldr x8, [_cpu, CPU_r12]
-    add _addr, _addr, x8
+    ldr x10, [_cpu, CPU_r12]
+    add _addr, _addr, x10
     gret 1
 
 .gadget addr_r13
     ldr _addr, [_ip]
-    ldr x8, [_cpu, CPU_r13]
-    add _addr, _addr, x8
+    ldr x10, [_cpu, CPU_r13]
+    add _addr, _addr, x10
     gret 1
 
 .gadget addr_r14
     ldr _addr, [_ip]
-    ldr x8, [_cpu, CPU_r14]
-    add _addr, _addr, x8
+    ldr x10, [_cpu, CPU_r14]
+    add _addr, _addr, x10
     gret 1
 
 .gadget addr_r15
     ldr _addr, [_ip]
-    ldr x8, [_cpu, CPU_r15]
-    add _addr, _addr, x8
+    ldr x10, [_cpu, CPU_r15]
+    add _addr, _addr, x10
     gret 1
 
 // Address array includes REG_LIST plus 'none'
@@ -136,9 +137,55 @@ NAME(si_gadgets):
 .endr
 .popsection
 
+// Scaled index gadgets for r8-r15 (stored in memory, not ARM64 registers)
+.macro si_r8_r15 num, offset
+    .irp times, 1,2,4,8
+        .gadget si_r\num\()_\times
+            ldr x10, [_cpu, \offset]
+            .ifc \times,1
+                add _addr, _addr, x10
+            .else N .ifc \times,2
+                add _addr, _addr, x10, lsl 1
+            .else N .ifc \times,4
+                add _addr, _addr, x10, lsl 2
+            .else N .ifc \times,8
+                add _addr, _addr, x10, lsl 3
+            .endif N .endif N .endif N .endif
+            gret
+    .endr
+.endm
+si_r8_r15 8, CPU_r8
+si_r8_r15 9, CPU_r9
+si_r8_r15 10, CPU_r10
+si_r8_r15 11, CPU_r11
+si_r8_r15 12, CPU_r12
+si_r8_r15 13, CPU_r13
+si_r8_r15 14, CPU_r14
+si_r8_r15 15, CPU_r15
+.purgem si_r8_r15
+
+.pushsection_rodata
+.align 3
+.global NAME(si_r8_r15_gadgets)
+NAME(si_r8_r15_gadgets):
+.irp reg, 8,9,10,11,12,13,14,15
+    .irp times, 1,2,4,8
+        .quad NAME(gadget_si_r\reg\()_\times)
+    .endr
+.endr
+.popsection
+
 // FS segment override (for TLS)
 .gadget seg_fs
     ldr x8, [_cpu, CPU_fs_base]
+    // Debug: print what we're adding
+    save_c
+    mov x0, _addr   // addr before adding FS base
+    mov x1, x8      // fs_base value
+    mov x2, _cpu    // cpu pointer (for reference)
+    bl NAME(helper_debug_seg_fs)
+    restore_c
+    ldr x8, [_cpu, CPU_fs_base]  // Reload after save_c
     add _addr, _addr, x8
     gret
 
@@ -153,6 +200,13 @@ NAME(si_gadgets):
 
 .global handle_\type\()_miss
 handle_\type\()_miss:
+    // Debug: trace TLB miss before handling
+    save_c
+    mov x0, _ip         // current _ip
+    ldr x1, [_ip]       // value at [_ip]
+    mov x2, _addr       // address being accessed
+    bl NAME(helper_debug_tlb_miss)
+    restore_c
     save_c
     // _tlb points to tlb->entries, get base
     sub x0, _tlb, TLB_entries
@@ -179,6 +233,13 @@ segfault_\type:
         mov w0, 1
     .endif
     strb w0, [_cpu, CPU_segfault_was_write]
+    // Debug: save _ip and what's at [_ip] before fiber_exit
+    save_c
+    mov x0, _ip         // current _ip
+    ldr x1, [_ip]       // value at [_ip]
+    mov x2, _addr       // segfault address
+    bl NAME(helper_debug_segfault)
+    restore_c
     ldr x0, [_ip]
     mov rip, x0
     sub x8, rsp, 8
