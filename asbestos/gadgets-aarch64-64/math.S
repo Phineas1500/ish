@@ -804,6 +804,37 @@ NAME(xor32_r8_r15_gadgets):
     mov rdx, x11                // Store remainder
     gret
 
+// MUL32: Unsigned multiply EAX * _xtmp -> EDX:EAX
+.gadget mul32
+    // Zero-extend both operands to 64-bit and multiply
+    and x8, rax, 0xffffffff     // EAX zero-extended
+    and x9, _xtmp, 0xffffffff   // operand zero-extended
+    mul x10, x8, x9             // 64-bit result
+    // Split into EDX:EAX
+    mov eax, w10                // Low 32 bits -> EAX
+    lsr x10, x10, 32
+    mov edx, w10                // High 32 bits -> EDX
+    // Set CF and OF if high half is non-zero
+    cmp edx, 0
+    cset w8, ne
+    strb w8, [_cpu, CPU_cf]
+    strb w8, [_cpu, CPU_of]
+    gret
+
+// MUL64: Unsigned multiply RAX * _xtmp -> RDX:RAX
+.gadget mul64
+    // Use mul for low 64 bits, umulh for high 64 bits
+    mul x10, rax, _xtmp         // Low 64 bits
+    umulh x11, rax, _xtmp       // High 64 bits
+    mov rax, x10                // Low -> RAX
+    mov rdx, x11                // High -> RDX
+    // Set CF and OF if high half (RDX) is non-zero
+    cmp rdx, 0
+    cset w8, ne
+    strb w8, [_cpu, CPU_cf]
+    strb w8, [_cpu, CPU_of]
+    gret
+
 // ============================================================
 // Shift gadgets
 // ============================================================

@@ -183,6 +183,10 @@ extern void gadget_div64(void);
 extern void gadget_idiv32(void);
 extern void gadget_idiv64(void);
 
+// MUL gadgets (unsigned multiply: RDX:RAX = RAX * r/m)
+extern void gadget_mul32(void);
+extern void gadget_mul64(void);
+
 // IMUL gadgets
 extern void gadget_imul64_a(void);
 extern void gadget_imul64_c(void);
@@ -3437,6 +3441,49 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     GEN(gadget_idiv32);
                 } else {
                     GEN(gadget_idiv64);
+                }
+            } else {
+                g(interrupt);
+                GEN(INT_UNDEFINED);
+                GEN(state->orig_ip);
+                GEN(state->orig_ip);
+                return 0;
+            }
+            break;
+
+        case ZYDIS_MNEMONIC_MUL:
+            // Unsigned multiply: RDX:RAX = RAX * r/m
+            if (inst.operand_count >= 1) {
+                // Load multiplier into _xtmp
+                if (is_gpr(inst.operands[0].type)) {
+                    gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
+                    if (load) GEN(load);
+                } else if (is_mem(inst.operands[0].type)) {
+                    if (!gen_addr(state, &inst.operands[0], &inst)) {
+                        g(interrupt);
+                        GEN(INT_UNDEFINED);
+                        GEN(state->orig_ip);
+                        GEN(state->orig_ip);
+                        return 0;
+                    }
+                    if (inst.operands[0].size == size64_32) {
+                        GEN(load32_gadgets[9]); // load32_mem
+                    } else {
+                        GEN(load64_gadgets[9]); // load64_mem
+                    }
+                    GEN(state->orig_ip);
+                } else {
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
+                }
+                // Perform unsigned multiplication (RAX * _xtmp -> RDX:RAX)
+                if (inst.operands[0].size == size64_32) {
+                    GEN(gadget_mul32);
+                } else {
+                    GEN(gadget_mul64);
                 }
             } else {
                 g(interrupt);
