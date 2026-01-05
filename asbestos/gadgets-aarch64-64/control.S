@@ -172,64 +172,66 @@
 
 #define COND_LIST o,c,z,cz,s,p,sxo,sxoz
 
+// NOTE: These macros use w9/x9 as scratch to avoid clobbering x8 which is used
+// by CMOV gadgets to hold the destination value.
 .macro check_res_or_flag resflag, flag, target, fallthrough
-    ldr w8, [_cpu, CPU_flags_res]
-    tbnz w8, \resflag, 2f
-    ldr w8, [_cpu, CPU_eflags]
-    tbnz w8, \flag, \target
+    ldr w9, [_cpu, CPU_flags_res]
+    tbnz w9, \resflag, 2f
+    ldr w9, [_cpu, CPU_eflags]
+    tbnz w9, \flag, \target
     b \fallthrough
 2:
 .endm
 
 .macro do_jump cond, target
     .ifc \cond,o
-        ldrb w8, [_cpu, CPU_of]
-        cbnz w8, \target
+        ldrb w9, [_cpu, CPU_of]
+        cbnz w9, \target
     .else N .ifc \cond,c
-        ldrb w8, [_cpu, CPU_cf]
-        cbnz w8, \target
+        ldrb w9, [_cpu, CPU_cf]
+        cbnz w9, \target
     .else N .ifc \cond,z
         check_res_or_flag 1, 6, \target, 3f
-        ldr x8, [_cpu, CPU_res]
-        cbz x8, \target
+        ldr x9, [_cpu, CPU_res]
+        cbz x9, \target
     3:
     .else N .ifc \cond,cz
-        ldrb w8, [_cpu, CPU_cf]
-        cbnz w8, \target
+        ldrb w9, [_cpu, CPU_cf]
+        cbnz w9, \target
         check_res_or_flag 1, 6, \target, 3f
-        ldr x8, [_cpu, CPU_res]
-        cbz x8, \target
+        ldr x9, [_cpu, CPU_res]
+        cbz x9, \target
     3:
     .else N .ifc \cond,s
         check_res_or_flag 2, 7, \target, 3f
-        ldr x8, [_cpu, CPU_res]
-        cmp x8, 0
+        ldr x9, [_cpu, CPU_res]
+        cmp x9, 0
         b.lt \target
     3:
     .else N .ifc \cond,p
         check_res_or_flag 0, 2, \target, 3f
-        ldr x8, [_cpu, CPU_res]
-        uxtb w8, w8
-        fmov s0, w8
+        ldr x9, [_cpu, CPU_res]
+        uxtb w9, w9
+        fmov s0, w9
         cnt v0.8b, v0.8b
         uaddlv h0, v0.8b
-        fmov w8, s0
-        tbz w8, 0, \target
+        fmov w9, s0
+        tbz w9, 0, \target
     3:
     .else N .ifc \cond,sxo
-        ldr x8, [_cpu, CPU_res]
-        cmp x8, 0
-        cset w8, lt
-        ldrb w9, [_cpu, CPU_of]
-        cmp w8, w9
+        ldr x9, [_cpu, CPU_res]
+        cmp x9, 0
+        cset w9, lt
+        ldrb w10, [_cpu, CPU_of]
+        cmp w9, w10
         b.ne \target
     .else N .ifc \cond,sxoz
-        ldr x8, [_cpu, CPU_res]
-        cmp x8, 0
+        ldr x9, [_cpu, CPU_res]
+        cmp x9, 0
         b.eq \target
-        cset w8, lt
-        ldrb w9, [_cpu, CPU_of]
-        cmp w8, w9
+        cset w9, lt
+        ldrb w10, [_cpu, CPU_of]
+        cmp w9, w10
         b.ne \target
     .endif N .endif N .endif N .endif N .endif N .endif N .endif N .endif
 .endm
@@ -281,6 +283,11 @@
     mov x8, _xtmp
     gret
 
+// Helper gadget: restore _xtmp from x8
+.gadget restore_xtmp_from_x8
+    mov _xtmp, x8
+    gret
+
 // Swap _xtmp and x8
 .gadget swap_xtmp_x8
     mov x9, _xtmp
@@ -310,6 +317,39 @@
 
 .gadget_list cmov, COND_LIST
 .gadget_list cmovn, COND_LIST
+
+// Debug wrapper for cmovn_z - just print debug info then do normal cmovn_z
+.gadget debug_cmovn_z
+    // Push our values FIRST, then call save_c
+    // save_c uses sp, -0x60 so we go beyond that
+    stp _xtmp, x8, [sp, -0x70]!         // sp -= 0x70, [sp] = _xtmp, [sp+8] = x8
+    save_c                               // sp -= 0x60 more
+    // Now sp is at original - 0xd0
+    // Our values are at sp + 0x60 and sp + 0x68
+    ldr x0, [sp, 0x60]                  // arg0 = source (_xtmp)
+    ldr x1, [sp, 0x68]                  // arg1 = destination (x8)
+    ldr x2, [_cpu, CPU_res]             // arg2 = cpu_res
+    ldr w3, [_cpu, CPU_flags_res]       // arg3 = flags_res
+    bl NAME(helper_debug_cmovne)
+    restore_c                            // sp += 0x60
+    // sp is now at original - 0x70, our values are at [sp]
+    ldp _xtmp, x8, [sp], 0x70           // restore and sp += 0x70
+    // Now do the actual cmovn_z logic (copied from the macro expansion)
+    // Check ZF: bit 1 of flags_res means ZF comes from result
+    ldr w9, [_cpu, CPU_flags_res]
+    tbnz w9, 1, 2f
+    // Check ZF in eflags (bit 6)
+    ldr w9, [_cpu, CPU_eflags]
+    tbnz w9, 6, 1f
+    b 3f                                // ZF=0, keep source
+2:
+    ldr x9, [_cpu, CPU_res]
+    cbz x9, 1f                          // result==0 means ZF=1
+    b 3f                                // result!=0, ZF=0, keep source
+1:  // ZF=1, keep destination
+    mov _xtmp, x8
+3:  // ZF=0 or after setting _xtmp=x8
+    gret
 
 // ============================================================
 // Flags operations
@@ -348,16 +388,16 @@
     ldr w8, [_cpu, CPU_eflags]
     bic w8, w8, DF_FLAG
     str w8, [_cpu, CPU_eflags]
-    mov x8, 1
-    str x8, [_cpu, CPU_df_offset]
+    mov w8, 1
+    str w8, [_cpu, CPU_df_offset]  // Use 32-bit store - df_offset is dword_t
     gret
 
 .gadget std
     ldr w8, [_cpu, CPU_eflags]
     orr w8, w8, DF_FLAG
     str w8, [_cpu, CPU_eflags]
-    mov x8, -1
-    str x8, [_cpu, CPU_df_offset]
+    mov w8, -1  // -1 as 32-bit (0xffffffff)
+    str w8, [_cpu, CPU_df_offset]  // Use 32-bit store - df_offset is dword_t
     gret
 
 // Debug gadget to trace stores

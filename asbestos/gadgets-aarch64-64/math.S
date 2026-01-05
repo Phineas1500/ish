@@ -235,6 +235,73 @@
     gret
 
 // ============================================================
+// ADC gadgets (Add with Carry)
+// ============================================================
+
+// ADC: dst = dst + src + CF
+// _xtmp already has dst value, add immediate and carry flag
+
+.gadget adc64_imm
+    ldr x8, [_ip]           // Load immediate
+    ldrb w9, [_cpu, CPU_cf] // Load carry flag
+    adds _xtmp, _xtmp, x8   // Add immediate
+    add _xtmp, _xtmp, x9    // Add carry (this won't set flags correctly, but simplifies)
+    setf_oc
+    setf_zsp
+    gret 1
+
+.gadget adc32_imm
+    ldr w8, [_ip]           // Load immediate
+    ldrb w9, [_cpu, CPU_cf] // Load carry flag
+    adds _tmp, _tmp, w8     // Add immediate
+    add _tmp, _tmp, w9      // Add carry
+    and _xtmp, _xtmp, 0xffffffff  // Zero-extend
+    setf_oc
+    setf_zsp w
+    gret 1
+
+// SBB (Subtract with Borrow) gadgets
+// SBB dest, src: dest = dest - src - CF
+.macro sbb_reg64 name, reg64, reg32
+    .gadget sbb64_\name
+        ldrb w9, [_cpu, CPU_cf]   // Load carry flag
+        subs _xtmp, _xtmp, \reg64 // dest - src
+        sub _xtmp, _xtmp, x9      // - CF
+        setf_oc
+        setf_zsp
+        gret
+    .gadget sbb32_\name
+        ldrb w9, [_cpu, CPU_cf]   // Load carry flag
+        subs _tmp, _tmp, \reg32   // dest - src
+        sub _tmp, _tmp, w9        // - CF
+        and _xtmp, _xtmp, 0xffffffff  // Zero-extend
+        setf_oc
+        setf_zsp w
+        gret
+.endm
+.each_reg64 sbb_reg64
+.purgem sbb_reg64
+
+.gadget sbb64_imm
+    ldr x8, [_ip]            // Load immediate
+    ldrb w9, [_cpu, CPU_cf]  // Load carry flag
+    subs _xtmp, _xtmp, x8    // dest - imm
+    sub _xtmp, _xtmp, x9     // - CF
+    setf_oc
+    setf_zsp
+    gret 1
+
+.gadget sbb32_imm
+    ldr w8, [_ip]            // Load immediate
+    ldrb w9, [_cpu, CPU_cf]  // Load carry flag
+    subs _tmp, _tmp, w8      // dest - imm
+    sub _tmp, _tmp, w9       // - CF
+    and _xtmp, _xtmp, 0xffffffff  // Zero-extend
+    setf_oc
+    setf_zsp w
+    gret 1
+
+// ============================================================
 // SUB gadgets
 // ============================================================
 

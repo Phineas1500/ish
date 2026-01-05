@@ -1,7 +1,7 @@
 #include "gadgets.h"
 
 // String operations for 64-bit
-// df_offset stores 1 for forward, -1 for backward
+// df_offset stores 1 for forward, -1 for backward (dword_t = 32-bit signed)
 
 // ============================================================
 // REP STOSQ - Store RAX to [RDI], repeat RCX times
@@ -16,7 +16,8 @@
     str rax, [_addr]
     write_done 64, rep_stosq
     // Reload x11 - clobbered by write_prep!
-    ldr x11, [_cpu, CPU_df_offset]
+    // Use ldrsw to sign-extend 32-bit df_offset to 64-bit
+    ldrsw x11, [_cpu, CPU_df_offset]
     lsl x11, x11, 3              // x11 = df_offset * 8
     add rdi, rdi, x11
     sub rcx, rcx, 1
@@ -36,7 +37,7 @@
     str eax, [_addr]
     write_done 32, rep_stosd
     // Reload x11 - clobbered by write_prep!
-    ldr x11, [_cpu, CPU_df_offset]
+    ldrsw x11, [_cpu, CPU_df_offset]
     lsl x11, x11, 2              // x11 = df_offset * 4
     add rdi, rdi, x11
     sub rcx, rcx, 1
@@ -56,7 +57,7 @@
     strb eax, [_addr]
     write_done 8, rep_stosb
     // Reload x11 - clobbered by write_prep!
-    ldr x11, [_cpu, CPU_df_offset]  // x11 = 1 or -1
+    ldrsw x11, [_cpu, CPU_df_offset]  // x11 = 1 or -1 (sign-extended)
     add rdi, rdi, x11
     sub rcx, rcx, 1
     cbnz rcx, .Lrep_stosb_loop
@@ -80,7 +81,7 @@
     str _xtmp, [_addr]
     write_done 64, rep_movsq_w
     // Reload x11 - clobbered by read_prep/write_prep!
-    ldr x11, [_cpu, CPU_df_offset]
+    ldrsw x11, [_cpu, CPU_df_offset]
     lsl x11, x11, 3              // x11 = df_offset * 8
     add rsi, rsi, x11
     add rdi, rdi, x11
@@ -105,7 +106,7 @@
     strb _tmp, [_addr]
     write_done 8, rep_movsb_w
     // Reload x11 - clobbered by read_prep/write_prep!
-    ldr x11, [_cpu, CPU_df_offset]  // x11 = 1 or -1
+    ldrsw x11, [_cpu, CPU_df_offset]  // x11 = 1 or -1 (sign-extended)
     add rsi, rsi, x11
     add rdi, rdi, x11
     sub rcx, rcx, 1

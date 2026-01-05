@@ -20,6 +20,108 @@
     ldr rdx, [_cpu, CPU_rdx]
     gret
 
+// CMPXCHG [mem], reg - Compare and exchange
+// _addr = memory address to compare/exchange
+// _xtmp = register value to store if comparison succeeds
+// Compares [_addr] with RAX/EAX, if equal stores _xtmp to [_addr], else loads [_addr] to RAX
+// Sets ZF based on comparison result
+
+// 64-bit CMPXCHG
+// Note: _addr contains guest address, we save it before read_prep modifies it
+.gadget cmpxchg64_mem
+    str _addr, [_cpu, LOCAL_value_addr]  // Save guest address
+    read_prep 64, cmpxchg64_read
+    ldr x8, [_addr]           // Load memory value from host address
+    cmp x8, rax               // Compare with RAX
+    b.ne 1f
+    // Equal: store _xtmp to memory, set ZF
+    ldr _addr, [_cpu, LOCAL_value_addr]  // Restore guest address for write_prep
+    write_prep 64, cmpxchg64_write
+    str _xtmp, [_addr]
+    write_done 64, cmpxchg64_write
+    // Set ZF=1 (result is 0 for flags)
+    str xzr, [_cpu, CPU_res]
+    ldr w9, [_cpu, CPU_flags_res]
+    orr w9, w9, ZF_RES
+    str w9, [_cpu, CPU_flags_res]
+    gret 1
+1:  // Not equal: load memory to RAX, clear ZF
+    mov rax, x8               // RAX = memory value
+    // Set ZF=0 (result is non-zero for flags)
+    mov x9, 1
+    str x9, [_cpu, CPU_res]
+    ldr w9, [_cpu, CPU_flags_res]
+    orr w9, w9, ZF_RES
+    str w9, [_cpu, CPU_flags_res]
+    gret 1
+    read_bullshit 64, cmpxchg64_read
+    write_bullshit 64, cmpxchg64_write
+
+// 32-bit CMPXCHG
+// Note: _addr contains guest address, we save it before read_prep modifies it
+.gadget cmpxchg32_mem
+    str _addr, [_cpu, LOCAL_value_addr]  // Save guest address
+    read_prep 32, cmpxchg32_read
+    ldr w8, [_addr]           // Load memory value (32-bit) from host address
+    cmp w8, eax               // Compare with EAX
+    b.ne 1f
+    // Equal: store _tmp to memory, set ZF
+    ldr _addr, [_cpu, LOCAL_value_addr]  // Restore guest address for write_prep
+    write_prep 32, cmpxchg32_write
+    str _tmp, [_addr]
+    write_done 32, cmpxchg32_write
+    // Set ZF=1 (result is 0 for flags)
+    str xzr, [_cpu, CPU_res]
+    ldr w9, [_cpu, CPU_flags_res]
+    orr w9, w9, ZF_RES
+    str w9, [_cpu, CPU_flags_res]
+    gret 1
+1:  // Not equal: load memory to EAX, clear ZF
+    mov eax, w8               // EAX = memory value (zero-extends)
+    // Set ZF=0 (result is non-zero for flags)
+    mov x9, 1
+    str x9, [_cpu, CPU_res]
+    ldr w9, [_cpu, CPU_flags_res]
+    orr w9, w9, ZF_RES
+    str w9, [_cpu, CPU_flags_res]
+    gret 1
+    read_bullshit 32, cmpxchg32_read
+    write_bullshit 32, cmpxchg32_write
+
+// XCHG reg, [mem] - Exchange register with memory
+// _addr = memory address
+// _xtmp = register value to swap
+
+// 64-bit XCHG
+.gadget xchg64_mem
+    str _addr, [_cpu, LOCAL_value_addr]  // Save guest address
+    read_prep 64, xchg64_read
+    ldr x8, [_addr]           // Load memory value
+    str x8, [_cpu, LOCAL_value]  // Save memory value temporarily
+    ldr _addr, [_cpu, LOCAL_value_addr]  // Restore guest address for write_prep
+    write_prep 64, xchg64_write
+    str _xtmp, [_addr]        // Store register value to memory
+    write_done 64, xchg64_write
+    ldr _xtmp, [_cpu, LOCAL_value]  // Load old memory value into _xtmp (for storing to reg)
+    gret 1
+    read_bullshit 64, xchg64_read
+    write_bullshit 64, xchg64_write
+
+// 32-bit XCHG
+.gadget xchg32_mem
+    str _addr, [_cpu, LOCAL_value_addr]  // Save guest address
+    read_prep 32, xchg32_read
+    ldr w8, [_addr]           // Load memory value (32-bit)
+    str w8, [_cpu, LOCAL_value]  // Save memory value temporarily
+    ldr _addr, [_cpu, LOCAL_value_addr]  // Restore guest address for write_prep
+    write_prep 32, xchg32_write
+    str _tmp, [_addr]         // Store register value to memory (32-bit)
+    write_done 32, xchg32_write
+    ldr _tmp, [_cpu, LOCAL_value]  // Load old memory value into _tmp (for storing to reg)
+    gret 1
+    read_bullshit 32, xchg32_read
+    write_bullshit 32, xchg32_write
+
 // Helper gadgets
 .gadget helper_0
     save_c

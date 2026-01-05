@@ -104,6 +104,16 @@
     add _addr, _addr, x10
     gret 1
 
+// Save/restore guest address for read-modify-write operations
+// (load modifies _addr to host address, need to restore for store)
+.gadget save_addr
+    str _addr, [_cpu, LOCAL_value_addr]
+    gret
+
+.gadget restore_addr
+    ldr _addr, [_cpu, LOCAL_value_addr]
+    gret
+
 // Address array includes REG_LIST plus 'none'
 .gadget_list addr, REG_LIST,none
 

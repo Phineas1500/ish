@@ -96,18 +96,17 @@ void helper_debug_seg_fs(uint64_t addr_before, uint64_t fs_base, void *cpu) {
 }
 
 // Debug: trace CMP reg, [mem] - called after swap, before actual compare
-// reg_value = register value, mem_value = value loaded from memory
-void helper_debug_cmp(uint64_t reg_value, uint64_t mem_value) {
+// Now: mem_value = _xtmp, reg_value = x8 (after swap)
+void helper_debug_cmp(uint64_t mem_value, uint64_t reg_value) {
+    // Disabled for now
+    (void)mem_value; (void)reg_value;
+}
+
+// Debug: trace MOV to r12
+void helper_debug_mov_r12(uint64_t value) {
     static int count = 0;
-    if (count < 30) {
-        count++;
-        fprintf(stderr, "DEBUG_CMP[%d]: reg=0x%llx (%c) mem=0x%llx (%c)\n",
-                count,
-                (unsigned long long)reg_value,
-                (reg_value >= 0x20 && reg_value < 0x7f) ? (char)reg_value : '?',
-                (unsigned long long)mem_value,
-                (mem_value >= 0x20 && mem_value < 0x7f) ? (char)mem_value : '?');
-    }
+    count++;
+    fprintf(stderr, "MOV_R12[%d]: value=0x%llx\n", count, (unsigned long long)value);
 }
 
 // Debug: detect jump/return to address 0
@@ -196,12 +195,60 @@ void helper_debug_tlb_miss(uint64_t ip_ptr, uint64_t ip_contents, uint64_t acces
     (void)ip_ptr; (void)ip_contents; (void)access_addr;
 }
 
-// Debug: REP STOSQ - trace RDI/RCX/df_offset at start (disabled)
-void helper_debug_rep_stosq(uint64_t rdi, uint64_t rcx, uint64_t df_offset_x8) {
-    (void)rdi; (void)rcx; (void)df_offset_x8;
+// Debug: trace stores to r12
+void helper_debug_store_r12(uint64_t new_value, uint64_t rbx_value, uint64_t r15_value) {
+    static int count = 0;
+    count++;
+    fprintf(stderr, "STORE_R12[%d]: new=0x%llx rbx=0x%llx r15=0x%llx\n",
+            count, (unsigned long long)new_value, (unsigned long long)rbx_value,
+            (unsigned long long)r15_value);
+}
+
+// Debug: trace CALL arguments - called before CALL
+void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret_addr) {
+    static int count = 0;
+    count++;
+    // Only show calls near the strchr area (target around 0x59103 offset)
+    uint64_t offset = target & 0xFFFFF;  // low bits
+    if (offset >= 0x59000 && offset <= 0x59200) {
+        fprintf(stderr, "CALL[%d]: target=0x%llx rdi=0x%llx rsi=0x%llx ret=0x%llx\n",
+                count, (unsigned long long)target, (unsigned long long)rdi,
+                (unsigned long long)rsi, (unsigned long long)ret_addr);
+    }
+}
+
+// Debug: trace RDI value when storing to r12=0
+#ifdef ISH_GUEST_64BIT
+void helper_debug_rbx_rdi(struct cpu_state *cpu) {
+    fprintf(stderr, "DEBUG: rbx=0x%llx rdi=0x%llx rsi=0x%llx\n",
+            (unsigned long long)cpu->rbx, (unsigned long long)cpu->rdi,
+            (unsigned long long)cpu->rsi);
+}
+#endif
+
+// Debug: REP STOSQ - trace RDI/RCX/df_offset at start
+void helper_debug_rep_stosq(uint64_t rdi, uint64_t rcx, int64_t df_offset) {
+    static int count = 0;
+    if (count < 5) {
+        count++;
+        fprintf(stderr, "DEBUG_REP_STOSQ[%d]: rdi=0x%llx rcx=0x%llx df_offset=0x%llx (%lld)\n",
+                count, (unsigned long long)rdi, (unsigned long long)rcx,
+                (unsigned long long)df_offset, (long long)df_offset);
+    }
 }
 
 // Debug: REP STOSQ iteration - trace _addr at each iteration (disabled)
 void helper_debug_stosq_iter(uint64_t addr, uint64_t remaining) {
     (void)addr; (void)remaining;
+}
+
+// Debug: CMOVNE - trace before cmov decision
+void helper_debug_cmovne(uint64_t xtmp_src, uint64_t x8_dst, uint64_t cpu_res, uint64_t flags_res) {
+    static int count = 0;
+    if (count < 30) {
+        count++;
+        fprintf(stderr, "DEBUG_CMOVNE[%d]: src=0x%llx dst=0x%llx res=0x%llx flags_res=0x%llx\n",
+                count, (unsigned long long)xtmp_src, (unsigned long long)x8_dst,
+                (unsigned long long)cpu_res, (unsigned long long)flags_res);
+    }
 }

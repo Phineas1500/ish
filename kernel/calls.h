@@ -256,7 +256,8 @@ int_t sys_syslog(int_t type, addr_t buf_addr, int_t len);
 int_t sys_ipc(uint_t call, int_t first, int_t second, int_t third, addr_t ptr, int_t fifth);
 
 #ifdef ISH_GUEST_64BIT
-typedef int (*syscall_t)(qword_t, qword_t, qword_t, qword_t, qword_t, qword_t);
+// For 64-bit mode, syscalls like brk/mmap return 64-bit addresses
+typedef int64_t (*syscall_t)(qword_t, qword_t, qword_t, qword_t, qword_t, qword_t);
 #else
 typedef int (*syscall_t)(dword_t, dword_t, dword_t, dword_t, dword_t, dword_t);
 #endif
