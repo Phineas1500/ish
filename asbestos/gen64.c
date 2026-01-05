@@ -1545,6 +1545,39 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                 if (store) GEN(store);
             } else if (inst.operand_count >= 2 &&
                        is_mem(inst.operands[0].type) &&
+                       inst.operands[1].type == arg64_imm) {
+                // SUB [mem], imm - read-modify-write
+                bool is64 = (inst.operands[0].size == size64_64);
+                if (!gen_addr(state, &inst.operands[0], &inst)) {
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
+                }
+                // Save address, load, subtract, restore address, store
+                GEN(gadget_save_addr);
+                if (is64) {
+                    GEN(load64_gadgets[9]); // load64_mem
+                } else {
+                    GEN(load32_gadgets[9]); // load32_mem
+                }
+                GEN(state->orig_ip);
+                if (is64) {
+                    GEN(gadget_sub64_imm);
+                } else {
+                    GEN(gadget_sub32_imm);
+                }
+                GEN(inst.operands[1].imm);
+                GEN(gadget_restore_addr);
+                if (is64) {
+                    GEN(store64_gadgets[9]); // store64_mem
+                } else {
+                    GEN(store32_gadgets[9]); // store32_mem
+                }
+                GEN(state->orig_ip);
+            } else if (inst.operand_count >= 2 &&
+                       is_mem(inst.operands[0].type) &&
                        inst.operands[1].type >= arg64_rax &&
                        inst.operands[1].type <= arg64_rdi) {
                 // SUB [mem], reg (rax-rdi source)
