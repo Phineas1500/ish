@@ -92,6 +92,31 @@
     read_bullshit 64, rep_movsq_r
     write_bullshit 64, rep_movsq_w
 
+// REP MOVSD - Move dword [RSI] to [RDI], repeat RCX times
+// Note: First argument at [_ip] is orig_ip for segfault handler
+// IMPORTANT: x11 is clobbered by read_prep/write_prep, must reload in loop!
+.gadget rep_movsd
+    cbz rcx, .Lrep_movsd_done
+.Lrep_movsd_loop:
+    mov _addr, rsi
+    read_prep 32, rep_movsd_r
+    ldr _tmp, [_addr]
+    mov _addr, rdi
+    write_prep 32, rep_movsd_w
+    str _tmp, [_addr]
+    write_done 32, rep_movsd_w
+    // Reload x11 - clobbered by read_prep/write_prep!
+    ldrsw x11, [_cpu, CPU_df_offset]
+    lsl x11, x11, 2              // x11 = df_offset * 4
+    add rsi, rsi, x11
+    add rdi, rdi, x11
+    sub rcx, rcx, 1
+    cbnz rcx, .Lrep_movsd_loop
+.Lrep_movsd_done:
+    gret 1
+    read_bullshit 32, rep_movsd_r
+    write_bullshit 32, rep_movsd_w
+
 // REP MOVSB - Move byte [RSI] to [RDI], repeat RCX times
 // Note: First argument at [_ip] is orig_ip for segfault handler
 // IMPORTANT: x11 is clobbered by read_prep/write_prep, must reload in loop!
@@ -115,6 +140,24 @@
     gret 1
     read_bullshit 8, rep_movsb_r
     write_bullshit 8, rep_movsb_w
+
+// Single MOVSB - Move exactly one byte from [RSI] to [RDI], then update RSI/RDI
+// Used when MOVSB appears without REP prefix
+.gadget single_movsb
+    mov _addr, rsi
+    read_prep 8, single_movsb_r
+    ldrb _tmp, [_addr]
+    mov _addr, rdi
+    write_prep 8, single_movsb_w
+    strb _tmp, [_addr]
+    write_done 8, single_movsb_w
+    // Update RSI and RDI based on direction flag
+    ldrsw x11, [_cpu, CPU_df_offset]  // x11 = 1 or -1 (sign-extended)
+    add rsi, rsi, x11
+    add rdi, rdi, x11
+    gret
+    read_bullshit 8, single_movsb_r
+    write_bullshit 8, single_movsb_w
 
 // Placeholder gadget arrays (kept for compatibility)
 .pushsection_rodata

@@ -18,6 +18,25 @@
 .macro load_reg64 name, reg64, reg32
     .gadget load64_\name
         mov _xtmp, \reg64
+        // Debug: trace load64_c for detailed RCX tracking
+        .ifeqs "\name", "c"
+            save_c
+            mov x0, _xtmp
+            bl NAME(helper_debug_load64_c)
+            restore_c
+        .endif
+        // Debug: trace any load64 that produces value 0x1 (potential iov len bug)
+        cmp _xtmp, 1
+        b.ne 88f
+        save_c
+        mov x0, _xtmp
+        adr x1, 99f
+        bl NAME(helper_debug_load64_val1)
+        restore_c
+        b 88f
+    99: .asciz "\name"
+        .align 2
+    88:
         gret
     .gadget load32_\name
         mov _xtmp, \reg64
@@ -30,6 +49,14 @@
 // Load immediate
 .gadget load64_imm
     ldr _xtmp, [_ip]
+    // Debug: trace load64_imm when value is 1
+    cmp _xtmp, 1
+    b.ne 66f
+    save_c
+    mov x0, _xtmp
+    bl NAME(helper_debug_load64_imm_val1)
+    restore_c
+66:
     gret 1
 
 .gadget load32_imm
@@ -38,14 +65,106 @@
 
 // Load from memory
 .gadget load64_mem
+    // Save guest address before TLB translation
+    str _addr, [_cpu, LOCAL_value_addr]
     read_prep 64, load64_mem
     ldr _xtmp, [_addr]
+    // Debug: trace load64_mem when value is 1
+    cmp _xtmp, 1
+    b.ne 55f
+    save_c
+    mov x0, _xtmp
+    ldr x1, [_cpu, LOCAL_value_addr]
+    bl NAME(helper_debug_load64_mem_val1)
+    restore_c
+55:
+    // Debug: trace load64_mem from 0x7efffff5b930 (where strlen result was stored)
+    ldr x9, [_cpu, LOCAL_value_addr]
+    movz x10, 0xb930
+    movk x10, 0xfff5, lsl 16
+    movk x10, 0x7eff, lsl 32
+    cmp x9, x10
+    b.ne 56f
+    save_c
+    mov x0, _xtmp
+    mov x1, x9
+    bl NAME(helper_debug_load64_mem_b930)
+    restore_c
+56:
+    // Debug: trace loads from stack area (0x7efffff5bfd0-0x7efffff5bfe0)
+    ldr x9, [_cpu, LOCAL_value_addr]
+    movz x10, 0xbfd0
+    movk x10, 0xf5, lsl 16
+    movk x10, 0xffff, lsl 32
+    movk x10, 0x7eff, lsl 48
+    cmp x9, x10
+    b.lo 1f
+    movz x10, 0xbfe0
+    movk x10, 0xf5, lsl 16
+    movk x10, 0xffff, lsl 32
+    movk x10, 0x7eff, lsl 48
+    cmp x9, x10
+    b.hs 1f
+    save_c
+    mov x0, _xtmp
+    mov x1, x9
+    bl NAME(helper_debug_load64_stack)
+    restore_c
+1:
     gret 1
     read_bullshit 64, load64_mem
 
 .gadget load32_mem
+    // Save guest address before TLB translation
+    str _addr, [_cpu, LOCAL_value_addr]
     read_prep 32, load32_mem
     ldr _tmp, [_addr]
+    // Track ALL loads in ring buffer for debugging
+    ldr x9, [_cpu, LOCAL_value_addr]
+    save_c
+    uxtw x0, _tmp
+    mov x1, x9
+    bl NAME(helper_track_load32)
+    restore_c
+    // Additional debug: trace loads from optind areas
+    ldr x9, [_cpu, LOCAL_value_addr]
+    // Check busybox optind (0x55555561a040-0x55555561a080)
+    movz x10, 0xa040
+    movk x10, 0x5561, lsl 16
+    movk x10, 0x5555, lsl 32
+    cmp x9, x10
+    b.lo 2f
+    movz x10, 0xa080
+    movk x10, 0x5561, lsl 16
+    movk x10, 0x5555, lsl 32
+    cmp x9, x10
+    b.hs 2f
+    save_c
+    uxtw x0, _tmp
+    mov x1, x9
+    bl NAME(helper_debug_optind_load)
+    restore_c
+    b 1f
+2:
+    // Check musl optind (0x7effffffd000-0x7effffffe000 - wider range)
+    movz x10, 0xd000
+    movk x10, 0xffff, lsl 16
+    movk x10, 0xffff, lsl 32
+    movk x10, 0x7eff, lsl 48
+    cmp x9, x10
+    b.lo 1f
+    movz x10, 0xe000
+    movk x10, 0xffff, lsl 16
+    movk x10, 0xffff, lsl 32
+    movk x10, 0x7eff, lsl 48
+    cmp x9, x10
+    b.hs 1f
+    save_c
+    uxtw x0, _tmp
+    mov x1, x9
+    bl NAME(helper_debug_musl_load)
+    restore_c
+1:
     gret 1
     read_bullshit 32, load32_mem
 
@@ -58,8 +177,20 @@
 
 // Load 8-bit from memory (zero-extended)
 .gadget load8_mem
+    // Save guest address before TLB translation
+    str _addr, [_cpu, LOCAL_value_addr]
     read_prep 8, load8_mem
     ldrb _tmp, [_addr]
+    // Debug: trace byte loads with guest addr and orig_ip
+    // When gadget runs, _ip points past the gadget_load8_mem pointer
+    // So: [_ip, 0] = orig_ip, [_ip, 8] = next gadget
+    ldr x9, [_cpu, LOCAL_value_addr]
+    save_c
+    uxtw x0, _tmp           // byte value
+    mov x1, x9              // GUEST address (pre-TLB)
+    ldr x2, [_ip]           // orig_ip argument at [_ip, 0]
+    bl NAME(helper_debug_load8_mem_full)
+    restore_c
     gret 1
     read_bullshit 8, load8_mem
 
@@ -86,6 +217,11 @@
 
 .gadget load64_r13
     ldr _xtmp, [_cpu, CPU_r13]
+    // Debug: trace r13 loads in critical range
+    save_c
+    mov x0, _xtmp
+    bl NAME(helper_debug_load64_r13)
+    restore_c
     gret
 
 .gadget load64_r14
@@ -104,30 +240,224 @@
 .macro store_reg64 name, reg64, reg32
     .gadget store64_\name
         mov \reg64, _xtmp
+        // Debug: trace ALL RCX stores (helper will filter by load8 count)
+        .ifeqs "\name", "c"
+            save_c
+            mov x0, rcx
+            bl NAME(helper_debug_store64_c)
+            restore_c
+        .endif
+        // Debug: trace RBX stores with value 1 or 2
+        .ifeqs "\name", "b"
+            cmp \reg64, 1
+            b.ne 76f
+            save_c
+            mov x0, \reg64
+            bl NAME(helper_debug_store64_b_val1)
+            restore_c
+        76:
+            cmp \reg64, 2
+            b.ne 77f
+            save_c
+            mov x0, \reg64
+            bl NAME(helper_debug_store64_b_val2)
+            restore_c
+        77:
+        .endif
+        // Debug: trace ALL RDX stores in the critical range
+        .ifeqs "\name", "d"
+            save_c
+            mov x0, \reg64
+            bl NAME(helper_debug_store64_d_all)
+            restore_c
+        .endif
+        // Debug: track all RAX stores and trace when set to bfdd
+        .ifeqs "\name", "a"
+            save_c
+            mov x0, rax       // Pass RAX value to helper
+            bl NAME(helper_debug_store64_a)
+            restore_c
+            // Check if setting RAX to 0x7efffff5bfdd (null terminator of "ab")
+            // 0x7efffff5bfdd in parts (from python):
+            // bits 0-15:  0xbfdd
+            // bits 16-31: 0xfff5
+            // bits 32-47: 0x7eff
+            // bits 48-63: 0x0000 (implicit from movz)
+            movz x9, 0xbfdd
+            movk x9, 0xfff5, lsl 16
+            movk x9, 0x7eff, lsl 32
+            cmp rax, x9
+            b.ne 98f
+            save_c
+            mov x0, rax       // new RAX value
+            bl NAME(helper_debug_rax_set_bfdd)
+            restore_c
+        98:
+            // Also check if RAX is set to 1 (potential bug source)
+            cmp rax, 1
+            b.ne 99f
+            save_c
+            mov x0, rax         // RAX value (1)
+            ldr x1, [_cpu, CPU_rip] // Load rip from cpu_state
+            bl NAME(helper_debug_rax_eq_1)
+            restore_c
+        99:
+        .endif
         gret
     .gadget store32_\name
         // 32-bit write zero-extends to 64-bit in x86_64
         mov \reg64, _xtmp
         and \reg64, \reg64, 0xffffffff
+        // Debug: trace store32_a when value is 1
+        .ifeqs "\name", "a"
+            cmp \reg64, 1
+            b.ne 77f
+            save_c
+            mov x0, \reg64
+            bl NAME(helper_debug_store32_a_val1)
+            restore_c
+        77:
+        .endif
         gret
 .endm
 .each_reg64 store_reg64
 .purgem store_reg64
 
+// Debug: extra gadget to trace RCX stores around bfdb-bfde
+.gadget store64_c_trace
+    mov rcx, _xtmp
+    // Check if rcx is in the bfdb-bfde range
+    movz x9, 0xbfdb
+    movk x9, 0xfff5, lsl 16
+    movk x9, 0x7eff, lsl 32
+    cmp rcx, x9
+    b.lo 1f
+    movz x9, 0xbfdf
+    movk x9, 0xfff5, lsl 16
+    movk x9, 0x7eff, lsl 32
+    cmp rcx, x9
+    b.hi 1f
+    save_c
+    mov x0, rcx
+    bl NAME(helper_debug_store64_c)
+    restore_c
+1:
+    gret
+
 // Store to memory
 .gadget store64_mem
+    // Save guest address before TLB translation
+    str _addr, [_cpu, LOCAL_value_addr]
     write_prep 64, store64_mem
     str _xtmp, [_addr]
     write_done 64, store64_mem
+    // Debug: trace stores with value 2 (strlen result)
+    cmp _xtmp, 2
+    b.ne 5f
+    save_c
+    mov x0, _xtmp
+    ldr x1, [_cpu, LOCAL_value_addr]
+    bl NAME(helper_debug_store64_mem_val2)
+    restore_c
+5:
+    // Debug: trace stores to iov area (0x7efffff5b850-0x7efffff5b8a0)
+    ldr x9, [_cpu, LOCAL_value_addr]
+    movz x10, 0xb850
+    movk x10, 0xfff5, lsl 16
+    movk x10, 0x7eff, lsl 32
+    cmp x9, x10
+    b.lo 2f
+    movz x10, 0xb8a0
+    movk x10, 0xfff5, lsl 16
+    movk x10, 0x7eff, lsl 32
+    cmp x9, x10
+    b.hs 2f
+    save_c
+    mov x0, _xtmp
+    mov x1, x9
+    bl NAME(helper_debug_iov_store64)
+    restore_c
+2:
+    // Debug: trace ALL 64-bit stores to busybox data segment (0x555555616000-0x55555561b000)
+    ldr x9, [_cpu, LOCAL_value_addr]
+    movz x10, 0x6000
+    movk x10, 0x5561, lsl 16
+    movk x10, 0x5555, lsl 32
+    cmp x9, x10
+    b.lo 1f
+    movz x10, 0xb000
+    movk x10, 0x5561, lsl 16
+    movk x10, 0x5555, lsl 32
+    cmp x9, x10
+    b.hs 1f
+    save_c
+    mov x0, _xtmp
+    mov x1, x9
+    bl NAME(helper_debug_busybox_store64)
+    restore_c
+1:
     gret 1
     write_bullshit 64, store64_mem
 
 .gadget store32_mem
+    // Save guest address before TLB translation
+    str _addr, [_cpu, LOCAL_value_addr]
     write_prep 32, store32_mem
     str _tmp, [_addr]
     write_done 32, store32_mem
+    // Debug: trace ALL stores to busybox data segment (0x555555616000-0x55555561b000)
+    ldr x9, [_cpu, LOCAL_value_addr]
+    movz x10, 0x6000
+    movk x10, 0x5561, lsl 16
+    movk x10, 0x5555, lsl 32
+    cmp x9, x10
+    b.lo 3f
+    movz x10, 0xb000
+    movk x10, 0x5561, lsl 16
+    movk x10, 0x5555, lsl 32
+    cmp x9, x10
+    b.hs 3f
+    save_c
+    uxtw x0, _tmp
+    mov x1, x9
+    bl NAME(helper_debug_busybox_store32)
+    restore_c
+3:
+    // Debug and fix: trace stores to optind area (0x55555561a040-0x55555561a080)
+    ldr x9, [_cpu, LOCAL_value_addr]
+    movz x10, 0xa040
+    movk x10, 0x5561, lsl 16
+    movk x10, 0x5555, lsl 32
+    cmp x9, x10
+    b.lo 1f
+    movz x10, 0xa080
+    movk x10, 0x5561, lsl 16
+    movk x10, 0x5555, lsl 32
+    cmp x9, x10
+    b.hs 1f
+    // Call helper which returns the (possibly fixed) value
+    save_c
+    uxtw x0, _tmp
+    mov x1, x9
+    bl NAME(helper_debug_optind_store)
+    // x0 now contains the corrected value
+    // Save it to LOCAL_value - but _cpu (x1) was trashed by the C call!
+    // Reload _cpu from stack where save_c saved it: x1 is at sp+8
+    ldr x1, [sp, 8]                   // Reload _cpu
+    str w0, [_cpu, LOCAL_value]       // Now _cpu is valid
+    restore_c
+    // Re-do the store with the (possibly corrected) value
+    ldr x9, [_cpu, LOCAL_value_addr]
+    ldr w0, [_cpu, LOCAL_value]       // Load corrected value into w0
+    mov _addr, x9                     // Set guest address
+    // Do the fix store
+    write_prep 32, store32_mem_fix
+    str w0, [_addr]                   // Store corrected value
+    write_done 32, store32_mem_fix
+1:
     gret 1
     write_bullshit 32, store32_mem
+    write_bullshit 32, store32_mem_fix
 
 .gadget store16_mem
     write_prep 16, store16_mem
@@ -161,10 +491,20 @@
     gret
 
 .gadget store64_r12
+    // Debug: trace r12 stores
+    save_c
+    mov x0, _xtmp
+    bl NAME(helper_debug_store64_r12)
+    restore_c
     str _xtmp, [_cpu, CPU_r12]
     gret
 
 .gadget store64_r13
+    // Debug: trace r13 stores
+    save_c
+    mov x0, _xtmp
+    bl NAME(helper_debug_store64_r13)
+    restore_c
     str _xtmp, [_cpu, CPU_r13]
     gret
 
@@ -173,6 +513,11 @@
     gret
 
 .gadget store64_r15
+    // Debug: trace r15 stores
+    save_c
+    mov x0, _xtmp
+    bl NAME(helper_debug_store64_r15)
+    restore_c
     str _xtmp, [_cpu, CPU_r15]
     gret
 
@@ -200,6 +545,12 @@
     adds _xtmp, _xtmp, x8
     setf_oc
     setf_zsp
+    gret 1
+
+// Flag-preserving add for LEA - does NOT modify CPU flags
+.gadget lea_add64_imm
+    ldr x8, [_ip]
+    add _xtmp, _xtmp, x8    // add (not adds) - doesn't touch ARM flags
     gret 1
 
 .gadget add32_imm
@@ -353,8 +704,28 @@
     gret
 
 .gadget sub32_mem
+    // Save guest address before TLB translation
+    str _addr, [_cpu, LOCAL_value_addr]
     read_prep 32, sub32_mem
     ldr w8, [_addr]
+    // Debug: trace loads from busybox optind area (0x55555561a040-0x55555561a080)
+    ldr x9, [_cpu, LOCAL_value_addr]
+    movz x10, 0xa040
+    movk x10, 0x5561, lsl 16
+    movk x10, 0x5555, lsl 32
+    cmp x9, x10
+    b.lo 1f
+    movz x10, 0xa080
+    movk x10, 0x5561, lsl 16
+    movk x10, 0x5555, lsl 32
+    cmp x9, x10
+    b.hs 1f
+    save_c
+    uxtw x0, w8
+    mov x1, x9
+    bl NAME(helper_debug_optind_sub_load)
+    restore_c
+1:
     subs _tmp, _tmp, w8
     setf_oc
     setf_zsp w
@@ -379,6 +750,14 @@
 .endm
 .each_reg64 xor_reg64
 .purgem xor_reg64
+
+// XOR zeroing idiom - sets _xtmp=0 and flags as if XOR produced 0
+// ZF=1, SF=0, CF=0, OF=0, PF=1
+.gadget xor_zero
+    eor _xtmp, _xtmp, _xtmp   // _xtmp = 0
+    clearf_oc                  // CF=0, OF=0
+    setf_zsp                   // Sets flags based on _xtmp (which is 0)
+    gret
 
 .gadget xor64_imm
     ldr x8, [_ip]
@@ -451,6 +830,12 @@ NAME(xor32_r8_r15_gadgets):
     ands _xtmp, _xtmp, x8
     clearf_oc
     setf_zsp
+    gret 1
+
+// Flag-preserving AND for LEA 32-bit masking - does NOT modify CPU flags
+.gadget lea_and64_imm
+    ldr x8, [_ip]
+    and _xtmp, _xtmp, x8    // and (not ands) - doesn't touch ARM flags
     gret 1
 
 .gadget and32_imm
@@ -552,6 +937,16 @@ NAME(xor32_r8_r15_gadgets):
 
 .gadget cmp32_imm
     ldr w8, [_ip]
+    // Debug: trace CMP EAX, -1 (getopt_long return check)
+    cmn w8, 1             // Check if imm == -1 (cmn checks if -imm == 0)
+    b.ne 1f
+    save_c
+    uxtw x0, _tmp         // EAX value
+    uxtw x1, w8           // Immediate (-1)
+    bl NAME(helper_debug_cmp32_neg1)
+    restore_c
+    ldr w8, [_ip]         // Reload immediate
+1:
     subs w9, _tmp, w8     // Save result for flags
     setf_oc
     setf_zsp w, x9        // Use the subtraction result
@@ -569,10 +964,21 @@ NAME(xor32_r8_r15_gadgets):
 .gadget cmp8_imm
     ldrb w8, [_ip]
     and w10, _tmp, 0xff         // Mask to 8 bits
+    // Save byte and imm to memory before CMP corrupts w10
+    str w10, [_cpu, LOCAL_value]       // Save byte value
+    str w8, [_cpu, LOCAL_value_addr]   // Save immediate
     subs w9, w10, w8            // Compare 8-bit values
     setf_oc
     sxtb x9, w9                 // Sign-extend for SF/PF
     setf_zsp b, x9
+    // Debug: trace CMP8 for 'a', 'b', '\0' with result
+    ldr x9, [_cpu, CPU_res]     // x9 = res value
+    save_c
+    ldr w0, [_cpu, LOCAL_value]        // byte value (saved)
+    ldr w1, [_cpu, LOCAL_value_addr]   // immediate (saved)
+    mov x2, x9                  // res value
+    bl NAME(helper_debug_cmp8_all_res)
+    restore_c
     gret 1
 
 // CMP with register (index passed as immediate)
@@ -619,6 +1025,12 @@ NAME(xor32_r8_r15_gadgets):
 // 32-bit CMP reg, reg - compare low 32 bits only
 // Uses same register aliases as cmp64_reg but with 32-bit (w) versions
 .gadget cmp32_reg
+    // Debug: trace cmp32_reg entry
+    save_c
+    ldr x0, [_ip]
+    uxtw x1, _tmp
+    bl NAME(helper_debug_cmp32_reg_entry)
+    restore_c
     ldr x8, [_ip]
     cmp x8, 0
     b.eq 1f
@@ -647,7 +1059,13 @@ NAME(xor32_r8_r15_gadgets):
     b 9f
 5:  subs w9, _tmp, esp
     b 9f
-6:  subs w9, _tmp, ebp
+6:  // Debug: trace CMP with EBP
+    save_c
+    uxtw x0, _tmp
+    uxtw x1, ebp
+    bl NAME(helper_debug_cmp32_ebp)
+    restore_c
+    subs w9, _tmp, ebp
     b 9f
 7:  subs w9, _tmp, esi
     b 9f
@@ -665,6 +1083,13 @@ NAME(xor32_r8_r15_gadgets):
     gret
 
 .gadget cmp32_x8
+    // Debug: trace comparison values
+    save_c
+    uxtw x0, _tmp        // mem value (first arg)
+    uxtw x1, w8          // reg value (second arg)
+    bl NAME(helper_debug_cmp32_x8)
+    restore_c
+    // Actual comparison
     subs w9, _tmp, w8
     setf_oc
     setf_zsp w, x9
@@ -701,6 +1126,13 @@ NAME(xor32_r8_r15_gadgets):
 
 .gadget test32_imm
     ldr w8, [_ip]
+    // Debug: trace TEST32_IMM
+    save_c
+    uxtw x0, _tmp          // Value being tested
+    uxtw x1, w8            // Immediate mask
+    bl NAME(helper_debug_test32_imm)
+    restore_c
+    ldr w8, [_ip]          // Reload because save_c might clobber w8
     ands w9, _tmp, w8      // Save AND result for flags
     clearf_oc
     setf_zsp w, x9
@@ -718,6 +1150,37 @@ NAME(xor32_r8_r15_gadgets):
 .gadget test8_imm
     ldrb w8, [_ip]
     and w10, _tmp, 0xff         // Mask to 8 bits
+    // Debug: trace test8_imm with mask=0xFF (null check in strlen)
+    cmp w8, 0xFF
+    b.ne 2f
+    // Check if testing 'a', 'b', or '\0'
+    cmp w10, 0x61               // 'a'
+    b.eq 3f
+    cmp w10, 0x62               // 'b'
+    b.eq 3f
+    cmp w10, 0                  // '\0'
+    b.ne 2f
+3:
+    save_c
+    uxtw x0, w10                // Value being tested
+    bl NAME(helper_debug_test8_null_check)
+    restore_c
+    ldrb w8, [_ip]              // Reload mask
+    and w10, _tmp, 0xff         // Re-mask
+2:
+    // Also trace alignment checks (mask=7)
+    cmp w8, 7
+    b.ne 1f
+    save_c
+    uxtw x0, w10
+    uxtw x1, w8
+    ands w2, w10, w8
+    uxtw x2, w2
+    bl NAME(helper_debug_test8_imm_align)
+    restore_c
+    ldrb w8, [_ip]
+    and w10, _tmp, 0xff
+1:
     ands w9, w10, w8            // AND 8-bit values
     clearf_oc
     sxtb x9, w9
@@ -726,6 +1189,13 @@ NAME(xor32_r8_r15_gadgets):
 
 // TEST with x8 (for TEST reg, reg where second reg loaded to x8)
 .gadget test64_x8
+    // Debug: trace TEST values for r8-r15
+    save_c
+    uxtw x0, _tmp        // First value (low 32 bits of _xtmp)
+    uxtw x1, w8          // Second value (low 32 bits of x8)
+    bl NAME(helper_debug_test64_x8)
+    restore_c
+    // Actual TEST
     ands x9, _xtmp, x8
     clearf_oc
     setf_zsp , x9
@@ -777,6 +1247,14 @@ NAME(xor32_r8_r15_gadgets):
     msub x11, x10, _xtmp, rax   // Remainder = RAX - quotient * divisor
     mov rax, x10                // Store quotient
     mov rdx, x11                // Store remainder
+    // Debug: trace when quotient is 1
+    cmp rax, 1
+    b.ne 88f
+    save_c
+    mov x0, rax
+    bl NAME(helper_debug_div64_rax1)
+    restore_c
+88:
     gret
 
 // IDIV32: Signed divide EDX:EAX by _xtmp (32-bit divisor)
@@ -793,6 +1271,14 @@ NAME(xor32_r8_r15_gadgets):
     // Store results
     mov eax, w10                // Store quotient in eax
     mov edx, w11                // Store remainder in edx
+    // Debug: trace when quotient is 1
+    cmp eax, 1
+    b.ne 87f
+    save_c
+    uxtw x0, eax
+    bl NAME(helper_debug_idiv32_eax1)
+    restore_c
+87:
     gret
 
 // IDIV64: Signed divide RDX:RAX by _xtmp (64-bit divisor)

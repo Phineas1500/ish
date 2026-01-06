@@ -52,6 +52,8 @@ extern void gadget_add64_bp(void);
 extern void gadget_add64_si(void);
 extern void gadget_add64_di(void);
 extern void gadget_add64_imm(void);
+extern void gadget_lea_add64_imm(void);  // Flag-preserving add for LEA
+extern void gadget_lea_and64_imm(void);  // Flag-preserving and for LEA 32-bit masking
 extern void gadget_add64_mem(void);
 extern void gadget_add64_x8(void);  // For adding r8-r15
 extern void gadget_add32_imm(void);
@@ -111,6 +113,7 @@ extern void gadget_xor64_sp(void);
 extern void gadget_xor64_bp(void);
 extern void gadget_xor64_si(void);
 extern void gadget_xor64_di(void);
+extern void gadget_xor_zero(void);  // XOR zeroing idiom with proper flag setting
 extern void gadget_xor64_imm(void);
 extern void gadget_xor32_imm(void);
 extern void gadget_xor32_a(void);
@@ -250,7 +253,9 @@ extern void gadget_rep_stosq(void);
 extern void gadget_rep_stosd(void);
 extern void gadget_rep_stosb(void);
 extern void gadget_rep_movsq(void);
+extern void gadget_rep_movsd(void);
 extern void gadget_rep_movsb(void);
+extern void gadget_single_movsb(void);  // Single MOVSB without REP prefix
 
 // Gadget arrays for register operations
 static gadget_t add64_gadgets[] = {
@@ -334,6 +339,7 @@ extern void gadget_cmovn_cz(void);
 extern void gadget_cmovn_s(void);
 extern void gadget_cmovn_p(void);
 extern void gadget_cmovn_sxo(void);
+extern void gadget_debug_cmovn_sxo(void);  // Debug wrapper for CMOVGE
 extern void gadget_cmovn_sxoz(void);
 // SETcc gadgets (condition true = set byte to 1)
 extern void gadget_set_o(void);
@@ -888,6 +894,11 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     // Advance IP past this instruction
     state->ip += len;
 
+    // Debug: disabled - not reaching expected code path
+    (void)0;
+
+    // CMOV trace disabled
+
     // Mark fake_ip for jump patching
     #define fake_ip (state->ip | (1ul << 63))
 
@@ -938,11 +949,20 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         case ZYDIS_MNEMONIC_XOR:
             // XOR dst, src -> dst = dst XOR src
             if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
-                // Special case: xor reg, reg (zeroing idiom)
+                // Special case: xor reg, reg (zeroing idiom) - MUST set flags properly!
+                // XOR sets ZF=1, SF=0, CF=0, OF=0 when result is 0
                 if (inst.operands[0].type == inst.operands[1].type) {
-                    // Result is always 0
-                    GEN(load64_gadgets[8]); // load64_imm
-                    GEN(0);
+                    // Load reg into _xtmp, then XOR with itself (uses proper flag-setting)
+                    gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
+                    if (load) GEN(load);
+                    // XOR with immediate 0 doesn't give correct flags, use xor64_imm with the register value
+                    // Actually simpler: just XOR with itself via xor64_imm 0 which will set flags correctly
+                    // No wait - we need to XOR _xtmp with _xtmp, but we don't have that gadget
+                    // So use xor64_imm with 0xFFFFFFFFFFFFFFFF to flip all bits, then with itself again...
+                    // Actually the easiest is to use the reg gadget: load reg, then XOR with same reg
+                    // But that requires self-referential XOR gadget
+                    // Best approach: use dedicated zeroing gadget that sets flags
+                    GEN(gadget_xor_zero);  // Sets _xtmp=0 and flags (ZF=1, SF=0, CF=0, OF=0)
                     gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
                     if (store) GEN(store);
                 } else if (is_gpr(inst.operands[1].type)) {
@@ -1090,7 +1110,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     case ZYDIS_MNEMONIC_JL:  jcc_gadget = gadget_jmp_sxo; break;
                     case ZYDIS_MNEMONIC_JNL: jcc_gadget = gadget_jmp_sxo; negate = true; break;
                     case ZYDIS_MNEMONIC_JLE: jcc_gadget = gadget_jmp_sxoz; break;
-                    case ZYDIS_MNEMONIC_JNLE: jcc_gadget = gadget_jmp_sxo; negate = true; break;
+                    case ZYDIS_MNEMONIC_JNLE: jcc_gadget = gadget_jmp_sxoz; negate = true; break;
                     default: break;
                 }
 
@@ -1755,6 +1775,15 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                        is_mem(inst.operands[0].type) &&
                        inst.operands[1].type == arg64_imm) {
                 // CMP [mem], imm
+                // Debug: trace ALL CMP [mem], imm with imm=0
+                if (inst.operands[1].imm == 0 && inst.operands[0].size == size64_8) {
+                    fprintf(stderr, "GEN_CMP_MEM0: at 0x%llx cmpb $0, (base=0x%x idx=0x%x scale=%d disp=%lld)\n",
+                            (unsigned long long)state->orig_ip,
+                            inst.operands[0].mem.base,
+                            inst.operands[0].mem.index,
+                            inst.operands[0].mem.scale,
+                            (long long)inst.operands[0].mem.disp);
+                }
                 if (!gen_addr(state, &inst.operands[0], &inst)) {
                     g(interrupt);
                     GEN(INT_UNDEFINED);
@@ -2374,12 +2403,14 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     gadget_t load = get_load64_reg_gadget(inst.operands[1].mem.base);
                     if (load) GEN(load);
                     if (inst.operands[1].mem.disp != 0) {
-                        GEN(gadget_add64_imm);
+                        // LEA does NOT modify flags, use flag-preserving add
+                        GEN(gadget_lea_add64_imm);
                         GEN(inst.operands[1].mem.disp);
                     }
                     // For 32-bit LEA (leal), truncate to 32 bits (zero-extend)
+                    // LEA does NOT modify flags, use flag-preserving and
                     if (inst.operands[0].size == size64_32) {
-                        GEN(gadget_and64_imm);
+                        GEN(gadget_lea_and64_imm);
                         GEN(0xFFFFFFFF);
                     }
                     gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
@@ -2412,8 +2443,9 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     GEN(load64_gadgets[10]); // load64_addr - load _addr into _xtmp
 
                     // For 32-bit LEA (leal), truncate to 32 bits (zero-extend)
+                    // LEA does NOT modify flags, use flag-preserving and
                     if (inst.operands[0].size == size64_32) {
-                        GEN(gadget_and64_imm);
+                        GEN(gadget_lea_and64_imm);
                         GEN(0xFFFFFFFF);
                     }
 
@@ -2446,8 +2478,9 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     GEN(load64_gadgets[10]); // load64_addr - load _addr into _xtmp
 
                     // For 32-bit LEA (leal), truncate to 32 bits (zero-extend)
+                    // LEA does NOT modify flags, use flag-preserving and
                     if (inst.operands[0].size == size64_32) {
-                        GEN(gadget_and64_imm);
+                        GEN(gadget_lea_and64_imm);
                         GEN(0xFFFFFFFF);
                     }
 
@@ -2479,8 +2512,9 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     GEN(load64_gadgets[10]); // load64_addr - load _addr into _xtmp
 
                     // For 32-bit LEA (leal), truncate to 32 bits (zero-extend)
+                    // LEA does NOT modify flags, use flag-preserving and
                     if (inst.operands[0].size == size64_32) {
-                        GEN(gadget_and64_imm);
+                        GEN(gadget_lea_and64_imm);
                         GEN(0xFFFFFFFF);
                     }
 
@@ -2501,9 +2535,9 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     }
                     GEN(load_base); // Load r8-r15 into _xtmp
 
-                    // Add displacement
+                    // Add displacement (LEA does NOT modify flags)
                     if (inst.operands[1].mem.disp != 0) {
-                        GEN(gadget_add64_imm);
+                        GEN(gadget_lea_add64_imm);
                         GEN(inst.operands[1].mem.disp);
                     }
 
@@ -2537,8 +2571,9 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     }
 
                     // For 32-bit LEA (leal), truncate to 32 bits (zero-extend)
+                    // LEA does NOT modify flags, use flag-preserving and
                     if (inst.operands[0].size == size64_32) {
-                        GEN(gadget_and64_imm);
+                        GEN(gadget_lea_and64_imm);
                         GEN(0xFFFFFFFF);
                     }
 
@@ -2711,7 +2746,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     case ZYDIS_MNEMONIC_CMOVP:   cmov_gadget = gadget_cmov_p; break;
                     case ZYDIS_MNEMONIC_CMOVNP:  cmov_gadget = gadget_cmovn_p; break;
                     case ZYDIS_MNEMONIC_CMOVL:   cmov_gadget = gadget_cmov_sxo; break;
-                    case ZYDIS_MNEMONIC_CMOVNL:  cmov_gadget = gadget_cmovn_sxo; break;
+                    case ZYDIS_MNEMONIC_CMOVNL:  cmov_gadget = gadget_debug_cmovn_sxo; break;  // Use debug wrapper
                     case ZYDIS_MNEMONIC_CMOVLE:  cmov_gadget = gadget_cmov_sxoz; break;
                     case ZYDIS_MNEMONIC_CMOVNLE: cmov_gadget = gadget_cmovn_sxoz; break;
                     default: break;
@@ -3720,8 +3755,23 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             break;
 
         case ZYDIS_MNEMONIC_MOVSB:
-            // REP MOVSB - move byte [RSI] to [RDI], repeat RCX times
-            GEN(gadget_rep_movsb);
+            // MOVSB - move byte [RSI] to [RDI]
+            // Check if REP prefix is present
+            if (inst.has_rep) {
+                // REP MOVSB - repeat RCX times
+                GEN(gadget_rep_movsb);
+                GEN(state->orig_ip);  // For segfault handler
+            } else {
+                // Single MOVSB - copy exactly one byte
+                fprintf(stderr, "GEN: single MOVSB at ip=0x%llx\n", (unsigned long long)state->orig_ip);
+                GEN(gadget_single_movsb);
+            }
+            break;
+
+        case ZYDIS_MNEMONIC_MOVSD:
+            // REP MOVSD - move dword [RSI] to [RDI], repeat RCX times
+            fprintf(stderr, "GEN: REP MOVSD at ip=0x%llx\n", (unsigned long long)state->orig_ip);
+            GEN(gadget_rep_movsd);
             GEN(state->orig_ip);  // For segfault handler
             break;
 
