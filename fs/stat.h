@@ -78,6 +78,30 @@ struct newstat64 {
     qword_t ino;
 } __attribute__((packed));
 
+// x86_64 stat structure - different layout from 32-bit!
+// Used by stat/fstat/lstat syscalls (4/5/6) on x86_64
+// Field names use _64 suffix to avoid conflicts with system macros
+struct stat_x86_64 {
+    qword_t dev_64;            // offset 0
+    qword_t ino_64;            // offset 8
+    qword_t nlink_64;          // offset 16 - NOTE: 64-bit, unlike 32-bit!
+    dword_t mode_64;           // offset 24
+    dword_t uid_64;            // offset 28
+    dword_t gid_64;            // offset 32
+    dword_t _pad0;             // offset 36
+    qword_t rdev_64;           // offset 40
+    qword_t size_64;           // offset 48
+    qword_t blksize_64;        // offset 56
+    qword_t blocks_64;         // offset 64
+    qword_t atime_64;          // offset 72
+    qword_t atime_nsec_64;     // offset 80
+    qword_t mtime_64;          // offset 88
+    qword_t mtime_nsec_64;     // offset 96
+    qword_t ctime_64;          // offset 104
+    qword_t ctime_nsec_64;     // offset 112
+    qword_t _unused[3];        // offset 120
+}; // Total: 144 bytes
+
 struct statfsbuf {
     long type;
     long bsize;

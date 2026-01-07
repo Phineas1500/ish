@@ -484,9 +484,7 @@ void handle_interrupt(int interrupt) {
         } else {
             // Syscall traces disabled to reduce noise
             (void)syscall_num;
-            if (0) {
-                fprintf(stderr, "SC64[%u]\n", syscall_num);
-            }
+            (void)syscall_num;
             // Trace when entering code (brk syscall is called early) - DISABLED
             if (0 && syscall_num == 12) {  // brk
                 static int brk_count = 0;
@@ -553,16 +551,57 @@ void handle_interrupt(int interrupt) {
             // x86_64 argument order: rdi, rsi, rdx, r10, r8, r9
             // syscall_t returns int64_t for 64-bit mode (brk, mmap return 64-bit addresses)
             addr_t buf_addr_before = cpu->rdi;  // Save for getcwd tracing
+            // Trace lstat (syscall 6) arguments
+            if (syscall_num == 6) {
+                static int lstat_count = 0;
+                lstat_count++;
+                if (lstat_count <= 3) {
+                    fprintf(stderr, "LSTAT[%d]: rdi(path)=0x%llx rip=0x%llx\n",
+                            lstat_count, (unsigned long long)cpu->rdi,
+                            (unsigned long long)cpu->rip);
+                    // Dump memory at 0x7f0000000000 region
+                    uint64_t mem[8];
+                    for (int i = 0; i < 8; i++) {
+                        user_read(0x7f0000000000 + i*8, &mem[i], 8);
+                    }
+                    fprintf(stderr, "  [0x7f0000000000..0x40]: %llx %llx %llx %llx %llx %llx %llx %llx\n",
+                            (unsigned long long)mem[0], (unsigned long long)mem[1],
+                            (unsigned long long)mem[2], (unsigned long long)mem[3],
+                            (unsigned long long)mem[4], (unsigned long long)mem[5],
+                            (unsigned long long)mem[6], (unsigned long long)mem[7]);
+                    // Dump around 0xa80
+                    for (int i = 0; i < 8; i++) {
+                        user_read(0x7f0000000a80 + i*8, &mem[i], 8);
+                    }
+                    fprintf(stderr, "  [0x7f0000000a80..0xac0]: %llx %llx %llx %llx %llx %llx %llx %llx\n",
+                            (unsigned long long)mem[0], (unsigned long long)mem[1],
+                            (unsigned long long)mem[2], (unsigned long long)mem[3],
+                            (unsigned long long)mem[4], (unsigned long long)mem[5],
+                            (unsigned long long)mem[6], (unsigned long long)mem[7]);
+                }
+            }
             int64_t result = syscall_table[syscall_num](cpu->rdi, cpu->rsi, cpu->rdx, cpu->r10, cpu->r8, cpu->r9);
             STRACE(" = 0x%llx\n", (unsigned long long)result);
             // Trace mmap result
             if (syscall_num == 9) {
                 static int mmap_ret_count = 0;
                 mmap_ret_count++;
-                fprintf(stderr, "MMAP result: 0x%llx, returning to RIP=0x%llx RSP=0x%llx RBP=0x%llx\n",
-                        (unsigned long long)result,
-                        (unsigned long long)cpu->rip, (unsigned long long)cpu->rsp,
-                        (unsigned long long)cpu->rbp);
+                fprintf(stderr, "MMAP[%d]: addr=0x%llx len=0x%llx -> result=0x%llx\n",
+                        mmap_ret_count,
+                        (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi,
+                        (unsigned long long)result);
+            }
+            // Trace brk
+            if (syscall_num == 12) {
+                fprintf(stderr, "BRK: arg=0x%llx -> result=0x%llx\n",
+                        (unsigned long long)cpu->rdi, (unsigned long long)result);
+            }
+            // Trace openat (257)
+            if (syscall_num == 257) {
+                char path[128];
+                user_read_string(cpu->rsi, path, sizeof(path));
+                fprintf(stderr, "OPENAT: dirfd=%lld path=\"%s\" -> fd=%lld\n",
+                        (long long)cpu->rdi, path, (long long)result);
             }
             // Trace getcwd result
             if (syscall_num == 79) {  // getcwd

@@ -84,6 +84,11 @@ static struct pt_entry *mem_pt_new(struct mem *mem, page_t page) {
     entry->next = mem->hash_table[hash];
     mem->hash_table[hash] = entry;
     mem->pages_mapped++;
+
+    // Debug: trace 0x7f... page creations
+    if (page >= 0x7f0000000ULL && page <= 0x7f0000010ULL) {
+        fprintf(stderr, "MEM_PT_NEW: creating page 0x%llx\n", (unsigned long long)page);
+    }
     return &entry->entry;
 }
 
@@ -94,6 +99,13 @@ struct pt_entry *mem_pt(struct mem *mem, page_t page) {
         if (entry->page == page) {
             if (entry->entry.data == NULL)
                 return NULL;
+            // Debug: trace 0x7f... page lookups
+            static int trace_count = 0;
+            if (page >= 0x7f0000000ULL && page <= 0x7f0000010ULL && trace_count < 5) {
+                trace_count++;
+                fprintf(stderr, "MEM_PT: found page 0x%llx data=%p offset=%zu\n",
+                        (unsigned long long)page, entry->entry.data, entry->entry.offset);
+            }
             return &entry->entry;
         }
         entry = entry->next;
@@ -257,6 +269,12 @@ int pt_map(struct mem *mem, page_t start, pages_t pages, void *memory, size_t of
         pt->data = data;
         pt->offset = ((page - start) << PAGE_BITS) + offset;
         pt->flags = flags;
+        // Debug: trace 0x7f... page mappings
+        if (page >= 0x7f0000000ULL && page <= 0x7f0000010ULL) {
+            fprintf(stderr, "PT_MAP: page 0x%llx start=0x%llx pages=%u offset=%zu flags=0x%x\n",
+                    (unsigned long long)page, (unsigned long long)start,
+                    (unsigned int)pages, offset, flags);
+        }
     }
     return 0;
 }
@@ -391,6 +409,11 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
             return NULL;
         if (!(mem_pt(mem, p)->flags & P_GROWSDOWN))
             return NULL;
+        // Debug: trace growsdown allocations
+        if (page >= 0x7f0000000ULL) {
+            fprintf(stderr, "GROWSDOWN: allocating page 0x%llx (growsdown from 0x%llx)\n",
+                    (unsigned long long)page, (unsigned long long)p);
+        }
 
         // Changing memory maps must be done with the write lock. But this is
         // called with the read lock.

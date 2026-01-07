@@ -30,6 +30,30 @@ struct newstat64 stat_convert_newstat64(struct statbuf stat) {
     return newstat;
 }
 
+#ifdef ISH_GUEST_64BIT
+// Convert internal statbuf to x86_64 stat structure
+struct stat_x86_64 stat_convert_x86_64(struct statbuf stat) {
+    struct stat_x86_64 s = {0};
+    s.dev_64 = stat.dev;
+    s.ino_64 = stat.inode;
+    s.nlink_64 = stat.nlink;
+    s.mode_64 = stat.mode;
+    s.uid_64 = stat.uid;
+    s.gid_64 = stat.gid;
+    s.rdev_64 = stat.rdev;
+    s.size_64 = stat.size;
+    s.blksize_64 = stat.blksize;
+    s.blocks_64 = stat.blocks;
+    s.atime_64 = stat.atime;
+    s.atime_nsec_64 = stat.atime_nsec;
+    s.mtime_64 = stat.mtime;
+    s.mtime_nsec_64 = stat.mtime_nsec;
+    s.ctime_64 = stat.ctime;
+    s.ctime_nsec_64 = stat.ctime_nsec;
+    return s;
+}
+#endif
+
 int generic_statat(struct fd *at, const char *path_raw, struct statbuf *stat, bool follow_links) {
     char path[MAX_PATH];
     int err = path_normalize(at, path_raw, path, follow_links ? N_SYMLINK_FOLLOW : N_SYMLINK_NOFOLLOW);
@@ -54,16 +78,23 @@ static dword_t sys_stat_path(fd_t at_f, addr_t path_addr, addr_t statbuf_addr, b
     char path[MAX_PATH];
     if (user_read_string(path_addr, path, sizeof(path)))
         return _EFAULT;
-    STRACE("stat(at=%d, path=\"%s\", statbuf=0x%x, follow_links=%d)", at_f, path, statbuf_addr, follow_links);
+    fprintf(stderr, "STAT: at=%d path_addr=0x%llx path=\"%s\" follow=%d\n", at_f, (unsigned long long)path_addr, path, follow_links);
+    STRACE("stat(at=%d, path_addr=0x%llx, path=\"%s\", statbuf=0x%x, follow_links=%d)", at_f, (unsigned long long)path_addr, path, statbuf_addr, follow_links);
     struct fd *at = at_fd(at_f);
     if (at == NULL)
         return _EBADF;
     struct statbuf stat = {};
     if ((err = generic_statat(at, path, &stat, follow_links)) < 0)
         return err;
+#ifdef ISH_GUEST_64BIT
+    struct stat_x86_64 s64 = stat_convert_x86_64(stat);
+    if (user_put(statbuf_addr, s64))
+        return _EFAULT;
+#else
     struct newstat64 newstat = stat_convert_newstat64(stat);
     if (user_put(statbuf_addr, newstat))
         return _EFAULT;
+#endif
     return 0;
 }
 
@@ -88,9 +119,15 @@ dword_t sys_fstat64(fd_t fd_no, addr_t statbuf_addr) {
     int err = fd->mount->fs->fstat(fd, &stat);
     if (err < 0)
         return err;
+#ifdef ISH_GUEST_64BIT
+    struct stat_x86_64 s64 = stat_convert_x86_64(stat);
+    if (user_put(statbuf_addr, s64))
+        return _EFAULT;
+#else
     struct newstat64 newstat = stat_convert_newstat64(stat);
     if (user_put(statbuf_addr, newstat))
         return _EFAULT;
+#endif
     return 0;
 }
 

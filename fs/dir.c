@@ -58,7 +58,8 @@ size_t fill_dirent_64(void *dirent_data, ino_t inode, off_t_ offset, const char 
 
 int_t sys_getdents_common(fd_t f, addr_t dirents, dword_t count,
         size_t (*fill_dirent)(void *, ino_t, off_t_, const char *, int)) {
-    STRACE("getdents(%d, %#x, %#x)", f, dirents, count);
+    fprintf(stderr, "GETDENTS: fd=%d buf=0x%llx count=%u\n", f, (unsigned long long)dirents, count);
+    STRACE("getdents(%d, buf=0x%llx, count=%#x)", f, (unsigned long long)dirents, count);
     struct fd *fd = f_get(f);
     if (fd == NULL)
         return _EBADF;
@@ -87,8 +88,8 @@ int_t sys_getdents_common(fd_t f, addr_t dirents, dword_t count,
         int type = 0;
         size_t reclen = fill_dirent(dirent_data, inode, offset, name, type);
         if (printed < 20) {
-            STRACE(" {inode=%d, offset=%d, name=%s, type=%d, reclen=%d}",
-                    inode, offset, name, type, reclen);
+            fprintf(stderr, "  DIRENT: addr=0x%llx name_at=0x%llx name=\"%s\" reclen=%zu\n",
+                    (unsigned long long)dirents, (unsigned long long)(dirents + 19), name, reclen);
             printed++;
         }
 

@@ -186,12 +186,16 @@ extern void gadget_and32_imm(void);
 extern void gadget_sign_extend8(void);
 extern void gadget_sign_extend16(void);
 extern void gadget_sign_extend32(void);
+extern void gadget_cdq(void);  // Sign extend EAX to EDX:EAX
+extern void gadget_cqo(void);  // Sign extend RAX to RDX:RAX
 extern void gadget_cmp64_imm(void);
 extern void gadget_cmp32_imm(void);
 extern void gadget_cmp16_imm(void);
 extern void gadget_cmp8_imm(void);
 extern void gadget_cmp64_reg(void);
 extern void gadget_cmp32_reg(void);
+extern void gadget_cmp16_reg(void);
+extern void gadget_cmp8_reg(void);
 extern void gadget_cmp64_x8(void);
 extern void gadget_cmp32_x8(void);
 extern void gadget_cmp16_x8(void);
@@ -201,6 +205,7 @@ extern void gadget_test32_imm(void);
 extern void gadget_test16_imm(void);
 extern void gadget_test8_imm(void);
 extern void gadget_test64_x8(void);
+extern void gadget_test32_x8(void);
 extern void gadget_test64_a(void);
 extern void gadget_test64_c(void);
 extern void gadget_test64_d(void);
@@ -209,6 +214,9 @@ extern void gadget_test64_sp(void);
 extern void gadget_test64_bp(void);
 extern void gadget_test64_si(void);
 extern void gadget_test64_di(void);
+extern void gadget_test32_reg(void);
+extern void gadget_test16_reg(void);
+extern void gadget_test8_reg(void);
 extern void gadget_load16_mem(void);
 extern void gadget_load8_mem(void);
 extern void gadget_store16_mem(void);
@@ -243,6 +251,8 @@ extern void gadget_imul32_si(void);
 extern void gadget_imul32_di(void);
 extern void gadget_imul64_imm(void);
 extern void gadget_imul32_imm(void);
+extern void gadget_imul64_wide(void);  // Single-operand: RDX:RAX = RAX * src
+extern void gadget_imul32_wide(void);  // Single-operand: EDX:EAX = EAX * src
 extern gadget_t imul64_r8_r15_gadgets[];
 extern gadget_t imul32_r8_r15_gadgets[];
 
@@ -674,12 +684,22 @@ static bool gen_addr_internal(struct gen_state *state, struct decoded_op64 *op) 
         return true;
     }
 
-    // No base + scaled index with r8-r15 as index
-    // TODO: Add support for this when needed
-    // if (op->mem.base == arg64_invalid &&
-    //     op->mem.index >= arg64_r8 && op->mem.index <= arg64_r15) {
-    //     return false; // Not yet implemented
-    // }
+    // No base + scaled index with r8-r15 as index: [r8-r15 * scale + disp]
+    if (op->mem.base == arg64_invalid &&
+        op->mem.index >= arg64_r8 && op->mem.index <= arg64_r15) {
+        int scale_idx = get_scale_idx(op->mem.scale);
+        if (scale_idx < 0) return false;
+
+        // Start with displacement only
+        GEN(addr_gadgets[8]); // addr_none
+        GEN(op->mem.disp);
+
+        // Apply scaled index with r8-r15: _addr = _addr + index * scale
+        int si_index = (op->mem.index - arg64_r8) * 4 + scale_idx;
+        GEN(si_r8_r15_gadgets[si_index]);
+
+        return true;
+    }
 
     // Base + scaled index (base must be rax-rdi, index must be rax-rdi for now)
     if (op->mem.base >= arg64_rax && op->mem.base <= arg64_rdi &&
@@ -1716,6 +1736,18 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             GEN(store64_gadgets[0]); // store64_a
             break;
 
+        case ZYDIS_MNEMONIC_CDQ:
+            // Sign extend EAX to EDX:EAX (opcode 99)
+            // EDX becomes all 1s if EAX negative, else all 0s
+            GEN(gadget_cdq);
+            break;
+
+        case ZYDIS_MNEMONIC_CQO:
+            // Sign extend RAX to RDX:RAX (opcode 48 99)
+            // RDX becomes all 1s if RAX negative, else all 0s
+            GEN(gadget_cqo);
+            break;
+
         case ZYDIS_MNEMONIC_CMP:
             // Compare - sets flags without storing result
             if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
@@ -1747,6 +1779,12 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                            inst.operands[1].type <= arg64_rdi) {
                     // CMP with register (rax-rdi)
                     switch (inst.operands[0].size) {
+                    case size64_8:
+                        GEN(gadget_cmp8_reg);
+                        break;
+                    case size64_16:
+                        GEN(gadget_cmp16_reg);
+                        break;
                     case size64_32:
                         GEN(gadget_cmp32_reg);
                         break;
@@ -2017,19 +2055,40 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                         }
                     } else if (reg_idx >= 0 && reg_idx < 8) {
                         // Different registers in rax-rdi range
-                        // Need to do actual TEST between two values
-                        // For now, use 64-bit test (may need size-specific later)
-                        GEN(test64_gadgets[reg_idx]);
+                        // Use size-appropriate test gadgets
+                        switch (inst.operands[0].size) {
+                        case size64_8:
+                            GEN(gadget_test8_reg);
+                            GEN(reg_idx);
+                            break;
+                        case size64_16:
+                            GEN(gadget_test16_reg);
+                            GEN(reg_idx);
+                            break;
+                        case size64_32:
+                            GEN(gadget_test32_reg);
+                            GEN(reg_idx);
+                            break;
+                        default:
+                            GEN(test64_gadgets[reg_idx]);
+                            break;
+                        }
                     } else {
-                        // r8-r15: load to x8, use test64_x8
-                        fprintf(stderr, "GEN: TEST r8-r15 at ip=0x%llx op0=%d op1=%d reg_idx=%d\n",
+                        // r8-r15: load to x8, use size-appropriate test gadget
+                        fprintf(stderr, "GEN: TEST r8-r15 at ip=0x%llx op0=%d op1=%d reg_idx=%d size=%d\n",
                                 (unsigned long long)state->orig_ip,
-                                inst.operands[0].type, inst.operands[1].type, reg_idx);
+                                inst.operands[0].type, inst.operands[1].type, reg_idx,
+                                inst.operands[0].size);
                         gadget_t load2 = get_load64_reg_gadget(inst.operands[1].type);
                         if (load2) {
                             GEN(gadget_save_xtmp_to_x8);
                             GEN(load2);
-                            GEN(gadget_test64_x8);
+                            // Use 32-bit TEST for 32-bit operands, 64-bit otherwise
+                            if (inst.operands[0].size == size64_32) {
+                                GEN(gadget_test32_x8);
+                            } else {
+                                GEN(gadget_test64_x8);
+                            }
                         }
                     }
                 } else {
@@ -2121,6 +2180,14 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             // AND instruction
             if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
                 // AND reg, ...
+                // Debug: trace 8/16-bit AND to see if they're causing issues
+                if (inst.operands[0].size == size64_8 || inst.operands[0].size == size64_16) {
+                    fprintf(stderr, "GEN: AND%d at ip=0x%llx op0=%d imm=0x%llx\n",
+                            inst.operands[0].size == size64_8 ? 8 : 16,
+                            (unsigned long long)state->orig_ip,
+                            inst.operands[0].type,
+                            (unsigned long long)(inst.operands[1].type == arg64_imm ? inst.operands[1].imm : 0));
+                }
                 gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
                 if (load) GEN(load);
 
@@ -2689,6 +2756,39 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
                     if (store) GEN(store);
                 } else if (inst.operands[1].type == arg64_mem &&
+                           inst.operands[1].mem.base == arg64_invalid &&
+                           inst.operands[1].mem.index >= arg64_r8 &&
+                           inst.operands[1].mem.index <= arg64_r15) {
+                    // LEA reg, [r8-r15*scale + disp] (no base, r8-r15 as scaled index)
+                    int scale_idx = get_scale_idx(inst.operands[1].mem.scale);
+                    if (scale_idx < 0) {
+                        g(interrupt);
+                        GEN(INT_UNDEFINED);
+                        GEN(state->orig_ip);
+                        GEN(state->orig_ip);
+                        return 0;
+                    }
+
+                    // Start with displacement only
+                    GEN(addr_gadgets[8]); // addr_none - load displacement only
+                    GEN(inst.operands[1].mem.disp);
+
+                    // Apply scaled index with r8-r15
+                    int si_index = (inst.operands[1].mem.index - arg64_r8) * 4 + scale_idx;
+                    GEN(si_r8_r15_gadgets[si_index]);
+
+                    // _addr now has the effective address, load it into dst
+                    GEN(load64_gadgets[10]); // load64_addr - load _addr into _xtmp
+
+                    // For 32-bit LEA (leal), truncate to 32 bits (zero-extend)
+                    if (inst.operands[0].size == size64_32) {
+                        GEN(gadget_lea_and64_imm);
+                        GEN(0xFFFFFFFF);
+                    }
+
+                    gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
+                    if (store) GEN(store);
+                } else if (inst.operands[1].type == arg64_mem &&
                            inst.operands[1].mem.base >= arg64_r8 &&
                            inst.operands[1].mem.base <= arg64_r15) {
                     // LEA reg, [r8-r15 + index*scale + disp] or [r8-r15 + disp]
@@ -2734,6 +2834,35 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                                 GEN(3);
                             }
                             // Add scaled index to base+disp (x8)
+                            GEN(gadget_add64_x8);
+                        }
+                    } else if (inst.operands[1].mem.index != arg64_invalid &&
+                               inst.operands[1].mem.index >= arg64_r8 &&
+                               inst.operands[1].mem.index <= arg64_r15) {
+                        // Index is r8-r15: save _xtmp to x8, load index, scale, add
+                        int scale_idx = get_scale_idx(inst.operands[1].mem.scale);
+                        if (scale_idx >= 0) {
+                            // Save _xtmp (base+disp) to x8
+                            GEN(gadget_save_xtmp_to_x8);
+                            // Load index register (r8-r15)
+                            gadget_t load_idx = get_load64_reg_gadget(inst.operands[1].mem.index);
+                            if (load_idx) {
+                                GEN(load_idx);
+                            }
+                            // Scale it (LEA does NOT modify flags)
+                            if (inst.operands[1].mem.scale == 2) {
+                                GEN(gadget_shl64_imm);
+                                GEN(1);
+                            } else if (inst.operands[1].mem.scale == 4) {
+                                GEN(gadget_shl64_imm);
+                                GEN(2);
+                            } else if (inst.operands[1].mem.scale == 8) {
+                                GEN(gadget_shl64_imm);
+                                GEN(3);
+                            }
+                            // Add scaled index to base+disp (x8)
+                            // NOTE: This uses flag-modifying add, but LEA shouldn't modify flags
+                            // For now, use lea_add64_x8 if available, otherwise regular add
                             GEN(gadget_add64_x8);
                         }
                     }
@@ -3591,12 +3720,38 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     return 0;
                 }
             } else {
-                // Single operand form - not commonly used, skip for now
-                g(interrupt);
-                GEN(INT_UNDEFINED);
-                GEN(state->orig_ip);
-                GEN(state->orig_ip);
-                return 0;
+                // Single operand form: RDX:RAX = RAX * src
+                // Load source into _xtmp
+                if (is_gpr(inst.operands[0].type)) {
+                    gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
+                    if (load) GEN(load);
+                } else if (is_mem(inst.operands[0].type)) {
+                    if (!gen_addr(state, &inst.operands[0], &inst)) {
+                        g(interrupt);
+                        GEN(INT_UNDEFINED);
+                        GEN(state->orig_ip);
+                        GEN(state->orig_ip);
+                        return 0;
+                    }
+                    if (inst.operands[0].size == size64_32) {
+                        GEN(load32_gadgets[9]); // load32_mem
+                    } else {
+                        GEN(load64_gadgets[9]); // load64_mem
+                    }
+                    GEN(state->orig_ip);
+                } else {
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
+                }
+                // Perform wide multiply (RAX * src -> RDX:RAX)
+                if (inst.operands[0].size == size64_32) {
+                    GEN(gadget_imul32_wide);
+                } else {
+                    GEN(gadget_imul64_wide);
+                }
             }
             break;
 

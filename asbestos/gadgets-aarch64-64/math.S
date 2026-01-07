@@ -50,13 +50,25 @@
     str _addr, [_cpu, LOCAL_value_addr]
     read_prep 64, load64_mem
     ldr _xtmp, [_addr]                 // Direct ARM64 load
-    // Check for suspicious value
+    // Check for suspicious value 0xffffffffffffff80
     movn x9, 0x7f               // x9 = 0xffffffffffffff80
     cmp _xtmp, x9
-    b.ne 67f
+    b.ne 66f
     save_c
     mov x0, _xtmp
     ldr x1, [_cpu, LOCAL_value_addr]   // guest address
+    bl NAME(helper_debug_load64_mem_suspicious)
+    restore_c
+    b 67f
+66:
+    // Also check for 0x7f0000000... values (path corruption)
+    lsr x9, _xtmp, 36           // get upper 28 bits
+    mov x10, 0x7f0              // pattern to match
+    cmp x9, x10
+    b.ne 67f
+    save_c
+    mov x0, _xtmp
+    ldr x1, [_cpu, LOCAL_value_addr]
     bl NAME(helper_debug_load64_mem_suspicious)
     restore_c
 67:
@@ -273,6 +285,18 @@
     restore_c
 86:
     write_done 64, store64_mem
+    // Debug: trace stores with 0x7f0... value (path corruption)
+    ldr x19, [_cpu, LOCAL_value]
+    lsr x9, x19, 36
+    mov x10, 0x7f0
+    cmp x9, x10
+    b.ne 50f
+    save_c
+    mov x0, x19
+    ldr x1, [_cpu, LOCAL_value_addr]
+    bl NAME(helper_debug_store64_7f_value)
+    restore_c
+50:
     // Debug: trace stores with value 2 (strlen result)
     cmp _xtmp, 2
     b.ne 5f
@@ -520,6 +544,13 @@
     gret
 
 .gadget store64_r14
+    // Debug: trace r14 stores with guest RIP
+    ldr x10, [_cpu, CPU_rip]  // Load guest RIP BEFORE save_c
+    save_c
+    mov x0, _xtmp             // value
+    mov x1, x10               // guest RIP
+    bl NAME(helper_debug_store64_r14)
+    restore_c
     str _xtmp, [_cpu, CPU_r14]
     gret
 
@@ -1129,6 +1160,102 @@ NAME(xor32_r8_r15_gadgets):
     setf_zsp w, x9
     gret 1
 
+// 16-bit CMP reg, reg - compare low 16 bits only
+.gadget cmp16_reg
+    ldr x8, [_ip]
+    and w10, _tmp, 0xffff       // Mask first operand to 16 bits
+    cmp x8, 0
+    b.eq 1f
+    cmp x8, 1
+    b.eq 2f
+    cmp x8, 2
+    b.eq 3f
+    cmp x8, 3
+    b.eq 4f
+    cmp x8, 4
+    b.eq 5f
+    cmp x8, 5
+    b.eq 6f
+    cmp x8, 6
+    b.eq 7f
+    // Default to di (case 7)
+    and w11, edi, 0xffff
+    subs w9, w10, w11
+    b 9f
+1:  and w11, eax, 0xffff
+    subs w9, w10, w11
+    b 9f
+2:  and w11, ecx, 0xffff
+    subs w9, w10, w11
+    b 9f
+3:  and w11, edx, 0xffff
+    subs w9, w10, w11
+    b 9f
+4:  and w11, ebx, 0xffff
+    subs w9, w10, w11
+    b 9f
+5:  and w11, esp, 0xffff
+    subs w9, w10, w11
+    b 9f
+6:  and w11, ebp, 0xffff
+    subs w9, w10, w11
+    b 9f
+7:  and w11, esi, 0xffff
+    subs w9, w10, w11
+    b 9f
+9:  setf_oc
+    sxth x9, w9                 // Sign-extend 16-bit result for SF/PF
+    setf_zsp h, x9
+    gret 1
+
+// 8-bit CMP reg, reg - compare low 8 bits only
+.gadget cmp8_reg
+    ldr x8, [_ip]
+    and w10, _tmp, 0xff         // Mask first operand to 8 bits
+    cmp x8, 0
+    b.eq 1f
+    cmp x8, 1
+    b.eq 2f
+    cmp x8, 2
+    b.eq 3f
+    cmp x8, 3
+    b.eq 4f
+    cmp x8, 4
+    b.eq 5f
+    cmp x8, 5
+    b.eq 6f
+    cmp x8, 6
+    b.eq 7f
+    // Default to di low 8 bits (case 7)
+    and w11, edi, 0xff
+    subs w9, w10, w11
+    b 9f
+1:  and w11, eax, 0xff
+    subs w9, w10, w11
+    b 9f
+2:  and w11, ecx, 0xff
+    subs w9, w10, w11
+    b 9f
+3:  and w11, edx, 0xff
+    subs w9, w10, w11
+    b 9f
+4:  and w11, ebx, 0xff
+    subs w9, w10, w11
+    b 9f
+5:  and w11, esp, 0xff
+    subs w9, w10, w11
+    b 9f
+6:  and w11, ebp, 0xff
+    subs w9, w10, w11
+    b 9f
+7:  and w11, esi, 0xff
+    subs w9, w10, w11
+    b 9f
+9:  setf_oc
+    sxtb x9, w9                 // Sign-extend 8-bit result for SF/PF
+    setf_zsp b, x9
+    gret 1
+
 // CMP _xtmp with x8 (for CMP [mem], reg where mem is loaded first)
 // This compares memory value (_xtmp) with saved register value (x8)
 // Flags are set based on: _xtmp - x8
@@ -1262,6 +1389,23 @@ NAME(xor32_r8_r15_gadgets):
     setf_zsp , x9
     gret
 
+// 32-bit TEST with x8 for r8-r15 registers
+// Uses 32-bit ANDS for correct sign flag on bit 31
+.gadget test32_x8
+    // Debug: trace the TEST values
+    ldr x10, [_cpu, CPU_rip]  // Save guest RIP in x10
+    save_c
+    uxtw x0, _tmp        // First value (operand 0 - was loaded first, now in x8 actually)
+    uxtw x1, w8          // Second value (operand 1 - now in _xtmp)
+    mov x2, x10          // Guest RIP
+    bl NAME(helper_debug_test32_x8)
+    restore_c
+    // Actual TEST
+    ands w9, _tmp, w8   // 32-bit AND
+    clearf_oc
+    setf_zsp w, x9      // 32-bit result for flags
+    gret
+
 // TEST with register (for reg, reg - xtmp & other_reg, set flags)
 .macro test_reg64 name, reg64, reg32
     .gadget test64_\name
@@ -1272,6 +1416,124 @@ NAME(xor32_r8_r15_gadgets):
 .endm
 .each_reg64 test_reg64
 .purgem test_reg64
+
+// 8-bit TEST reg, reg - test low 8 bits only
+// Same pattern as cmp8_reg - read register index from [_ip]
+.gadget test8_reg
+    ldr x8, [_ip]
+    and w10, _tmp, 0xff         // Mask first operand to 8 bits
+    cmp x8, 0
+    b.eq 1f
+    cmp x8, 1
+    b.eq 2f
+    cmp x8, 2
+    b.eq 3f
+    cmp x8, 3
+    b.eq 4f
+    cmp x8, 4
+    b.eq 5f
+    cmp x8, 5
+    b.eq 6f
+    cmp x8, 6
+    b.eq 7f
+    // Default to di low 8 bits (case 7)
+    and w11, edi, 0xff
+    b 9f
+1:  and w11, eax, 0xff
+    b 9f
+2:  and w11, ecx, 0xff
+    b 9f
+3:  and w11, edx, 0xff
+    b 9f
+4:  and w11, ebx, 0xff
+    b 9f
+5:  and w11, esp, 0xff
+    b 9f
+6:  and w11, ebp, 0xff
+    b 9f
+7:  and w11, esi, 0xff
+9:  ands w9, w10, w11           // TEST = AND, set flags
+    clearf_oc
+    setf_zsp b, x9
+    gret 1
+
+// 16-bit TEST reg, reg - test low 16 bits only
+.gadget test16_reg
+    ldr x8, [_ip]
+    and w10, _tmp, 0xffff       // Mask first operand to 16 bits
+    cmp x8, 0
+    b.eq 1f
+    cmp x8, 1
+    b.eq 2f
+    cmp x8, 2
+    b.eq 3f
+    cmp x8, 3
+    b.eq 4f
+    cmp x8, 4
+    b.eq 5f
+    cmp x8, 5
+    b.eq 6f
+    cmp x8, 6
+    b.eq 7f
+    // Default to di low 16 bits (case 7)
+    and w11, edi, 0xffff
+    b 9f
+1:  and w11, eax, 0xffff
+    b 9f
+2:  and w11, ecx, 0xffff
+    b 9f
+3:  and w11, edx, 0xffff
+    b 9f
+4:  and w11, ebx, 0xffff
+    b 9f
+5:  and w11, esp, 0xffff
+    b 9f
+6:  and w11, ebp, 0xffff
+    b 9f
+7:  and w11, esi, 0xffff
+9:  ands w9, w10, w11           // TEST = AND, set flags
+    clearf_oc
+    setf_zsp h, x9
+    gret 1
+
+// 32-bit TEST reg, reg - test low 32 bits only
+.gadget test32_reg
+    ldr x8, [_ip]
+    mov w10, _tmp               // Copy 32-bit (w reg = already masked)
+    cmp x8, 0
+    b.eq 1f
+    cmp x8, 1
+    b.eq 2f
+    cmp x8, 2
+    b.eq 3f
+    cmp x8, 3
+    b.eq 4f
+    cmp x8, 4
+    b.eq 5f
+    cmp x8, 5
+    b.eq 6f
+    cmp x8, 6
+    b.eq 7f
+    // Default to edi (case 7)
+    mov w11, edi
+    b 9f
+1:  mov w11, eax
+    b 9f
+2:  mov w11, ecx
+    b 9f
+3:  mov w11, edx
+    b 9f
+4:  mov w11, ebx
+    b 9f
+5:  mov w11, esp
+    b 9f
+6:  mov w11, ebp
+    b 9f
+7:  mov w11, esi
+9:  ands w9, w10, w11           // TEST = AND, set flags
+    clearf_oc
+    setf_zsp , x9
+    gret 1
 
 // ============================================================
 // DIV/IDIV gadgets
@@ -1738,6 +2000,19 @@ div64_by_zero_nodebug:
     sxtw _xtmp, _tmp
     gret
 
+// CDQ: Sign extend EAX to EDX:EAX (EDX = sign_extend(EAX[31]))
+// Sets EDX to 0xFFFFFFFF if EAX is negative, else 0
+.gadget cdq
+    asr w9, eax, #31       // Arithmetic shift right by 31 copies sign bit to all 32 bits
+    mov edx, w9            // Store to EDX (w21 maps to edx, zero-extends to x21)
+    gret
+
+// CQO: Sign extend RAX to RDX:RAX (RDX = sign_extend(RAX[63]))
+// Sets RDX to 0xFFFFFFFFFFFFFFFF if RAX is negative, else 0
+.gadget cqo
+    asr rdx, rax, #63      // Arithmetic shift right by 63 copies sign bit to all 64 bits
+    gret
+
 // ============================================================
 // Gadget arrays for the generator
 // ============================================================
@@ -1967,6 +2242,36 @@ NAME(imul32_r8_r15_gadgets):
 .gadget imul64_mem
     ldr x8, [_addr]
     mul _xtmp, _xtmp, x8
+    gret
+
+// Single-operand IMUL 64-bit: RDX:RAX = RAX * src
+// _xtmp = src (from register or memory), result in RAX (low) and RDX (high)
+.gadget imul64_wide
+    mul x8, rax, _xtmp         // Low 64 bits: x8 = RAX * src
+    smulh x9, rax, _xtmp       // High 64 bits: x9 = signed high bits
+    mov rax, x8                // Store low to RAX
+    mov rdx, x9                // Store high to RDX
+    // Set OF/CF if result doesn't fit in RAX (high part is not sign-extension of low)
+    asr x10, x8, 63            // Sign extend of low result
+    cmp x9, x10                // Compare high with sign-extension of low
+    cset w11, ne               // OF/CF set if they differ
+    strb w11, [_cpu, CPU_of]
+    strb w11, [_cpu, CPU_cf]
+    gret
+
+// Single-operand IMUL 32-bit: EDX:EAX = EAX * src
+// _tmp = src (32-bit), result in EAX (low) and EDX (high)
+.gadget imul32_wide
+    smull x8, eax, _tmp        // Signed 32x32 -> 64 result
+    mov eax, w8                // Low 32 bits to EAX (zero-extends to 64)
+    lsr x9, x8, 32             // High 32 bits
+    mov edx, w9                // To EDX (zero-extends to 64)
+    // Set OF/CF if result doesn't fit in EAX
+    sxtw x10, w8               // Sign extend low 32 bits to 64
+    cmp x8, x10                // Compare full result with sign-extension
+    cset w11, ne               // OF/CF set if they differ
+    strb w11, [_cpu, CPU_of]
+    strb w11, [_cpu, CPU_cf]
     gret
 
 // ============================================================

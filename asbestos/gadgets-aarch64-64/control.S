@@ -96,6 +96,16 @@
     // Load return address from stack
     read_prep 64, ret
     ldr _xtmp, [_addr]
+
+    // Debug: unconditionally trace ALL returns
+    // NOTE: _xtmp IS x0, so save it first!
+    mov x9, _xtmp    // Save return address before save_c
+    save_c
+    mov x0, rax      // x0 = rax (return value)
+    mov x1, x9       // x1 = return address (saved copy)
+    bl NAME(helper_debug_ret)
+    restore_c
+
     // Pop stack (add immediate from gadget args)
     ldr x8, [_ip, 8]
     add rsp, rsp, x8

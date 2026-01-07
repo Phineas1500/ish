@@ -90,6 +90,15 @@ void helper_debug_load64_mem_suspicious(uint64_t value, uint64_t guest_addr) {
         fprintf(stderr, "LOAD64_MEM_SUSPICIOUS: value=0x%llx from guest_addr=0x%llx\n",
                 (unsigned long long)value, (unsigned long long)guest_addr);
     }
+    // Also trace loads that return 0x7f0000000... addresses (path corruption)
+    if ((value >> 36) == 0x7f0 && (value & 0xffffff) != 0) {
+        static int count = 0;
+        count++;
+        if (count <= 10) {
+            fprintf(stderr, "LOAD64_7F: loaded 0x%llx from guest 0x%llx\n",
+                    (unsigned long long)value, (unsigned long long)guest_addr);
+        }
+    }
 }
 
 // Debug: trace load64 from register when value is suspicious
@@ -415,22 +424,55 @@ void helper_debug_store_r12(uint64_t new_value, uint64_t rbx_value, uint64_t r15
 }
 
 // Debug: trace CALL arguments - called before CALL
+static int g_call_count = 0;
 void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret_addr) {
-    static int count = 0;
-    count++;
+    g_call_count++;
     // Strip the fake_ip flag bit
     uint64_t real_target = target & 0x7FFFFFFFFFFFFFFF;
+    // Trace calls to strcmp (0x7efffffb71a9) that have --help address
+    // --help is at busybox+0xa334a = 0x5555555f734a
+    if (rsi == 0x5555555f734a || rdi == 0x5555555f734a) {
+        fprintf(stderr, "CALL_STRCMP_HELP[%d]: rdi=0x%llx rsi=0x%llx target=0x%llx ret_addr=0x%llx\n",
+                g_call_count, (unsigned long long)rdi, (unsigned long long)rsi,
+                (unsigned long long)real_target, (unsigned long long)ret_addr);
+    }
     // Always trace calls to bb_show_usage (0x55555555afad) to see who calls it
-    if (real_target == 0x55555555afad) {
+    else if (real_target == 0x55555555afad) {
         fprintf(stderr, "CALL_BB_SHOW_USAGE[%d]: ret=0x%llx rdi=0x%llx rsi=0x%llx\n",
-                count, (unsigned long long)ret_addr, (unsigned long long)rdi,
+                g_call_count, (unsigned long long)ret_addr, (unsigned long long)rdi,
                 (unsigned long long)rsi);
     }
-    // Trace all calls around the interesting range (1455-1470)
-    else if (count >= 1455 && count <= 1470) {
+    // Trace all calls around the interesting range (1455-1520)
+    else if (g_call_count >= 1455 && g_call_count <= 1520) {
         fprintf(stderr, "CALL[%d]: target=0x%llx ret=0x%llx rdi=0x%llx rsi=0x%llx\n",
-                count, (unsigned long long)real_target, (unsigned long long)ret_addr,
+                g_call_count, (unsigned long long)real_target, (unsigned long long)ret_addr,
                 (unsigned long long)rdi, (unsigned long long)rsi);
+    }
+}
+
+// Debug: trace RET return value (RAX) after specific calls
+static int g_ret_count = 0;
+void helper_debug_ret(uint64_t rax, uint64_t ret_to) {
+    g_ret_count++;
+    // Check for key addresses
+    if (ret_to == 0x55555555b11a || ret_to == 0x55555555b46d) {
+        fprintf(stderr, "RET_STRCMP_KEY[%d]: rax=%lld (0x%llx) ret_to=0x%llx - should be non-zero for \"/\" vs \"--help\"\n",
+                g_ret_count, (long long)(int)rax, (unsigned long long)rax, (unsigned long long)ret_to);
+    }
+    // Trace all returns in interesting range (expanded to see bb_show_usage path)
+    else if (g_ret_count >= 1450 && g_ret_count <= 1530) {
+        fprintf(stderr, "RET[%d]: rax=%lld ret_to=0x%llx\n",
+                g_ret_count, (long long)(int)rax, (unsigned long long)ret_to);
+    }
+}
+
+// Debug: trace 32-bit memory loads from optind address (0x55555561a068)
+// optind is at busybox+0xc6068, loaded by getopt32 to check remaining args
+void helper_debug_load32_optind(uint64_t guest_addr, uint32_t value) {
+    // optind is at 0x55555561a068
+    if (guest_addr == 0x55555561a068) {
+        fprintf(stderr, "LOAD32_OPTIND: addr=0x%llx value=%u (optind)\n",
+                (unsigned long long)guest_addr, value);
     }
 }
 
@@ -897,8 +939,19 @@ void helper_debug_store64_r12(uint64_t value) {
 int helper_get_load32_count(void);
 
 // Debug: trace store to r15
+static int g_store_r15_count = 0;
 void helper_debug_store64_r15(uint64_t value, uint64_t guest_rip) {
-    (void)value; (void)guest_rip;
+    g_store_r15_count++;
+    // Trace ALL stores in getopt32 range (0x93000 - 0x93500 offset)
+    // busybox base = 0x555555554000, so getopt32 range is 0x5555555e7000 - 0x5555555e7500
+    if (guest_rip >= 0x5555555e7000 && guest_rip <= 0x5555555e7500) {
+        // Only trace small values (flag values) and the r15=0 zeroing at 0x931a4
+        if (value < 0x1000 || value == 0x8000000 || guest_rip == 0x5555555e71a4) {
+            fprintf(stderr, "STORE_R15[%d]: value=0x%llx @ rip=0x%llx\n",
+                    g_store_r15_count, (unsigned long long)value,
+                    (unsigned long long)guest_rip);
+        }
+    }
 }
 
 // Debug: trace the OR memory address
@@ -913,8 +966,38 @@ void helper_debug_or_mem_addr(uint64_t guest_addr, uint64_t guest_rip, uint64_t 
     }
 }
 
+static int g_store_r14_count = 0;
+static int g_r14_trace_enabled = 1;
+void helper_debug_store64_r14(uint64_t value, uint64_t guest_rip) {
+    g_store_r14_count++;
+    // Trace r14 stores in getopt32 range - r14 holds option string pointer
+    // busybox base = 0x555555554000, getopt32 range is ~0x92e00-0x93500
+    if (guest_rip >= 0x5555555e6000 && guest_rip <= 0x5555555e8000) {
+        // Trace stores where r14 points to option string data (0x555555613*)
+        // Also trace key positions: initial setup (0xee6), loop increment (0x7356), leaq (0x7352)
+        uint64_t offset = guest_rip - 0x555555554000;
+        if ((value >= 0x555555610000 && value <= 0x555555620000) ||
+            offset == 0x92eec || offset == 0x931b4) {
+            if (g_r14_trace_enabled) {
+                fprintf(stderr, "STORE_R14[%d]: value=0x%llx @ rip=0x%llx (offset=0x%llx)\n",
+                        g_store_r14_count, (unsigned long long)value,
+                        (unsigned long long)guest_rip, (unsigned long long)offset);
+            }
+        }
+    }
+}
+
+static int g_store_r13_count = 0;
 void helper_debug_store64_r13(uint64_t value, uint64_t guest_rip) {
-    (void)value; (void)guest_rip;
+    g_store_r13_count++;
+    // Trace key stores - look for 0x8000000 or 0 in busybox
+    if (guest_rip >= 0x555555550000 && guest_rip <= 0x555555700000) {
+        if (value == 0 || value == 0x8000000) {
+            fprintf(stderr, "STORE_R13[%d]: value=0x%llx @ rip=0x%llx\n",
+                    g_store_r13_count, (unsigned long long)value,
+                    (unsigned long long)guest_rip);
+        }
+    }
 }
 
 void helper_debug_load64_r13(uint64_t value) {
@@ -925,11 +1008,11 @@ void helper_debug_load64_r13(uint64_t value) {
 void helper_debug_or_mem_load(uint64_t guest_addr, uint32_t loaded_value, uint64_t guest_rip) {
     static int count = 0;
     count++;
-    // Trace if the loaded value is 0x50 or in the getopt32 range
-    if (loaded_value == 0x50 || (guest_rip >= 0x5555555e7200 && guest_rip <= 0x5555555e7300)) {
-        fprintf(stderr, "OR_MEM_LOAD[%d]: guest_addr=0x%llx loaded_val=%u (0x%x '%c') @ rip=0x%llx\n",
+    // Trace if the loaded value is 0x8000000 (suspicious) or in the getopt32 range
+    if (loaded_value == 0x8000000 || loaded_value == 0x50 ||
+        (guest_rip >= 0x5555555e7280 && guest_rip <= 0x5555555e7290)) {
+        fprintf(stderr, "OR_MEM_LOAD[%d]: guest_addr=0x%llx loaded_val=%u (0x%x) @ rip=0x%llx\n",
                 count, (unsigned long long)guest_addr, loaded_value, loaded_value,
-                (loaded_value >= 0x20 && loaded_value <= 0x7e) ? (char)loaded_value : '?',
                 (unsigned long long)guest_rip);
     }
 }
@@ -938,11 +1021,13 @@ void helper_debug_or_mem_load(uint64_t guest_addr, uint32_t loaded_value, uint64
 void helper_debug_cmpb_0x3a(uint8_t byte_val, uint64_t addr, uint64_t guest_rip) {
     static int count = 0;
     count++;
-    // Trace in getopt32 range (0x93256 -> 0x5555555e7256)
+    // Trace in getopt32 range (0x93256 -> 0x5555555e7256) - THIS IS CRITICAL
+    // If byte is NOT ':', the code jumps directly to OR and sets flags!
     if (guest_rip >= 0x5555555e7250 && guest_rip <= 0x5555555e7260) {
-        fprintf(stderr, "CMPB_3A[%d]: byte=0x%02x '%c' at addr=0x%llx @ rip=0x%llx\n",
+        const char *result = (byte_val == 0x3a) ? "MATCH (has arg)" : "NO MATCH (no arg, will OR flags!)";
+        fprintf(stderr, "CMPB_3A[%d]: byte=0x%02x '%c' at addr=0x%llx -> %s @ rip=0x%llx\n",
                 count, byte_val, (byte_val >= 0x20 && byte_val <= 0x7e) ? (char)byte_val : '?',
-                (unsigned long long)addr, (unsigned long long)guest_rip);
+                (unsigned long long)addr, result, (unsigned long long)guest_rip);
     }
 }
 
@@ -972,16 +1057,22 @@ static const uint64_t strlen_ips[] = {
 };
 void helper_debug_load8_mem_full(uint32_t byte_value, uint64_t guest_addr, uint64_t orig_ip) {
     g_load8_count++;
-    // Check if this is a strlen-like CMP at any of the 4 IPs
-    int is_strlen = 0;
-    for (int i = 0; i < 4; i++) {
-        if (orig_ip == strlen_ips[i]) { is_strlen = 1; break; }
+    // Trace loads for CMP byte [r14+2], 0x3a at offset 0x93256 in busybox
+    // Guest IP = 0x555555554000 + 0x93256 = 0x5555555e7256
+    if (orig_ip == 0x5555555e7256) {
+        char c = (byte_value >= 0x20 && byte_value < 0x7f) ? (char)byte_value : '.';
+        fprintf(stderr, "LOAD8_CMP3A[%d]: guest_addr=0x%llx byte=0x%02x '%c' @ ip=0x%llx\n",
+                g_load8_count, (unsigned long long)guest_addr, byte_value, c,
+                (unsigned long long)orig_ip);
     }
-    // Debug traces disabled for cleaner output
-    (void)is_strlen;
-    (void)guest_addr;
-    (void)byte_value;
-    (void)orig_ip;
+    // Also trace CMP byte [r13], 0x5e at offset 0x92edf
+    // Guest IP = 0x555555554000 + 0x92edf = 0x5555555e6edf
+    if (orig_ip == 0x5555555e6edf) {
+        char c = (byte_value >= 0x20 && byte_value < 0x7f) ? (char)byte_value : '.';
+        fprintf(stderr, "LOAD8_CMP5E[%d]: guest_addr=0x%llx byte=0x%02x '%c' (expected '^'=0x5e) @ ip=0x%llx\n",
+                g_load8_count, (unsigned long long)guest_addr, byte_value, c,
+                (unsigned long long)orig_ip);
+    }
 }
 
 void helper_debug_load8_mem_guest(uint32_t byte_value, uint64_t guest_addr) {
@@ -1106,8 +1197,22 @@ void helper_debug_test8_null_check(uint32_t byte_value) {
     prev = byte_value;
 }
 
+static int g_cmp8_3a_count = 0;
 void helper_debug_cmp8_all_res(uint32_t byte_value, uint32_t imm, int64_t res) {
-    (void)byte_value; (void)imm; (void)res;
+    // Trace CMP with ':' (0x3a) - critical for getopt32 option parsing
+    // If byte != 0x3a, the option's flags get ORed in
+    if (imm == 0x3a) {
+        g_cmp8_3a_count++;
+        // Only trace the last few comparisons (around when 0x8000000 gets set)
+        // Also trace NULL bytes (potential end-of-string issues)
+        if (byte_value == 0x00 || g_cmp8_3a_count >= 25) {
+            const char *result = (byte_value == 0x3a) ? "MATCH (opt has arg)" : "NO MATCH (opt sets flags!)";
+            fprintf(stderr, "CMP8_3A[%d]: byte=0x%02x '%c' -> %s\n",
+                    g_cmp8_3a_count, byte_value,
+                    (byte_value >= 0x20 && byte_value <= 0x7e) ? (char)byte_value : '?',
+                    result);
+        }
+    }
 }
 
 void helper_debug_cmp8_all(uint32_t byte_value, uint32_t imm) {
@@ -1131,6 +1236,18 @@ void helper_debug_test_r8_r15(uint32_t val1, uint32_t val2, int reg_idx) {
 void helper_debug_test64_x8(uint32_t val1, uint32_t val2, uint64_t guest_rip) {
     (void)val1; (void)val2; (void)guest_rip;
     // Disabled to reduce noise
+}
+
+// Debug: trace 32-bit TEST with x8 (for r8-r15 registers)
+void helper_debug_test32_x8(uint32_t val_xtmp, uint32_t val_x8, uint64_t guest_rip) {
+    // Trace tests in the getopt32 range (0x93480 to 0x93490 offset from busybox base)
+    // 0x5555555e7480 to 0x5555555e7490
+    if (guest_rip >= 0x5555555e7480 && guest_rip <= 0x5555555e7490) {
+        uint32_t result = val_xtmp & val_x8;
+        fprintf(stderr, "TEST32_X8: _xtmp=%u (0x%x) x8=%u (0x%x) result=%u ZF=%d @ rip=0x%llx\n",
+                val_xtmp, val_xtmp, val_x8, val_x8, result, (result == 0) ? 1 : 0,
+                (unsigned long long)guest_rip);
+    }
 }
 
 // Debug: trace test32_imm gadget (used for TEST reg, reg -> TEST reg, 0xFFFFFFFF)
@@ -1206,7 +1323,6 @@ void helper_debug_cmp32_neg1(uint32_t eax, uint32_t imm) {
 // Debug: trace JMP_Z (JE/JZ) gadget
 void helper_debug_jmp_z(uint32_t flags_res, uint64_t res) {
     (void)flags_res; (void)res;
-    // Disabled to reduce noise
 }
 
 // Debug: trace SETcc producing 1
@@ -1290,6 +1406,33 @@ void helper_debug_store64_mem_val2(uint64_t value, uint64_t guest_addr) {
     if (load8 >= 12975 && load8 <= 12990) {
         fprintf(stderr, "STORE64_MEM_VAL2[load8=%d]: addr=0x%llx value=%llu (strlen result?)\n",
                 load8, (unsigned long long)guest_addr, (unsigned long long)value);
+    }
+    // Trace stores to busybox file entry array
+    if (guest_addr >= 0x55555561c070 && guest_addr <= 0x55555561c200) {
+        static int count = 0;
+        count++;
+        if (count <= 20) {
+            fprintf(stderr, "STORE64_BBENTRY[%d]: addr=0x%llx value=0x%llx\n",
+                    count, (unsigned long long)guest_addr, (unsigned long long)value);
+        }
+    }
+}
+
+// Debug: trace when RDI is set to 0x7f... addresses (path corruption)
+void helper_trace_rdi_7f(uint64_t value, uint64_t guest_rip) {
+    if ((value >> 36) == 0x7f0) {
+        fprintf(stderr, "RDI_7F: rdi=0x%llx at rip=0x%llx\n",
+                (unsigned long long)value, (unsigned long long)guest_rip);
+    }
+}
+
+// Debug: trace stores of 0x7f... values (path corruption source)
+void helper_debug_store64_7f_value(uint64_t value, uint64_t guest_addr) {
+    static int count = 0;
+    count++;
+    if (count <= 30) {
+        fprintf(stderr, "STORE64_7F[%d]: storing 0x%llx to guest 0x%llx\n",
+                count, (unsigned long long)value, (unsigned long long)guest_addr);
     }
 }
 
@@ -1706,4 +1849,14 @@ void helper_debug_or32_mem_after(uint32_t result, uint64_t guest_addr, uint32_t 
     fprintf(stderr, "*** OR32_MEM_AFTER[%d,entry=%lld,off=%lld]: addr=0x%llx w8=0x%x result=0x%x\n",
             or32_mem_count, (long long)entry, (long long)offset,
             (unsigned long long)guest_addr, (unsigned)w8_operand, (unsigned)result);
+}
+
+// Trace JNE decisions after strcmp CMP
+void helper_debug_jne_strcmp(uint64_t ip, uint64_t zf_value) {
+    // JNE at 0x591b5 in strcmp (interp + 0x591b5 = 0x7efffffb71b5)
+    uint64_t jne_addr = 0x7efffff5e000 + 0x591b5;
+    if (ip == jne_addr) {
+        fprintf(stderr, "STRCMP_JNE: ip=0x%llx ZF=%llu (should jump if ZF=0)\n",
+                (unsigned long long)ip, (unsigned long long)zf_value);
+    }
 }
