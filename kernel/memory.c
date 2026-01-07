@@ -164,6 +164,11 @@ static struct pt_entry *mem_pt_new(struct mem *mem, page_t page) {
 }
 
 struct pt_entry *mem_pt(struct mem *mem, page_t page) {
+    // Debug: check for out of bounds access
+    if (PGDIR_TOP(page) >= MEM_PGDIR_SIZE) {
+        fprintf(stderr, "MEM_PT OOB: page=0x%llx PGDIR_TOP=0x%llx\n",
+                (unsigned long long)page, (unsigned long long)PGDIR_TOP(page));
+    }
     struct pt_entry *pgdir = mem->pgdir[PGDIR_TOP(page)];
     if (pgdir == NULL)
         return NULL;
@@ -350,7 +355,24 @@ static void *mem_ptr_nofault(struct mem *mem, addr_t addr, int type) {
         return NULL;
     if (type == MEM_WRITE && !P_WRITABLE(entry->flags))
         return NULL;
-    return entry->data->data + entry->offset + PGOFFSET(addr);
+    void *result = entry->data->data + entry->offset + PGOFFSET(addr);
+    // Trace crash page
+    if (PAGE(addr) == 0x55555561c) {
+        fprintf(stderr, "MEM_PTR: page=0x%llx data=%p size=0x%zx offset=0x%zx flags=0x%x result=%p\n",
+                (unsigned long long)PAGE(addr),
+                entry->data->data, entry->data->size, entry->offset, entry->flags, result);
+        // Check if offset is within data size
+        if (entry->offset + PAGE_SIZE > entry->data->size) {
+            fprintf(stderr, "MEM_PTR WARNING: offset+PAGE_SIZE (0x%zx) > data size (0x%zx)!\n",
+                    entry->offset + PAGE_SIZE, entry->data->size);
+        }
+        // Try to read from result to verify it's accessible
+        volatile char *test = (volatile char *)result;
+        fprintf(stderr, "MEM_PTR TEST: reading from %p...\n", result);
+        char c = test[0x150];  // Read at offset 0x150 where crash happens
+        fprintf(stderr, "MEM_PTR TEST: read byte 0x%02x OK\n", (unsigned char)c);
+    }
+    return result;
 }
 
 void *mem_ptr(struct mem *mem, addr_t addr, int type) {

@@ -15,9 +15,25 @@
     sub _addr, rsp, 8
     write_prep 64, call
     ldr x8, [_ip, 16]           // Return address from gadget args
+    // Watchpoint check BEFORE the store
+    save_c
+    mov x0, x8           // value (return address)
+    mov x1, _addr        // host addr
+    bl NAME(helper_check_watchpoint_store64)
+    restore_c
+    ldr x8, [_ip, 16]           // Reload x8 (clobbered by call)
     str x8, [_addr]
     // Push stack pointer
     sub rsp, rsp, 8
+    // Debug: trace call target and return address
+    save_c
+    ldr x0, [_ip, 32]           // target address
+    mov x1, rdi                 // rdi argument
+    mov x2, rsi                 // rsi argument
+    mov x3, x8                  // return address
+    bl NAME(helper_debug_call)
+    restore_c
+    ldr x8, [_ip, 16]           // Reload x8 (clobbered by call)
     // Save ip-to-arguments to return cache
     ubfx x12, x8, 4, 12
     write_done 64, call
@@ -33,9 +49,25 @@
     sub _addr, rsp, 8
     write_prep 64, call_indir
     ldr x8, [_ip, 16]           // Return address
+    // Watchpoint check BEFORE the store
+    save_c
+    mov x0, x8           // value (return address)
+    mov x1, _addr        // host addr
+    bl NAME(helper_check_watchpoint_store64)
+    restore_c
+    ldr x8, [_ip, 16]           // Reload x8 (clobbered by call)
     str x8, [_addr]
     // Push stack pointer
     sub rsp, rsp, 8
+    // Debug: trace indirect call target
+    save_c
+    mov x0, _xtmp               // target address
+    mov x1, rdi                 // rdi argument
+    mov x2, rsi                 // rsi argument
+    mov x3, x8                  // return address
+    bl NAME(helper_debug_call)
+    restore_c
+    ldr x8, [_ip, 16]           // Reload x8 (clobbered by call)
     // Save ip-to-arguments to return cache
     ubfx x12, x8, 4, 12
     write_done 64, call_indir
@@ -238,6 +270,16 @@
 
 .irp cond, COND_LIST
     .gadget jmp_\cond
+        // Debug: trace JMP_Z when taken or not taken
+        .ifc \cond,z
+            save_c
+            ldr w9, [_cpu, CPU_flags_res]
+            ldr x10, [_cpu, CPU_res]
+            mov x0, x9                   // flags_res
+            mov x1, x10                  // res
+            bl NAME(helper_debug_jmp_z)
+            restore_c
+        .endif
         do_jump \cond, 1f
         ldr _ip, [_ip, 8]
         b fiber_ret_chain
@@ -351,6 +393,34 @@
 3:  // ZF=0 or after setting _xtmp=x8
     gret
 
+// Debug wrapper for cmovn_sxo (CMOVGE) - trace before cmov decision
+.gadget debug_cmovn_sxo
+    // Save values before save_c clobbers them
+    stp _xtmp, x8, [sp, -0x70]!         // sp -= 0x70, [sp] = _xtmp (src), [sp+8] = x8 (dst)
+    save_c                               // sp -= 0x60 more
+    // Load CPU values BEFORE clobbering x1 (which is _cpu!)
+    ldr x2, [_cpu, CPU_res]             // arg2 = cpu_res (load FIRST while _cpu valid)
+    ldrb w3, [_cpu, CPU_of]             // arg3 = OF flag (load FIRST while _cpu valid)
+    // Now load args that clobber _cpu (x1)
+    ldr x0, [sp, 0x60]                  // arg0 = source (_xtmp)
+    ldr x1, [sp, 0x68]                  // arg1 = destination (x8) - safe to clobber x1 now
+    bl NAME(helper_debug_cmovge)
+    restore_c                            // sp += 0x60
+    ldp _xtmp, x8, [sp], 0x70           // restore and sp += 0x70
+    // Now do the actual cmovn_sxo logic (GE = NOT L = NOT (SF XOR OF))
+    // If L (SF != OF), keep destination (x8)
+    // If GE (SF == OF), keep source (_xtmp)
+    ldr x9, [_cpu, CPU_res]
+    cmp x9, 0
+    cset w9, lt                          // SF = (res < 0)
+    ldrb w10, [_cpu, CPU_of]
+    cmp w9, w10
+    b.ne 1f                              // SF != OF (L condition true), keep dst
+    b 2f                                 // SF == OF (GE condition true), keep src
+1:  // L condition true, keep destination
+    mov _xtmp, x8
+2:  gret
+
 // ============================================================
 // Flags operations
 // ============================================================
@@ -365,6 +435,13 @@
     mov _addr, rsp
     write_prep 64, pushf
     ldr x8, [_cpu, CPU_eflags]
+    // Watchpoint check BEFORE the store
+    save_c
+    mov x0, x8           // value (flags)
+    mov x1, _addr        // host addr
+    bl NAME(helper_check_watchpoint_store64)
+    restore_c
+    ldr x8, [_cpu, CPU_eflags]  // Reload x8 (clobbered by call)
     str x8, [_addr]
     write_done 64, pushf
     gret

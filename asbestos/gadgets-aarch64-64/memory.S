@@ -2,9 +2,16 @@
 #include "emu/interrupt.h"
 
 // Push 64-bit value onto stack
+// IMPORTANT: Added watchpoint check for debugging memory corruption
 .gadget push
     sub _addr, rsp, 8
     write_prep 64, push
+    // Watchpoint check BEFORE the store
+    save_c
+    mov x0, _xtmp        // value (64-bit)
+    mov x1, _addr        // host addr
+    bl NAME(helper_check_watchpoint_store64)
+    restore_c
     str _xtmp, [_addr]
     write_done 64, push
     sub rsp, rsp, 8
@@ -21,9 +28,16 @@
     read_bullshit 64, pop
 
 // Push 32-bit value (for compatibility)
+// IMPORTANT: Added watchpoint check for debugging memory corruption
 .gadget push32
     sub _addr, rsp, 4
     write_prep 32, push32
+    // Watchpoint check BEFORE the store
+    save_c
+    uxtw x0, _tmp        // value (32-bit zero-extended)
+    mov x1, _addr        // host addr
+    bl NAME(helper_check_watchpoint_store32)
+    restore_c
     str _tmp, [_addr]
     write_done 32, push32
     sub rsp, rsp, 4
@@ -188,14 +202,6 @@ NAME(si_r8_r15_gadgets):
 // FS segment override (for TLS)
 .gadget seg_fs
     ldr x8, [_cpu, CPU_fs_base]
-    // Debug: print what we're adding
-    save_c
-    mov x0, _addr   // addr before adding FS base
-    mov x1, x8      // fs_base value
-    mov x2, _cpu    // cpu pointer (for reference)
-    bl NAME(helper_debug_seg_fs)
-    restore_c
-    ldr x8, [_cpu, CPU_fs_base]  // Reload after save_c
     add _addr, _addr, x8
     gret
 

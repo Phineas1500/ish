@@ -482,14 +482,104 @@ void handle_interrupt(int interrupt) {
             printk("%d(%s) missing syscall %d\n", current->pid, current->comm, syscall_num);
             cpu->rax = _ENOSYS;
         } else {
-            if (syscall_table[syscall_num] == (syscall_t) syscall_stub) {
-                printk("%d(%s) stub syscall %d\n", current->pid, current->comm, syscall_num);
+            // Syscall traces disabled to reduce noise
+            (void)syscall_num;
+            if (0) {
+                fprintf(stderr, "SC64[%u]\n", syscall_num);
             }
-            STRACE("%d call %-3d ", current->pid, syscall_num);
+            // Trace when entering code (brk syscall is called early) - DISABLED
+            if (0 && syscall_num == 12) {  // brk
+                static int brk_count = 0;
+                if (brk_count < 2) {
+                    brk_count++;
+                    fprintf(stderr, "REGISTERS at brk #%d:\n", brk_count);
+                    fprintf(stderr, "  rdi=0x%llx rsi=0x%llx rdx=0x%llx rcx=0x%llx\n",
+                            (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi,
+                            (unsigned long long)cpu->rdx, (unsigned long long)cpu->rcx);
+                    fprintf(stderr, "  r8=0x%llx r9=0x%llx r10=0x%llx r11=0x%llx\n",
+                            (unsigned long long)cpu->r8, (unsigned long long)cpu->r9,
+                            (unsigned long long)cpu->r10, (unsigned long long)cpu->r11);
+                }
+            }
+            // Trace getcwd syscall
+            // Syscall-specific traces - DISABLED for cleaner output
+            // Trace writev syscall to dump iovec contents
+            if (syscall_num == 20 && cpu->rdi == 1) {  // writev to stdout
+                // Dump the actual bytes at the iovec base addresses
+                struct { uint64_t base; uint64_t len; } iov[4];
+                int count = cpu->rdx < 4 ? cpu->rdx : 4;
+                fprintf(stderr, "WRITEV: count=%d iovec_addr=0x%llx\n", count, (unsigned long long)cpu->rsi);
+                // Dump raw bytes at iovec address (32 bytes = 2 iovec entries)
+                uint8_t raw[64];
+                user_read(cpu->rsi, raw, 32);
+                fprintf(stderr, "  raw iovec bytes (32 bytes): ");
+                for (int i = 0; i < 32; i++) {
+                    fprintf(stderr, "%02x ", raw[i]);
+                }
+                fprintf(stderr, "\n");
+                user_read(cpu->rsi, iov, count * 16);
+                for (int i = 0; i < count; i++) {
+                    fprintf(stderr, "  iov[%d]: base=0x%llx len=%llu", i,
+                            (unsigned long long)iov[i].base, (unsigned long long)iov[i].len);
+                    // Always dump 32 bytes from base to see string content
+                    if (iov[i].base != 0) {
+                        char buf[40] = {0};
+                        user_read(iov[i].base, buf, 32);
+                        fprintf(stderr, " mem='");
+                        for (size_t j = 0; j < 32; j++) {
+                            if (buf[j] >= 32 && buf[j] < 127)
+                                fprintf(stderr, "%c", buf[j]);
+                            else
+                                fprintf(stderr, "\\x%02x", (unsigned char)buf[j]);
+                        }
+                        fprintf(stderr, "'");
+                    }
+                    fprintf(stderr, "\n");
+                }
+                // Check if "/" is still at the getcwd heap buffer (0x7f0000000e70)
+                {
+                    char heap_check[8] = {0};
+                    user_read(0x7f0000000e70, heap_check, 8);
+                    fprintf(stderr, "  heap buffer (getcwd): '");
+                    for (int j = 0; j < 8; j++) {
+                        if (heap_check[j] >= 32 && heap_check[j] < 127)
+                            fprintf(stderr, "%c", heap_check[j]);
+                        else
+                            fprintf(stderr, "\\x%02x", (unsigned char)heap_check[j]);
+                    }
+                    fprintf(stderr, "'\n");
+                }
+            }
             // x86_64 argument order: rdi, rsi, rdx, r10, r8, r9
             // syscall_t returns int64_t for 64-bit mode (brk, mmap return 64-bit addresses)
+            addr_t buf_addr_before = cpu->rdi;  // Save for getcwd tracing
             int64_t result = syscall_table[syscall_num](cpu->rdi, cpu->rsi, cpu->rdx, cpu->r10, cpu->r8, cpu->r9);
             STRACE(" = 0x%llx\n", (unsigned long long)result);
+            // Trace mmap result
+            if (syscall_num == 9) {
+                static int mmap_ret_count = 0;
+                mmap_ret_count++;
+                fprintf(stderr, "MMAP result: 0x%llx, returning to RIP=0x%llx RSP=0x%llx RBP=0x%llx\n",
+                        (unsigned long long)result,
+                        (unsigned long long)cpu->rip, (unsigned long long)cpu->rsp,
+                        (unsigned long long)cpu->rbp);
+            }
+            // Trace getcwd result
+            if (syscall_num == 79) {  // getcwd
+                fprintf(stderr, "GETCWD result: 0x%llx buf_addr=0x%llx\n",
+                        (unsigned long long)result, (unsigned long long)buf_addr_before);
+                if ((int64_t)result > 0) {
+                    char buf[64];
+                    if (user_read(buf_addr_before, buf, 63) == 0) {
+                        buf[63] = '\0';
+                        fprintf(stderr, "GETCWD buf content: '%s'\n", buf);
+                    }
+                }
+            }
+            // Trace write result
+            if (syscall_num == 1) {  // write
+                fprintf(stderr, "WRITE result: %lld\n", (long long)result);
+            }
             cpu->rax = result;
         }
     } else if (interrupt == INT_GPF) {

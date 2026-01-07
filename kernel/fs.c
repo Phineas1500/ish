@@ -69,6 +69,12 @@ fd_t sys_openat(fd_t at_f, addr_t path_addr, dword_t flags, mode_t_ mode) {
     if (user_read_string(path_addr, path, sizeof(path)))
         return _EFAULT;
     STRACE("openat(%d, \"%s\", 0x%x, 0x%x)", at_f, path, flags, mode);
+    // Debug: trace file opens
+    static int open_count = 0;
+    open_count++;
+    if (open_count <= 20) {
+        fprintf(stderr, "OPENAT[%d]: path=\"%s\" flags=0x%x\n", open_count, path, flags);
+    }
 
     if (flags & O_CREAT_)
         apply_umask(&mode);
@@ -350,6 +356,7 @@ error:
 
 dword_t sys_writev(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count) {
     STRACE("writev(%d, %#x, %d)", fd_no, iovec_addr, iovec_count);
+
     struct iovec_ *iovec = read_iovec(iovec_addr, iovec_count);
     if (IS_ERR(iovec))
         return PTR_ERR(iovec);
@@ -534,7 +541,7 @@ dword_t sys_ioctl(fd_t f, dword_t cmd, dword_t arg) {
     return fd_ioctl(fd, cmd, arg);
 }
 
-dword_t sys_getcwd(addr_t buf_addr, dword_t size) {
+dword_t sys_getcwd(addr_t buf_addr, qword_t size) {
     STRACE("getcwd(%#x, %#x)", buf_addr, size);
     lock(&current->fs->lock);
     struct fd *wd = current->fs->pwd;
@@ -944,12 +951,72 @@ dword_t sys_fsync(fd_t f) {
     return err;
 }
 
-// a few stubs
-dword_t sys_sendfile(fd_t UNUSED(out_fd), fd_t UNUSED(in_fd), addr_t UNUSED(offset_addr), dword_t UNUSED(count)) {
-    return _EINVAL;
+// sendfile implementation
+dword_t sys_sendfile(fd_t out_fd, fd_t in_fd, addr_t offset_addr, dword_t count) {
+    return sys_sendfile64(out_fd, in_fd, offset_addr, count);
 }
-dword_t sys_sendfile64(fd_t UNUSED(out_fd), fd_t UNUSED(in_fd), addr_t UNUSED(offset_addr), dword_t UNUSED(count)) {
-    return _EINVAL;
+
+dword_t sys_sendfile64(fd_t out_fd, fd_t in_fd, addr_t offset_addr, dword_t count) {
+    struct fd *in = f_get(in_fd);
+    if (in == NULL)
+        return _EBADF;
+    struct fd *out = f_get(out_fd);
+    if (out == NULL)
+        return _EBADF;
+
+    // Handle offset parameter
+    off_t_ orig_offset = 0;
+    bool restore_offset = false;
+    if (offset_addr != 0) {
+        // Read offset from user space
+        off_t_ user_offset;
+        if (user_read(offset_addr, &user_offset, sizeof(user_offset)))
+            return _EFAULT;
+        // Save current position and seek to offset
+        orig_offset = in->ops->lseek(in, 0, LSEEK_CUR);
+        if ((sdword_t)orig_offset < 0 && orig_offset != (off_t_)-1)
+            return orig_offset;
+        in->ops->lseek(in, user_offset, LSEEK_SET);
+        restore_offset = true;
+    }
+
+    // Transfer data in chunks
+    char buf[4096];
+    dword_t total = 0;
+    while (total < count) {
+        dword_t to_read = count - total;
+        if (to_read > sizeof(buf))
+            to_read = sizeof(buf);
+
+        ssize_t nread = in->ops->read(in, buf, to_read);
+        if (nread < 0) {
+            if (total == 0)
+                total = nread;
+            break;
+        }
+        if (nread == 0)
+            break;
+
+        ssize_t nwritten = out->ops->write(out, buf, nread);
+        if (nwritten < 0) {
+            if (total == 0)
+                total = nwritten;
+            break;
+        }
+        total += nwritten;
+        if (nwritten < nread)
+            break;
+    }
+
+    // Update offset parameter if provided
+    if (offset_addr != 0) {
+        off_t_ new_offset = in->ops->lseek(in, 0, LSEEK_CUR);
+        user_write(offset_addr, &new_offset, sizeof(new_offset));
+        if (restore_offset)
+            in->ops->lseek(in, orig_offset, LSEEK_SET);
+    }
+
+    return total;
 }
 dword_t sys_splice(fd_t UNUSED(in_fd), addr_t UNUSED(in_off_addr), fd_t UNUSED(out_fd), addr_t UNUSED(out_off_addr), dword_t UNUSED(count), dword_t UNUSED(flags)) {
     return _EINVAL;

@@ -51,6 +51,17 @@ bool __tlb_write_cross_page(struct tlb *tlb, addr_t addr, const char *value, uns
 
 __no_instrument void *tlb_handle_miss(struct tlb *tlb, addr_t addr, int type) {
     char *ptr = mmu_translate(tlb->mmu, TLB_PAGE(addr), type);
+    // Trace ALL translations for crash page (both READ and WRITE)
+    page_t crash_page = 0x55555561c000;
+    if (TLB_PAGE(addr) == crash_page) {
+        unsigned part1 = (addr >> PAGE_BITS) & (TLB_SIZE - 1);
+        unsigned part2 = (addr >> (PAGE_BITS + TLB_BITS)) & (TLB_SIZE - 1);
+        unsigned idx = part1 ^ part2;
+        fprintf(stderr, "TLB_C[%s]: addr=0x%llx page=0x%llx ptr=%p index=%u\n",
+                type == 0 ? "READ" : "WRITE",
+                (unsigned long long)addr, (unsigned long long)TLB_PAGE(addr),
+                (void*)ptr, idx);
+    }
     if (tlb->mmu->changes != tlb->mem_changes)
         tlb_flush(tlb);
     if (ptr == NULL) {
@@ -69,5 +80,11 @@ __no_instrument void *tlb_handle_miss(struct tlb *tlb, addr_t addr, int type) {
     tlb_ent->data_minus_addr = (uintptr_t) ptr - TLB_PAGE(addr);
 
     void *result = (void *) (tlb_ent->data_minus_addr + addr);
+    // Trace final host address for crash page
+    if (TLB_PAGE(addr) == 0x55555561c000) {
+        fprintf(stderr, "TLB_RESULT: guest=0x%llx -> host=%p (data_minus_addr=0x%llx) index=%lu\n",
+                (unsigned long long)addr, result, (unsigned long long)tlb_ent->data_minus_addr,
+                (unsigned long)TLB_INDEX(addr));
+    }
     return result;
 }

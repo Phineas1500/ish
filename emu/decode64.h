@@ -111,6 +111,9 @@ int decode64_inst(const uint8_t *code, size_t code_size,
 // Helper: Convert Zydis register to our arg64 enum
 enum arg64 zydis_reg_to_arg64(ZydisRegister reg);
 
+// Helper: Check if a Zydis register is a high-byte register (AH, BH, CH, DH)
+bool zydis_is_high_byte_reg(ZydisRegister reg);
+
 // Helper: Convert Zydis condition to our cond64 enum
 enum cond64 zydis_cond_to_cond64(ZydisDecodedInstruction *inst);
 

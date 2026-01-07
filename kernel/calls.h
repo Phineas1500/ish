@@ -66,7 +66,7 @@ int_t sys_msync(addr_t addr, dword_t len, int_t flags);
 #define LOCK_UN_ 8
 struct iovec_ {
     addr_t base;
-    uint_t len;
+    usize_t len;  // 64-bit on x86_64, 32-bit on x86
 };
 dword_t sys_read(fd_t fd_no, addr_t buf_addr, dword_t size);
 dword_t sys_readv(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count);
@@ -198,7 +198,7 @@ int_t sys_getgroups(dword_t size, addr_t list);
 int_t sys_setgroups(dword_t size, addr_t list);
 int_t sys_capget(addr_t header_addr, addr_t data_addr);
 int_t sys_capset(addr_t header_addr, addr_t data_addr);
-dword_t sys_getcwd(addr_t buf_addr, dword_t size);
+dword_t sys_getcwd(addr_t buf_addr, qword_t size);
 dword_t sys_chdir(addr_t path_addr);
 dword_t sys_chroot(addr_t path_addr);
 dword_t sys_fchdir(fd_t f);

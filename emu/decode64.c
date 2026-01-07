@@ -197,6 +197,12 @@ static void decode_memory_operand(const ZydisDecodedOperand *zop,
 }
 
 // Decode a single operand
+// Check if a Zydis register is a high-byte register (AH, BH, CH, DH)
+bool zydis_is_high_byte_reg(ZydisRegister reg) {
+    return reg == ZYDIS_REGISTER_AH || reg == ZYDIS_REGISTER_BH ||
+           reg == ZYDIS_REGISTER_CH || reg == ZYDIS_REGISTER_DH;
+}
+
 static void decode_operand(const ZydisDecodedOperand *zop,
                            struct decoded_op64 *op) {
     op->imm = 0;

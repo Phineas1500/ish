@@ -127,6 +127,13 @@ typedef sdword_t sreg_t;      // signed register type
 typedef dword_t uint_t;
 typedef sdword_t int_t;
 
+// Guest size_t - size of pointer on guest architecture
+#ifdef ISH_GUEST_64BIT
+typedef qword_t usize_t;
+#else
+typedef dword_t usize_t;
+#endif
+
 typedef sdword_t pid_t_;
 typedef dword_t uid_t_;
 typedef word_t mode_t_;

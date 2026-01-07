@@ -329,6 +329,35 @@ static int elf_exec64(struct fd *fd, const char *file, struct exec_args argv, st
                 goto beyond_hope;
         }
         entry = interp_base + interp_header.entry_point;
+
+        // Debug: check interpreter's optind value (at vaddr 0x9f3dc)
+        // We already hold the write lock, so we can't use user_get (would deadlock)
+        addr_t interp_optind_addr = interp_base + 0x9f3dc;
+        page_t optind_page = PAGE(interp_optind_addr);
+        fprintf(stderr, "ELF64: checking optind at 0x%llx (page 0x%llx, offset 0x%lx)\n",
+                (unsigned long long)interp_optind_addr,
+                (unsigned long long)optind_page,
+                (unsigned long)PGOFFSET(interp_optind_addr));
+        fflush(stderr);
+        struct pt_entry *optind_pt = mem_pt(current->mem, optind_page);
+        if (optind_pt && optind_pt->data) {
+            fprintf(stderr, "ELF64: pt_entry found: data=%p, offset=0x%lx, flags=0x%x\n",
+                    (void *)optind_pt->data->data,
+                    (unsigned long)optind_pt->offset,
+                    optind_pt->flags);
+            // Calculate actual host address
+            char *host_data = (char *)optind_pt->data->data;
+            uint32_t *optind_ptr = (uint32_t *)(host_data + optind_pt->offset + PGOFFSET(interp_optind_addr));
+            fprintf(stderr, "ELF64: interp optind = %d (should be 1) at host addr %p\n",
+                    *optind_ptr, (void *)optind_ptr);
+            // Also dump a few bytes around it
+            unsigned char *bytes = (unsigned char *)optind_ptr;
+            fprintf(stderr, "ELF64: bytes at optind: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+                    bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]);
+        } else {
+            fprintf(stderr, "ELF64: optind page not mapped! pt=%p\n", (void *)optind_pt);
+        }
+        fflush(stderr);
     }
 
     // For 64-bit, we skip vdso for now (it's 32-bit)
@@ -428,8 +457,13 @@ static int elf_exec64(struct fd *fd, const char *file, struct exec_args argv, st
 
     // argv pointers (64-bit)
     size_t argc = argv.count;
+    fprintf(stderr, "ELF64: writing %zu argv pointers:\n", argc);
     while (argc-- > 0) {
         uint64_t ptr = argv_addr;
+        // Debug: dump the string at this pointer
+        char argstr[128] = {0};
+        user_read(argv_addr, argstr, sizeof(argstr)-1);
+        fprintf(stderr, "  argv[%zu] -> 0x%llx = \"%s\"\n", argv.count - argc - 1, (unsigned long long)ptr, argstr);
         if (user_put(p, ptr))
             return _EFAULT;
         argv_addr += user_strlen(argv_addr) + 1;
@@ -474,6 +508,26 @@ static int elf_exec64(struct fd *fd, const char *file, struct exec_args argv, st
     current->cpu.rip = entry;
     current->cpu.df_offset = 1;  // Direction flag: 1 = forward, -1 = backward
     fprintf(stderr, "ELF64: final sp=%llx entry=%llx\n", (unsigned long long)sp, (unsigned long long)entry);
+
+    // WORKAROUND: Manually perform COPY relocations that musl's linker isn't handling
+    // This is a temporary fix until we figure out why COPY relocations fail
+    // optind is at bias + 0xc6068 in busybox, musl's optind is at interp_base + 0x9f3dc
+    if (interp_base != 0) {
+        addr_t bb_optind = bias + 0xc6068;      // busybox's optind COPY target
+        addr_t musl_optind = interp_base + 0x9f3dc;  // musl's optind source
+
+        // Read musl's optind value
+        struct pt_entry *src_pt = mem_pt(current->mem, PAGE(musl_optind));
+        struct pt_entry *dst_pt = mem_pt(current->mem, PAGE(bb_optind));
+
+        if (src_pt && src_pt->data && dst_pt && dst_pt->data) {
+            char *src_data = (char *)src_pt->data->data + src_pt->offset + PGOFFSET(musl_optind);
+            char *dst_data = (char *)dst_pt->data->data + dst_pt->offset + PGOFFSET(bb_optind);
+            uint32_t optind_val = *(uint32_t *)src_data;
+            *(uint32_t *)dst_data = optind_val;
+            fprintf(stderr, "ELF64: WORKAROUND - manually copied optind=%d from musl to busybox\n", optind_val);
+        }
+    }
 
     // Debug: check several BSS addresses before execution
     // Address 0xa1f10 is in BSS and gets loaded early in _dlstart

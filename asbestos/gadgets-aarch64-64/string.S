@@ -13,6 +13,12 @@
 .Lrep_stosq_loop:
     mov _addr, rdi
     write_prep 64, rep_stosq
+    // Watchpoint check
+    save_c
+    mov x0, rax          // value
+    mov x1, _addr        // host addr
+    bl NAME(helper_check_watchpoint_store64)
+    restore_c
     str rax, [_addr]
     write_done 64, rep_stosq
     // Reload x11 - clobbered by write_prep!
@@ -34,6 +40,12 @@
 .Lrep_stosd_loop:
     mov _addr, rdi
     write_prep 32, rep_stosd
+    // Watchpoint check for entry 2 flag
+    save_c
+    uxtw x0, eax         // value
+    mov x1, _addr        // host addr
+    bl NAME(helper_check_watchpoint_store32)
+    restore_c
     str eax, [_addr]
     write_done 32, rep_stosd
     // Reload x11 - clobbered by write_prep!
@@ -54,6 +66,12 @@
 .Lrep_stosb_loop:
     mov _addr, rdi
     write_prep 8, rep_stosb
+    // Watchpoint check
+    save_c
+    uxtb x0, eax         // value (byte)
+    mov x1, _addr        // host addr
+    bl NAME(helper_check_watchpoint_store8)
+    restore_c
     strb eax, [_addr]
     write_done 8, rep_stosb
     // Reload x11 - clobbered by write_prep!
@@ -78,6 +96,12 @@
     ldr _xtmp, [_addr]
     mov _addr, rdi
     write_prep 64, rep_movsq_w
+    // Watchpoint check
+    save_c
+    mov x0, _xtmp        // value
+    mov x1, _addr        // host addr
+    bl NAME(helper_check_watchpoint_store64)
+    restore_c
     str _xtmp, [_addr]
     write_done 64, rep_movsq_w
     // Reload x11 - clobbered by read_prep/write_prep!
@@ -103,6 +127,12 @@
     ldr _tmp, [_addr]
     mov _addr, rdi
     write_prep 32, rep_movsd_w
+    // Watchpoint check
+    save_c
+    uxtw x0, _tmp        // value
+    mov x1, _addr        // host addr
+    bl NAME(helper_check_watchpoint_store32)
+    restore_c
     str _tmp, [_addr]
     write_done 32, rep_movsd_w
     // Reload x11 - clobbered by read_prep/write_prep!
@@ -128,6 +158,12 @@
     ldrb _tmp, [_addr]
     mov _addr, rdi
     write_prep 8, rep_movsb_w
+    // Watchpoint check
+    save_c
+    uxtb x0, _tmp        // value (byte)
+    mov x1, _addr        // host addr
+    bl NAME(helper_check_watchpoint_store8)
+    restore_c
     strb _tmp, [_addr]
     write_done 8, rep_movsb_w
     // Reload x11 - clobbered by read_prep/write_prep!
