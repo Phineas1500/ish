@@ -137,6 +137,22 @@ extern void gadget_sbb32_bp(void);
 extern void gadget_sbb32_si(void);
 extern void gadget_sbb32_di(void);
 extern void gadget_sbb32_imm(void);
+extern void gadget_adc64_a(void);
+extern void gadget_adc64_c(void);
+extern void gadget_adc64_d(void);
+extern void gadget_adc64_b(void);
+extern void gadget_adc64_sp(void);
+extern void gadget_adc64_bp(void);
+extern void gadget_adc64_si(void);
+extern void gadget_adc64_di(void);
+extern void gadget_adc32_a(void);
+extern void gadget_adc32_c(void);
+extern void gadget_adc32_d(void);
+extern void gadget_adc32_b(void);
+extern void gadget_adc32_sp(void);
+extern void gadget_adc32_bp(void);
+extern void gadget_adc32_si(void);
+extern void gadget_adc32_di(void);
 extern void gadget_xor64_a(void);
 extern void gadget_xor64_c(void);
 extern void gadget_xor64_d(void);
@@ -148,6 +164,8 @@ extern void gadget_xor64_di(void);
 extern void gadget_xor_zero(void);  // XOR zeroing idiom with proper flag setting
 extern void gadget_xor64_imm(void);
 extern void gadget_xor32_imm(void);
+extern void gadget_xor16_imm(void);
+extern void gadget_xor8_imm(void);
 extern void gadget_xor32_a(void);
 extern void gadget_xor32_c(void);
 extern void gadget_xor32_d(void);
@@ -207,6 +225,8 @@ extern void gadget_test16_imm(void);
 extern void gadget_test8_imm(void);
 extern void gadget_test64_x8(void);
 extern void gadget_test32_x8(void);
+extern void gadget_test16_x8(void);
+extern void gadget_test8_x8(void);
 extern void gadget_test64_a(void);
 extern void gadget_test64_c(void);
 extern void gadget_test64_d(void);
@@ -351,6 +371,14 @@ static gadget_t sbb32_gadgets[] = {
     gadget_sbb32_a, gadget_sbb32_c, gadget_sbb32_d, gadget_sbb32_b,
     gadget_sbb32_sp, gadget_sbb32_bp, gadget_sbb32_si, gadget_sbb32_di
 };
+static gadget_t adc64_gadgets[] = {
+    gadget_adc64_a, gadget_adc64_c, gadget_adc64_d, gadget_adc64_b,
+    gadget_adc64_sp, gadget_adc64_bp, gadget_adc64_si, gadget_adc64_di
+};
+static gadget_t adc32_gadgets[] = {
+    gadget_adc32_a, gadget_adc32_c, gadget_adc32_d, gadget_adc32_b,
+    gadget_adc32_sp, gadget_adc32_bp, gadget_adc32_si, gadget_adc32_di
+};
 static gadget_t xor64_gadgets[] = {
     gadget_xor64_a, gadget_xor64_c, gadget_xor64_d, gadget_xor64_b,
     gadget_xor64_sp, gadget_xor64_bp, gadget_xor64_si, gadget_xor64_di
@@ -463,7 +491,7 @@ extern void gadget_cmpxchg32_mem(void);
 extern void gadget_xchg64_mem(void);
 extern void gadget_xchg32_mem(void);
 
-// ADC gadgets
+// ADC imm gadgets (register versions declared earlier)
 extern void gadget_adc64_imm(void);
 extern void gadget_adc32_imm(void);
 
@@ -1129,6 +1157,54 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     GEN(state->orig_ip);
                     return 0;
                 }
+            } else if (inst.operand_count >= 2 &&
+                       is_mem(inst.operands[0].type) &&
+                       inst.operands[1].type == arg64_imm) {
+                // XOR [mem], imm - read-modify-write
+                if (!gen_addr(state, &inst.operands[0], &inst)) {
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
+                }
+                int size_bits = inst.operands[0].size;
+                // Load from memory
+                if (size_bits == size64_64) {
+                    GEN(load64_gadgets[9]); // load64_mem
+                } else if (size_bits == size64_32) {
+                    GEN(load32_gadgets[9]); // load32_mem
+                } else if (size_bits == size64_16) {
+                    GEN(gadget_load16_mem);
+                } else {
+                    GEN(gadget_load8_mem);
+                }
+                GEN(state->orig_ip);
+                // Save address before XOR (which will overwrite it)
+                GEN(gadget_save_addr);
+                // XOR with immediate
+                if (size_bits == size64_64) {
+                    GEN(gadget_xor64_imm);
+                } else if (size_bits == size64_32) {
+                    GEN(gadget_xor32_imm);
+                } else if (size_bits == size64_16) {
+                    GEN(gadget_xor16_imm);
+                } else {
+                    GEN(gadget_xor8_imm);
+                }
+                GEN(inst.operands[1].imm);
+                // Restore address and store result
+                GEN(gadget_restore_addr);
+                if (size_bits == size64_64) {
+                    GEN(store64_gadgets[9]); // store64_mem
+                } else if (size_bits == size64_32) {
+                    GEN(store32_gadgets[9]); // store32_mem
+                } else if (size_bits == size64_16) {
+                    GEN(gadget_store16_mem);
+                } else {
+                    GEN(gadget_store8_mem);
+                }
+                GEN(state->orig_ip);
             } else {
                 g(interrupt);
                 GEN(INT_UNDEFINED);
@@ -1565,18 +1641,35 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
         case ZYDIS_MNEMONIC_ADC:
             // ADC: Add with Carry (dst = dst + src + CF)
-            if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type) &&
-                inst.operands[1].type == arg64_imm) {
-                // ADC reg, imm
+            if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
                 bool is64 = (inst.operands[0].size == size64_64);
                 gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
                 if (load) GEN(load);
-                if (is64) {
-                    GEN(gadget_adc64_imm);
+
+                if (inst.operands[1].type == arg64_imm) {
+                    // ADC reg, imm
+                    if (is64) {
+                        GEN(gadget_adc64_imm);
+                    } else {
+                        GEN(gadget_adc32_imm);
+                    }
+                    GEN(inst.operands[1].imm);
+                } else if (inst.operands[1].type >= arg64_rax &&
+                           inst.operands[1].type <= arg64_rdi) {
+                    // ADC reg, reg (rax-rdi)
+                    if (is64) {
+                        GEN(adc64_gadgets[inst.operands[1].type - arg64_rax]);
+                    } else {
+                        GEN(adc32_gadgets[inst.operands[1].type - arg64_rax]);
+                    }
                 } else {
-                    GEN(gadget_adc32_imm);
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
                 }
-                GEN(inst.operands[1].imm);
+
                 gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
                 if (store) GEN(store);
             } else {
@@ -2210,6 +2303,49 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     GEN(inst.operands[1].imm);
                     break;
                 }
+            } else if (inst.operand_count >= 2 &&
+                       is_mem(inst.operands[0].type) &&
+                       is_gpr(inst.operands[1].type)) {
+                // TEST [mem], reg - load from memory, AND with reg, set flags (no store)
+                if (!gen_addr(state, &inst.operands[0], &inst)) {
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
+                }
+                // Load from memory with correct size
+                int size_bits = inst.operands[0].size;
+                if (size_bits == size64_64) {
+                    GEN(load64_gadgets[9]); // load64_mem
+                } else if (size_bits == size64_32) {
+                    GEN(load32_gadgets[9]); // load32_mem
+                } else if (size_bits == size64_16) {
+                    GEN(gadget_load16_mem);
+                } else {
+                    GEN(gadget_load8_mem);
+                }
+                GEN(state->orig_ip);
+                // Save memory value to x8
+                GEN(gadget_save_xtmp_to_x8);
+                // Load source register
+                gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
+                if (load_src) GEN(load_src);
+                // Use size-appropriate TEST gadget
+                switch (size_bits) {
+                case size64_8:
+                    GEN(gadget_test8_x8);
+                    break;
+                case size64_16:
+                    GEN(gadget_test16_x8);
+                    break;
+                case size64_32:
+                    GEN(gadget_test32_x8);
+                    break;
+                default:
+                    GEN(gadget_test64_x8);
+                    break;
+                }
             } else {
                 g(interrupt);
                 GEN(INT_UNDEFINED);
@@ -2303,6 +2439,56 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     GEN(store64_gadgets[9]); // store64_mem
                 } else {
                     GEN(store32_gadgets[9]); // store32_mem
+                }
+                GEN(state->orig_ip);
+            } else if (is_mem(inst.operands[0].type) && is_gpr(inst.operands[1].type)) {
+                // AND [mem], reg - read-modify-write
+                if (!gen_addr(state, &inst.operands[0], &inst)) {
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
+                }
+                int size_bits = inst.operands[0].size;
+                // Save address, load from memory
+                GEN(gadget_save_addr);
+                if (size_bits == size64_64) {
+                    GEN(load64_gadgets[9]); // load64_mem
+                } else if (size_bits == size64_32) {
+                    GEN(load32_gadgets[9]); // load32_mem
+                } else if (size_bits == size64_16) {
+                    GEN(gadget_load16_mem);
+                } else {
+                    GEN(gadget_load8_mem);
+                }
+                GEN(state->orig_ip);
+                // Load source reg to x8, AND
+                GEN(gadget_save_xtmp_to_x8);
+                gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
+                if (load_src) GEN(load_src);
+                GEN(gadget_and64_x8);
+                // Mask result for smaller sizes
+                if (size_bits == size64_32) {
+                    GEN(gadget_and64_imm);
+                    GEN(0xFFFFFFFF);
+                } else if (size_bits == size64_16) {
+                    GEN(gadget_and64_imm);
+                    GEN(0xFFFF);
+                } else if (size_bits == size64_8) {
+                    GEN(gadget_and64_imm);
+                    GEN(0xFF);
+                }
+                // Restore address and store
+                GEN(gadget_restore_addr);
+                if (size_bits == size64_64) {
+                    GEN(store64_gadgets[9]); // store64_mem
+                } else if (size_bits == size64_32) {
+                    GEN(store32_gadgets[9]); // store32_mem
+                } else if (size_bits == size64_16) {
+                    GEN(gadget_store16_mem);
+                } else {
+                    GEN(gadget_store8_mem);
                 }
                 GEN(state->orig_ip);
             } else {

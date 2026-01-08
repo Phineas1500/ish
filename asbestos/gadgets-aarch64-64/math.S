@@ -785,6 +785,27 @@
     setf_zsp w
     gret 1
 
+// ADC with register (for ADC reg, reg)
+.macro adc_reg64 name, reg64, reg32
+    .gadget adc64_\name
+        ldrb w9, [_cpu, CPU_cf]   // Load carry flag
+        adds _xtmp, _xtmp, \reg64 // dest + src
+        add _xtmp, _xtmp, x9      // + CF
+        setf_oc
+        setf_zsp
+        gret
+    .gadget adc32_\name
+        ldrb w9, [_cpu, CPU_cf]   // Load carry flag
+        adds _tmp, _tmp, \reg32   // dest + src
+        add _tmp, _tmp, w9        // + CF
+        and _xtmp, _xtmp, 0xffffffff  // Zero-extend
+        setf_oc
+        setf_zsp w
+        gret
+.endm
+.each_reg64 adc_reg64
+.purgem adc_reg64
+
 // SBB (Subtract with Borrow) gadgets
 // SBB dest, src: dest = dest - src - CF
 .macro sbb_reg64 name, reg64, reg32
@@ -945,6 +966,32 @@
     eor _tmp, _tmp, w8
     clearf_oc
     setf_zsp w
+    gret 1
+
+.gadget xor16_imm
+    ldr w8, [_ip]
+    and w8, w8, 0xffff          // Mask immediate to 16 bits
+    eor w10, _tmp, w8           // XOR
+    and w10, w10, 0xffff        // Keep only 16 bits of result
+    bic _tmp, _tmp, 0xffff      // Clear low 16 bits of dest
+    orr _tmp, _tmp, w10         // Merge result
+    mov _xtmp, _xtmp            // Ensure 64-bit for setf_zsp
+    sxth x10, w10               // Sign-extend for flag setting
+    clearf_oc
+    setf_zsp h, x10
+    gret 1
+
+.gadget xor8_imm
+    ldr w8, [_ip]
+    and w8, w8, 0xff            // Mask immediate to 8 bits
+    eor w10, _tmp, w8           // XOR
+    and w10, w10, 0xff          // Keep only 8 bits of result
+    bic _tmp, _tmp, 0xff        // Clear low 8 bits of dest
+    orr _tmp, _tmp, w10         // Merge result
+    mov _xtmp, _xtmp            // Ensure 64-bit for setf_zsp
+    sxtb x10, w10               // Sign-extend for flag setting
+    clearf_oc
+    setf_zsp b, x10
     gret 1
 
 // XOR with memory: _xtmp = _xtmp XOR [_addr]
@@ -1534,6 +1581,26 @@ NAME(xor32_r8_r15_gadgets):
     ands w9, _tmp, w8   // 32-bit AND
     clearf_oc
     setf_zsp w, x9      // 32-bit result for flags
+    gret
+
+// 16-bit TEST with x8 for TEST [mem], reg operations
+.gadget test16_x8
+    and w10, _tmp, 0xffff       // Mask to 16 bits
+    and w11, w8, 0xffff         // Mask x8 to 16 bits
+    ands w9, w10, w11           // 16-bit AND
+    clearf_oc
+    sxth x9, w9                 // Sign extend from 16-bit for flags
+    setf_zsp h, x9
+    gret
+
+// 8-bit TEST with x8 for TEST [mem], reg operations
+.gadget test8_x8
+    and w10, _tmp, 0xff         // Mask to 8 bits
+    and w11, w8, 0xff           // Mask x8 to 8 bits
+    ands w9, w10, w11           // 8-bit AND
+    clearf_oc
+    sxtb x9, w9                 // Sign extend from 8-bit for flags
+    setf_zsp b, x9
     gret
 
 // TEST with register (for reg, reg - xtmp & other_reg, set flags)
