@@ -137,6 +137,8 @@ extern void gadget_sbb32_bp(void);
 extern void gadget_sbb32_si(void);
 extern void gadget_sbb32_di(void);
 extern void gadget_sbb32_imm(void);
+extern void gadget_sbb64_x8(void);
+extern void gadget_sbb32_x8(void);
 extern void gadget_adc64_a(void);
 extern void gadget_adc64_c(void);
 extern void gadget_adc64_d(void);
@@ -345,6 +347,9 @@ extern void gadget_rep_movsq(void);
 extern void gadget_rep_movsd(void);
 extern void gadget_rep_movsb(void);
 extern void gadget_single_movsb(void);  // Single MOVSB without REP prefix
+extern void gadget_repne_scasb(void);   // REPNE SCASB - scan for byte not equal to AL
+extern void gadget_repe_scasb(void);    // REPE SCASB - scan for byte equal to AL
+extern void gadget_single_scasb(void);  // Single SCASB without REP prefix
 
 // Gadget arrays for register operations
 static gadget_t add64_gadgets[] = {
@@ -1703,6 +1708,45 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                         GEN(sbb64_gadgets[inst.operands[1].type - arg64_rax]);
                     } else {
                         GEN(sbb32_gadgets[inst.operands[1].type - arg64_rax]);
+                    }
+                } else if (inst.operands[1].type >= arg64_r8 &&
+                           inst.operands[1].type <= arg64_r15) {
+                    // SBB reg, r8-r15 (need to load r8-r15 from memory first)
+                    // Save _xtmp (dst) to x8
+                    GEN(gadget_save_xtmp_to_x8);
+                    // Load r8-r15 into _xtmp
+                    gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
+                    if (load_src) GEN(load_src);
+                    // sbb_x8 does: _xtmp = _xtmp - x8 - CF = src - dst - CF
+                    // But we want: dst - src - CF, so we need to swap
+                    // Actually: _xtmp has src (r8-r15), x8 has dst
+                    // sbb_x8: _xtmp = _xtmp - x8 - CF = src - dst - CF
+                    // That's wrong! We need: dst - src - CF
+                    // So swap x8 and _xtmp before the operation
+                    // Actually let's just use a different pattern:
+                    // 1. Load dst to _xtmp (already done)
+                    // 2. Load src (r8-r15) to x8
+                    // 3. SBB _xtmp - x8 - CF
+                    // So we DON'T swap, we load src to x8 differently:
+                    // After save_xtmp_to_x8: x8 = dst
+                    // Load r8-r15 to _xtmp: _xtmp = src
+                    // Then sbb_x8: _xtmp = _xtmp - x8 - CF = src - dst - CF (WRONG!)
+                    // We need: dst - src - CF = x8 - _xtmp - CF
+                    // Let me do it differently:
+                    // 1. Load r8-r15 to x8 (using save_xtmp, load r8-r15, move to x8)
+                    // Actually easier: swap after loading
+                    // Current: _xtmp = dst
+                    // After save_xtmp_to_x8: x8 = dst, _xtmp unchanged
+                    // Load r8-r15: _xtmp = src
+                    // Now we have: x8 = dst, _xtmp = src
+                    // sbb_x8: _xtmp = _xtmp - x8 - CF = src - dst - CF (STILL WRONG)
+                    // Let's swap before sbb:
+                    GEN(gadget_swap_xtmp_x8);  // Now x8 = src, _xtmp = dst
+                    // sbb_x8: _xtmp = _xtmp - x8 - CF = dst - src - CF (CORRECT!)
+                    if (is64) {
+                        GEN(gadget_sbb64_x8);
+                    } else {
+                        GEN(gadget_sbb32_x8);
                     }
                 } else {
                     g(interrupt);
@@ -4465,6 +4509,23 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             fprintf(stderr, "GEN: REP MOVSD at ip=0x%llx\n", (unsigned long long)state->orig_ip);
             GEN(gadget_rep_movsd);
             GEN(state->orig_ip);  // For segfault handler
+            break;
+
+        case ZYDIS_MNEMONIC_SCASB:
+            // SCASB - Compare AL with byte at [RDI]
+            if (inst.has_repne) {
+                // REPNE SCASB - scan for byte not equal to AL (used for strlen)
+                fprintf(stderr, "GEN: REPNE SCASB at ip=0x%llx\n", (unsigned long long)state->orig_ip);
+                GEN(gadget_repne_scasb);
+            } else if (inst.has_rep) {
+                // REPE SCASB - scan for byte equal to AL
+                fprintf(stderr, "GEN: REPE SCASB at ip=0x%llx\n", (unsigned long long)state->orig_ip);
+                GEN(gadget_repe_scasb);
+            } else {
+                // Single SCASB
+                fprintf(stderr, "GEN: single SCASB at ip=0x%llx\n", (unsigned long long)state->orig_ip);
+                GEN(gadget_single_scasb);
+            }
             break;
 
         default:

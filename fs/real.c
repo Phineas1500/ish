@@ -71,9 +71,14 @@ struct fd *realfs_open(struct mount *mount, const char *path, int flags, int mod
 }
 
 int realfs_close(struct fd *fd) {
+    int real_fd = fd->real_fd;
+    // Skip closing stdin/stdout/stderr - they're shared with the host terminal
+    // and closing them causes hangs on macOS
+    if (real_fd <= 2)
+        return 0;
     if (fd->dir != NULL)
         closedir(fd->dir);
-    int err = close(fd->real_fd);
+    int err = close(real_fd);
     if (err < 0)
         return errno_map();
     return 0;

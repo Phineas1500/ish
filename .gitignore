@@ -20,3 +20,5 @@ fastlane/test_output
 e2e_out/
 alpine/
 alpine64/
+.cache/
+alpine-*

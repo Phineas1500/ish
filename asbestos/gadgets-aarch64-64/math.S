@@ -847,6 +847,25 @@
     setf_zsp w
     gret 1
 
+// SBB with x8 (for r8-r15 source registers)
+// _xtmp = _xtmp - x8 - CF
+.gadget sbb64_x8
+    ldrb w9, [_cpu, CPU_cf]   // Load carry flag
+    subs _xtmp, _xtmp, x8     // dest - src
+    sub _xtmp, _xtmp, x9      // - CF
+    setf_oc
+    setf_zsp
+    gret
+
+.gadget sbb32_x8
+    ldrb w9, [_cpu, CPU_cf]   // Load carry flag
+    subs _tmp, _tmp, w8       // dest - src
+    sub _tmp, _tmp, w9        // - CF
+    and _xtmp, _xtmp, 0xffffffff  // Zero-extend
+    setf_oc
+    setf_zsp w
+    gret
+
 // ============================================================
 // SUB gadgets
 // ============================================================

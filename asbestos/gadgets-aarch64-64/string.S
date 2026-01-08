@@ -223,6 +223,80 @@
     read_bullshit 8, single_movsb_r
     write_bullshit 8, single_movsb_w
 
+// ============================================================
+// REPNE SCASB - Scan string for byte in AL
+// Compares AL with [RDI], sets flags, increments RDI, decrements RCX
+// Repeats while RCX != 0 AND ZF == 0 (byte not found)
+// Used for strlen: set AL=0, point RDI at string, scan for null
+// ============================================================
+.gadget repne_scasb
+    cbz rcx, .Lrepne_scasb_done
+.Lrepne_scasb_loop:
+    mov _addr, rdi
+    read_prep 8, repne_scasb_r
+    ldrb _tmp, [_addr]
+    // Compare AL with byte at [RDI]
+    and w9, eax, 0xff           // w9 = AL
+    subs _tmp, _tmp, w9         // _tmp = [RDI] - AL, sets flags
+    // Update RDI based on direction flag
+    ldrsw x11, [_cpu, CPU_df_offset]
+    add rdi, rdi, x11
+    // Decrement RCX
+    sub rcx, rcx, 1
+    // Store comparison result for flags
+    // ZF is set if [RDI] == AL
+    setf_zsp w
+    clearf_oc  // SCAS clears OF and CF like CMP would for small values
+    // Check loop condition: continue if RCX != 0 AND ZF == 0 (not equal)
+    cbz rcx, .Lrepne_scasb_done
+    cbnz _tmp, .Lrepne_scasb_loop  // If not equal, continue
+.Lrepne_scasb_done:
+    gret
+    read_bullshit 8, repne_scasb_r
+
+// REPE SCASB - Scan string while equal
+// Repeats while RCX != 0 AND ZF == 1 (bytes are equal)
+.gadget repe_scasb
+    cbz rcx, .Lrepe_scasb_done
+.Lrepe_scasb_loop:
+    mov _addr, rdi
+    read_prep 8, repe_scasb_r
+    ldrb _tmp, [_addr]
+    // Compare AL with byte at [RDI]
+    and w9, eax, 0xff           // w9 = AL
+    subs _tmp, _tmp, w9         // _tmp = [RDI] - AL, sets flags
+    // Update RDI based on direction flag
+    ldrsw x11, [_cpu, CPU_df_offset]
+    add rdi, rdi, x11
+    // Decrement RCX
+    sub rcx, rcx, 1
+    // Store comparison result for flags
+    setf_zsp w
+    clearf_oc
+    // Check loop condition: continue if RCX != 0 AND ZF == 1 (equal)
+    cbz rcx, .Lrepe_scasb_done
+    cbz _tmp, .Lrepe_scasb_loop  // If equal, continue
+.Lrepe_scasb_done:
+    gret
+    read_bullshit 8, repe_scasb_r
+
+// Single SCASB - Compare AL with [RDI], update RDI, no repeat
+.gadget single_scasb
+    mov _addr, rdi
+    read_prep 8, single_scasb_r
+    ldrb _tmp, [_addr]
+    // Compare AL with byte at [RDI]
+    and w9, eax, 0xff           // w9 = AL
+    subs _tmp, _tmp, w9         // _tmp = [RDI] - AL, sets flags
+    // Update RDI based on direction flag
+    ldrsw x11, [_cpu, CPU_df_offset]
+    add rdi, rdi, x11
+    // Store comparison result for flags
+    setf_zsp w
+    clearf_oc
+    gret
+    read_bullshit 8, single_scasb_r
+
 // Placeholder gadget arrays (kept for compatibility)
 .pushsection_rodata
 .global.name lods_gadgets
