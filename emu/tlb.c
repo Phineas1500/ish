@@ -1,4 +1,15 @@
 #include <stdio.h>
+
+// Debug output guard: define DEBUG_64BIT_VERBOSE=1 to enable verbose debug output
+#ifndef DEBUG_64BIT_VERBOSE
+#define DEBUG_64BIT_VERBOSE 0
+#endif
+
+#if DEBUG_64BIT_VERBOSE
+#define DEBUG_FPRINTF(...) fprintf(__VA_ARGS__)
+#else
+#define DEBUG_FPRINTF(...) ((void)0)
+#endif
 #include "emu/cpu.h"
 #include "emu/tlb.h"
 
@@ -57,7 +68,7 @@ __no_instrument void *tlb_handle_miss(struct tlb *tlb, addr_t addr, int type) {
         unsigned part1 = (addr >> PAGE_BITS) & (TLB_SIZE - 1);
         unsigned part2 = (addr >> (PAGE_BITS + TLB_BITS)) & (TLB_SIZE - 1);
         unsigned idx = part1 ^ part2;
-        fprintf(stderr, "TLB_C[%s]: addr=0x%llx page=0x%llx ptr=%p index=%u\n",
+        DEBUG_FPRINTF(stderr, "TLB_C[%s]: addr=0x%llx page=0x%llx ptr=%p index=%u\n",
                 type == 0 ? "READ" : "WRITE",
                 (unsigned long long)addr, (unsigned long long)TLB_PAGE(addr),
                 (void*)ptr, idx);
@@ -82,7 +93,7 @@ __no_instrument void *tlb_handle_miss(struct tlb *tlb, addr_t addr, int type) {
     void *result = (void *) (tlb_ent->data_minus_addr + addr);
     // Trace final host address for crash page
     if (TLB_PAGE(addr) == 0x55555561c000) {
-        fprintf(stderr, "TLB_RESULT: guest=0x%llx -> host=%p (data_minus_addr=0x%llx) index=%lu\n",
+        DEBUG_FPRINTF(stderr, "TLB_RESULT: guest=0x%llx -> host=%p (data_minus_addr=0x%llx) index=%lu\n",
                 (unsigned long long)addr, result, (unsigned long long)tlb_ent->data_minus_addr,
                 (unsigned long)TLB_INDEX(addr));
     }

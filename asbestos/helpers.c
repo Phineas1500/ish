@@ -4,6 +4,18 @@
 #include "emu/cpu.h"
 #include "emu/cpuid.h"
 
+// Debug output guard: define DEBUG_64BIT_VERBOSE=1 to enable verbose debug output
+// By default, debug output is disabled for performance
+#ifndef DEBUG_64BIT_VERBOSE
+#define DEBUG_64BIT_VERBOSE 0
+#endif
+
+#if DEBUG_64BIT_VERBOSE
+#define DEBUG_FPRINTF(...) fprintf(__VA_ARGS__)
+#else
+#define DEBUG_FPRINTF(...) ((void)0)
+#endif
+
 // Forward declarations
 int helper_get_load8_count(void);
 
@@ -32,7 +44,7 @@ void helper_debug_store(uint64_t value, uint64_t addr) {
     static int count = 0;
     if (count < 20) {
         count++;
-        fprintf(stderr, "DEBUG_STORE[%d]: value=0x%llx addr=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "DEBUG_STORE[%d]: value=0x%llx addr=0x%llx\n",
                 count, (unsigned long long)value, (unsigned long long)addr);
     }
 }
@@ -41,7 +53,7 @@ void helper_debug_load(uint64_t value, uint64_t addr) {
     static int count = 0;
     if (count < 30) {
         count++;
-        fprintf(stderr, "DEBUG_LOAD[%d]: value=0x%llx from=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "DEBUG_LOAD[%d]: value=0x%llx from=0x%llx\n",
                 count, (unsigned long long)value, (unsigned long long)addr);
     }
 }
@@ -57,7 +69,7 @@ void helper_debug_store64_si_with_ip(uint64_t value, uint64_t prev_ip) {
     count++;
     // Only trace if value is the suspicious -128 value
     if (value == 0xffffffffffffff80) {
-        fprintf(stderr, "STORE64_SI_SUSPICIOUS[%d]: value=0x%llx (signed=%lld) @ ip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "STORE64_SI_SUSPICIOUS[%d]: value=0x%llx (signed=%lld) @ ip=0x%llx\n",
                 count, (unsigned long long)value, (long long)value,
                 (unsigned long long)prev_ip);
     }
@@ -71,7 +83,7 @@ void helper_debug_sign_extend8(uint64_t before) {
     uint8_t byte = before & 0xFF;
     int8_t signed_byte = (int8_t)byte;
     if (signed_byte == -128) {
-        fprintf(stderr, "SIGN_EXTEND8[%d]: before=0x%llx byte=0x%02x -> will produce 0xffffffffffffff80\n",
+        DEBUG_FPRINTF(stderr, "SIGN_EXTEND8[%d]: before=0x%llx byte=0x%02x -> will produce 0xffffffffffffff80\n",
                 count, (unsigned long long)before, byte);
     }
 }
@@ -79,7 +91,7 @@ void helper_debug_sign_extend8(uint64_t before) {
 // Debug: trace load64_imm when value is the suspicious one
 void helper_debug_load64_imm_suspicious(uint64_t value) {
     if (value == 0xffffffffffffff80) {
-        fprintf(stderr, "LOAD64_IMM_SUSPICIOUS: value=0x%llx (-128)\n",
+        DEBUG_FPRINTF(stderr, "LOAD64_IMM_SUSPICIOUS: value=0x%llx (-128)\n",
                 (unsigned long long)value);
     }
 }
@@ -87,7 +99,7 @@ void helper_debug_load64_imm_suspicious(uint64_t value) {
 // Debug: trace load64_mem when value is the suspicious one
 void helper_debug_load64_mem_suspicious(uint64_t value, uint64_t guest_addr) {
     if (value == 0xffffffffffffff80) {
-        fprintf(stderr, "LOAD64_MEM_SUSPICIOUS: value=0x%llx from guest_addr=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "LOAD64_MEM_SUSPICIOUS: value=0x%llx from guest_addr=0x%llx\n",
                 (unsigned long long)value, (unsigned long long)guest_addr);
     }
     // Also trace loads that return 0x7f0000000... addresses (path corruption)
@@ -95,7 +107,7 @@ void helper_debug_load64_mem_suspicious(uint64_t value, uint64_t guest_addr) {
         static int count = 0;
         count++;
         if (count <= 10) {
-            fprintf(stderr, "LOAD64_7F: loaded 0x%llx from guest 0x%llx\n",
+            DEBUG_FPRINTF(stderr, "LOAD64_7F: loaded 0x%llx from guest 0x%llx\n",
                     (unsigned long long)value, (unsigned long long)guest_addr);
         }
     }
@@ -103,13 +115,13 @@ void helper_debug_load64_mem_suspicious(uint64_t value, uint64_t guest_addr) {
 
 // Debug: trace load64 from register when value is suspicious
 void helper_debug_load64_reg_suspicious(uint64_t value, const char *reg_name) {
-    fprintf(stderr, "LOAD64_REG_SUSPICIOUS: reg=%s value=0x%llx (-128)\n",
+    DEBUG_FPRINTF(stderr, "LOAD64_REG_SUSPICIOUS: reg=%s value=0x%llx (-128)\n",
             reg_name, (unsigned long long)value);
 }
 
 // Debug: trace store64 to RDX when value is suspicious
 void helper_debug_store64_rdx_suspicious(uint64_t value) {
-    fprintf(stderr, "STORE64_RDX_SUSPICIOUS: value=0x%llx (-128) -- THIS IS THE SOURCE!\n",
+    DEBUG_FPRINTF(stderr, "STORE64_RDX_SUSPICIOUS: value=0x%llx (-128) -- THIS IS THE SOURCE!\n",
             (unsigned long long)value);
 }
 
@@ -122,7 +134,7 @@ void helper_debug_sign_extend32(uint64_t before) {
     static int count = 0;
     count++;
     if (count <= 30) {
-        fprintf(stderr, "SIGN_EXTEND32[%d]: before=0x%llx word=0x%08x -> 0x%llx\n",
+        DEBUG_FPRINTF(stderr, "SIGN_EXTEND32[%d]: before=0x%llx word=0x%08x -> 0x%llx\n",
                 count, (unsigned long long)before, word, (unsigned long long)extended);
     }
 }
@@ -132,7 +144,7 @@ void helper_debug_add_r9(uint64_t xtmp, uint64_t x8, struct cpu_state *cpu) {
     static int count = 0;
     if (count < 10) {
         count++;
-        fprintf(stderr, "DEBUG_ADD_R9[%d]: xtmp=0x%llx x8=0x%llx cpu_r9=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "DEBUG_ADD_R9[%d]: xtmp=0x%llx x8=0x%llx cpu_r9=0x%llx\n",
                 count, (unsigned long long)xtmp, (unsigned long long)x8,
                 (unsigned long long)cpu->r9);
     }
@@ -144,7 +156,7 @@ void helper_debug_rdx(uint64_t rdx_value, uint64_t xtmp_value) {
     static int count = 0;
     if (count < 20) {
         count++;
-        fprintf(stderr, "DEBUG_RDX[%d]: x23=0x%llx xtmp=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "DEBUG_RDX[%d]: x23=0x%llx xtmp=0x%llx\n",
                 count, (unsigned long long)rdx_value, (unsigned long long)xtmp_value);
     }
 }
@@ -154,7 +166,7 @@ void helper_debug_save_x8(uint64_t x8_value, uint64_t xtmp_value) {
     static int count = 0;
     if (count < 10) {
         count++;
-        fprintf(stderr, "DEBUG_SAVE_X8[%d]: x8=0x%llx xtmp=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "DEBUG_SAVE_X8[%d]: x8=0x%llx xtmp=0x%llx\n",
                 count, (unsigned long long)x8_value, (unsigned long long)xtmp_value);
     }
 }
@@ -164,7 +176,7 @@ void helper_debug_lea(uint64_t result, uint64_t x8_value, uint64_t ip) {
     static int count = 0;
     if (count < 20) {
         count++;
-        fprintf(stderr, "DEBUG_LEA[%d]: result=0x%llx x8=0x%llx ip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "DEBUG_LEA[%d]: result=0x%llx x8=0x%llx ip=0x%llx\n",
                 count, (unsigned long long)result, (unsigned long long)x8_value, (unsigned long long)ip);
     }
 }
@@ -174,7 +186,7 @@ void helper_debug_seg_fs(uint64_t addr_before, uint64_t fs_base, void *cpu) {
     static int count = 0;
     if (count < 10) {
         count++;
-        fprintf(stderr, "DEBUG_SEG_FS[%d]: addr=0x%llx fs_base=0x%llx result=0x%llx cpu=%p\n",
+        DEBUG_FPRINTF(stderr, "DEBUG_SEG_FS[%d]: addr=0x%llx fs_base=0x%llx result=0x%llx cpu=%p\n",
                 count, (unsigned long long)addr_before, (unsigned long long)fs_base,
                 (unsigned long long)(addr_before + fs_base), cpu);
     }
@@ -191,27 +203,27 @@ void helper_debug_cmp(uint64_t mem_value, uint64_t reg_value) {
 void helper_debug_mov_r12(uint64_t value) {
     static int count = 0;
     count++;
-    fprintf(stderr, "MOV_R12[%d]: value=0x%llx\n", count, (unsigned long long)value);
+    DEBUG_FPRINTF(stderr, "MOV_R12[%d]: value=0x%llx\n", count, (unsigned long long)value);
 }
 
 // Debug: detect jump/return to address 0
 void helper_debug_null_jump(uint64_t target_addr, uint64_t from_rsp) {
-    fprintf(stderr, "DEBUG_NULL_JUMP[unknown]: target=0x%llx RSP=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "DEBUG_NULL_JUMP[unknown]: target=0x%llx RSP=0x%llx\n",
             (unsigned long long)target_addr,
             (unsigned long long)from_rsp);
 }
 
 // Debug: NULL in specific gadgets
 void helper_debug_null_jmp_indir(uint64_t target, uint64_t rsp) {
-    fprintf(stderr, "DEBUG_NULL_JUMP[jmp_indir]: target=0x%llx RSP=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "DEBUG_NULL_JUMP[jmp_indir]: target=0x%llx RSP=0x%llx\n",
             (unsigned long long)target, (unsigned long long)rsp);
 }
 void helper_debug_null_call_indir(uint64_t target, uint64_t rsp) {
-    fprintf(stderr, "DEBUG_NULL_JUMP[call_indir]: target=0x%llx RSP=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "DEBUG_NULL_JUMP[call_indir]: target=0x%llx RSP=0x%llx\n",
             (unsigned long long)target, (unsigned long long)rsp);
 }
 void helper_debug_null_ret(uint64_t target, uint64_t rsp) {
-    fprintf(stderr, "DEBUG_NULL_JUMP[ret]: target=0x%llx RSP=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "DEBUG_NULL_JUMP[ret]: target=0x%llx RSP=0x%llx\n",
             (unsigned long long)target, (unsigned long long)rsp);
 }
 static uint64_t last_good_rip = 0;
@@ -225,34 +237,34 @@ void helper_debug_trace_rip(uint64_t rip) {
     }
 }
 void helper_debug_print_rip_history(void) {
-    fprintf(stderr, "  RIP history (most recent last):\n");
+    DEBUG_FPRINTF(stderr, "  RIP history (most recent last):\n");
     for (int i = 0; i < 16 && i < rip_history_idx; i++) {
         int idx = (rip_history_idx - 16 + i) % 16;
         if (rip_history_idx >= 16) idx = (idx + 16) % 16;
-        fprintf(stderr, "    [%d] 0x%llx\n", i, (unsigned long long)rip_history[idx]);
+        DEBUG_FPRINTF(stderr, "    [%d] 0x%llx\n", i, (unsigned long long)rip_history[idx]);
     }
 }
 void helper_debug_null_fiber_exit(uint64_t target, uint64_t rsp) {
-    fprintf(stderr, "DEBUG_NULL_JUMP[fiber_exit]: target=0x%llx RSP=0x%llx last_good_rip=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "DEBUG_NULL_JUMP[fiber_exit]: target=0x%llx RSP=0x%llx last_good_rip=0x%llx\n",
             (unsigned long long)target, (unsigned long long)rsp, (unsigned long long)last_good_rip);
     helper_debug_print_rip_history();
 }
 void helper_debug_null_fiber_ret(uint64_t target, uint64_t rsp) {
-    fprintf(stderr, "DEBUG_NULL_JUMP[fiber_ret]: target=0x%llx RSP=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "DEBUG_NULL_JUMP[fiber_ret]: target=0x%llx RSP=0x%llx\n",
             (unsigned long long)target, (unsigned long long)rsp);
 }
 void helper_debug_null_exit(uint64_t target, uint64_t rsp) {
-    fprintf(stderr, "DEBUG_NULL_JUMP[exit_gadget]: target=0x%llx RSP=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "DEBUG_NULL_JUMP[exit_gadget]: target=0x%llx RSP=0x%llx\n",
             (unsigned long long)target, (unsigned long long)rsp);
 }
 void helper_debug_null_poke(uint64_t target, uint64_t rsp) {
-    fprintf(stderr, "DEBUG_NULL_JUMP[poke]: target=0x%llx RSP=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "DEBUG_NULL_JUMP[poke]: target=0x%llx RSP=0x%llx\n",
             (unsigned long long)target, (unsigned long long)rsp);
 }
 
 // Debug: syscall gadget NULL check
 void helper_debug_syscall_null(uint64_t target_addr, uint64_t from_rsp) {
-    fprintf(stderr, "DEBUG_SYSCALL_NULL: target=0x%llx RSP=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "DEBUG_SYSCALL_NULL: target=0x%llx RSP=0x%llx\n",
             (unsigned long long)target_addr,
             (unsigned long long)from_rsp);
 }
@@ -262,14 +274,14 @@ void helper_debug_syscall_return(uint64_t tmp_value, uint64_t rip_value) {
     static int count = 0;
     if (count < 5) {
         count++;
-        fprintf(stderr, "DEBUG_SYSCALL_RETURN[%d]: _tmp=0x%llx rip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "DEBUG_SYSCALL_RETURN[%d]: _tmp=0x%llx rip=0x%llx\n",
                 count, (unsigned long long)tmp_value, (unsigned long long)rip_value);
     }
 }
 
 // Debug: segfault handler - show what _ip points to
 void helper_debug_segfault(uint64_t ip_ptr, uint64_t ip_contents, uint64_t segfault_addr) {
-    fprintf(stderr, "DEBUG_SEGFAULT: _ip=0x%llx [_ip]=0x%llx segfault_addr=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "DEBUG_SEGFAULT: _ip=0x%llx [_ip]=0x%llx segfault_addr=0x%llx\n",
             (unsigned long long)ip_ptr,
             (unsigned long long)ip_contents,
             (unsigned long long)segfault_addr);
@@ -279,7 +291,7 @@ void helper_debug_segfault(uint64_t ip_ptr, uint64_t ip_contents, uint64_t segfa
 void helper_debug_tlb_miss(uint64_t ip_ptr, uint64_t ip_contents, uint64_t access_addr) {
     // Trace ALL TLB misses for crash page
     if ((access_addr >> 12) == 0x55555561c) {
-        fprintf(stderr, "TLB_MISS_ASM: addr=0x%llx ip_ptr=0x%llx ip_contents=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "TLB_MISS_ASM: addr=0x%llx ip_ptr=0x%llx ip_contents=0x%llx\n",
                 (unsigned long long)access_addr, (unsigned long long)ip_ptr,
                 (unsigned long long)ip_contents);
     }
@@ -287,7 +299,7 @@ void helper_debug_tlb_miss(uint64_t ip_ptr, uint64_t ip_contents, uint64_t acces
 
 // Debug: trace load64_mem in crash region
 void helper_debug_load64_crash_region(uint64_t guest_addr) {
-    fprintf(stderr, "LOAD64_CRASH_REGION: guest_addr=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "LOAD64_CRASH_REGION: guest_addr=0x%llx\n",
             (unsigned long long)guest_addr);
     fflush(stderr);
 }
@@ -296,44 +308,44 @@ void helper_debug_load64_crash_region(uint64_t guest_addr) {
 static int load64_host_count = 0;
 void helper_debug_load64_host_addr(uint64_t guest_addr, uint64_t host_addr) {
     load64_host_count++;
-    fprintf(stderr, "LOAD64_HOST[%d]: guest=0x%llx -> host=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "LOAD64_HOST[%d]: guest=0x%llx -> host=0x%llx\n",
             load64_host_count, (unsigned long long)guest_addr, (unsigned long long)host_addr);
     fflush(stderr);
 }
 
 // Debug: trace right after first restore_c
 void helper_debug_after_restore(uint64_t addr) {
-    fprintf(stderr, "AFTER_RESTORE: addr=0x%llx\n", (unsigned long long)addr);
+    DEBUG_FPRINTF(stderr, "AFTER_RESTORE: addr=0x%llx\n", (unsigned long long)addr);
     fflush(stderr);
 }
 
 // Debug: trace before second save_c
 void helper_debug_before_save2(uint64_t addr) {
-    fprintf(stderr, "BEFORE_SAVE2: addr=0x%llx\n", (unsigned long long)addr);
+    DEBUG_FPRINTF(stderr, "BEFORE_SAVE2: addr=0x%llx\n", (unsigned long long)addr);
     fflush(stderr);
 }
 
 // Debug: trace at label 98: before final save_c
 void helper_debug_at_98(uint64_t sp_val) {
-    fprintf(stderr, "AT_98: sp=0x%llx\n", (unsigned long long)sp_val);
+    DEBUG_FPRINTF(stderr, "AT_98: sp=0x%llx\n", (unsigned long long)sp_val);
     fflush(stderr);
 }
 
 // Debug: trace after AT_98's restore_c
 void helper_debug_after_at98(uint64_t addr) {
-    fprintf(stderr, "AFTER_AT98: addr=0x%llx\n", (unsigned long long)addr);
+    DEBUG_FPRINTF(stderr, "AFTER_AT98: addr=0x%llx\n", (unsigned long long)addr);
     fflush(stderr);
 }
 
 // Debug: trace right before final load call
 void helper_debug_before_load(uint64_t addr) {
-    fprintf(stderr, "BEFORE_LOAD: addr=0x%llx\n", (unsigned long long)addr);
+    DEBUG_FPRINTF(stderr, "BEFORE_LOAD: addr=0x%llx\n", (unsigned long long)addr);
     fflush(stderr);
 }
 
 // Debug: trace sp after restore_c
 void helper_debug_sp_after_restore(uint64_t sp) {
-    fprintf(stderr, "SP_AFTER: sp=0x%llx\n", (unsigned long long)sp);
+    DEBUG_FPRINTF(stderr, "SP_AFTER: sp=0x%llx\n", (unsigned long long)sp);
     fflush(stderr);
 }
 
@@ -341,23 +353,23 @@ void helper_debug_sp_after_restore(uint64_t sp) {
 // Attempts to read from addr to verify it's accessible from C
 // Returns the loaded value so we can bypass the ARM64 ldr
 uint64_t helper_debug_pre_ldr(uint64_t addr) {
-    fprintf(stderr, "PRE_LDR: addr=0x%llx\n", (unsigned long long)addr);
+    DEBUG_FPRINTF(stderr, "PRE_LDR: addr=0x%llx\n", (unsigned long long)addr);
     // Try to read from this address in C - if it crashes here, address is bad
     volatile uint64_t *ptr = (volatile uint64_t *)addr;
     uint64_t val = *ptr;
-    fprintf(stderr, "PRE_LDR: read 0x%llx from 0x%llx - SUCCESS\n",
+    DEBUG_FPRINTF(stderr, "PRE_LDR: read 0x%llx from 0x%llx - SUCCESS\n",
             (unsigned long long)val, (unsigned long long)addr);
     return val;
 }
 
 // Debug: show _addr after restore_c
 void helper_debug_post_restore(uint64_t addr) {
-    fprintf(stderr, "POST_RESTORE: addr=0x%llx\n", (unsigned long long)addr);
+    DEBUG_FPRINTF(stderr, "POST_RESTORE: addr=0x%llx\n", (unsigned long long)addr);
 }
 
 // Debug: confirm bypass path was taken
 void helper_debug_bypass_done(uint64_t value) {
-    fprintf(stderr, "BYPASS_DONE: got value=0x%llx, continuing...\n", (unsigned long long)value);
+    DEBUG_FPRINTF(stderr, "BYPASS_DONE: got value=0x%llx, continuing...\n", (unsigned long long)value);
 }
 
 // Debug: trace load64_mem entry BEFORE TLB
@@ -366,7 +378,7 @@ void helper_debug_load64_mem_entry(uint64_t guest_addr, uint64_t rip) {
     load64_entry_count++;
     // Only trace the last 10 entries before crash
     if (load64_entry_count > 11140) {
-        fprintf(stderr, "LOAD64_MEM_ENTRY[%d]: guest_addr=0x%llx rip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "LOAD64_MEM_ENTRY[%d]: guest_addr=0x%llx rip=0x%llx\n",
                 load64_entry_count, (unsigned long long)guest_addr, (unsigned long long)rip);
         fflush(stderr);
     }
@@ -379,7 +391,7 @@ uint64_t helper_load64_via_c(uint64_t host_addr) {
     uint64_t val = *ptr;
     load64_count++;
     // Trace every load
-    fprintf(stderr, "LOAD64[%d]: host=0x%llx val=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "LOAD64[%d]: host=0x%llx val=0x%llx\n",
             load64_count, (unsigned long long)host_addr, (unsigned long long)val);
     fflush(stderr);
     return val;
@@ -402,25 +414,25 @@ void helper_store64_via_c(uint64_t host_addr, uint64_t value) {
 
 // Debug: trace stores to crash page (before TLB)
 void helper_debug_store64_crash_page(uint64_t guest_addr, uint64_t value) {
-    fprintf(stderr, "STORE64_CRASH_PAGE: guest=0x%llx value=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "STORE64_CRASH_PAGE: guest=0x%llx value=0x%llx\n",
             (unsigned long long)guest_addr, (unsigned long long)value);
 }
 
 // Debug: trace stores to crash page (after TLB, and do the store in C)
 void helper_debug_store64_crash_page_host(uint64_t host_addr, uint64_t value) {
-    fprintf(stderr, "STORE64_CRASH_PAGE_HOST: host=0x%llx value=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "STORE64_CRASH_PAGE_HOST: host=0x%llx value=0x%llx\n",
             (unsigned long long)host_addr, (unsigned long long)value);
     // Do the store in C
     volatile uint64_t *ptr = (volatile uint64_t *)host_addr;
     *ptr = value;
-    fprintf(stderr, "STORE64_CRASH_PAGE_HOST: store completed OK\n");
+    DEBUG_FPRINTF(stderr, "STORE64_CRASH_PAGE_HOST: store completed OK\n");
 }
 
 // Debug: trace stores to r12
 void helper_debug_store_r12(uint64_t new_value, uint64_t rbx_value, uint64_t r15_value) {
     static int count = 0;
     count++;
-    fprintf(stderr, "STORE_R12[%d]: new=0x%llx rbx=0x%llx r15=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "STORE_R12[%d]: new=0x%llx rbx=0x%llx r15=0x%llx\n",
             count, (unsigned long long)new_value, (unsigned long long)rbx_value,
             (unsigned long long)r15_value);
 }
@@ -439,7 +451,7 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
         static int heap_call_count = 0;
         heap_call_count++;
         if (heap_call_count <= 20) {
-            fprintf(stderr, "CALL_HEAP_DST[%d]: target=0x%llx rdi=0x%llx rsi=0x%llx ret=0x%llx\n",
+            DEBUG_FPRINTF(stderr, "CALL_HEAP_DST[%d]: target=0x%llx rdi=0x%llx rsi=0x%llx ret=0x%llx\n",
                     heap_call_count, (unsigned long long)real_target,
                     (unsigned long long)rdi, (unsigned long long)rsi,
                     (unsigned long long)ret_addr);
@@ -451,7 +463,7 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
     // vsnprintf(char *buf, size_t n, const char *fmt, va_list ap)
     //   rdi=buf, rsi=n, rdx=fmt, rcx=va_list_ptr (GUEST address)
     if (real_target == 0x7efffffb5390) {
-        fprintf(stderr, "CALL_VSNPRINTF: buf=0x%llx size=%llu fmt=0x%llx va_list=0x%llx ret=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "CALL_VSNPRINTF: buf=0x%llx size=%llu fmt=0x%llx va_list=0x%llx ret=0x%llx\n",
                 (unsigned long long)rdi, (unsigned long long)rsi,
                 (unsigned long long)rdx, (unsigned long long)rcx,
                 (unsigned long long)ret_addr);
@@ -460,32 +472,32 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
         char fmt_str[64];
         if (user_read(rdx, fmt_str, 63) == 0) {
             fmt_str[63] = '\0';
-            fprintf(stderr, "  vsnprintf format: \"%s\"\n", fmt_str);
+            DEBUG_FPRINTF(stderr, "  vsnprintf format: \"%s\"\n", fmt_str);
             // Also show as hex for debugging
-            fprintf(stderr, "  format hex: ");
+            DEBUG_FPRINTF(stderr, "  format hex: ");
             for (int i = 0; i < 16 && fmt_str[i]; i++)
-                fprintf(stderr, "%02x ", (unsigned char)fmt_str[i]);
-            fprintf(stderr, "\n");
+                DEBUG_FPRINTF(stderr, "%02x ", (unsigned char)fmt_str[i]);
+            DEBUG_FPRINTF(stderr, "\n");
         }
         // Dump va_list contents using user_read
         uint8_t va_list_buf[24];
         if (user_read(rcx, va_list_buf, 24) == 0) {
             // Show raw bytes first
-            fprintf(stderr, "  vsnprintf va_list raw: ");
-            for (int i = 0; i < 24; i++) fprintf(stderr, "%02x ", va_list_buf[i]);
-            fprintf(stderr, "\n");
+            DEBUG_FPRINTF(stderr, "  vsnprintf va_list raw: ");
+            for (int i = 0; i < 24; i++) DEBUG_FPRINTF(stderr, "%02x ", va_list_buf[i]);
+            DEBUG_FPRINTF(stderr, "\n");
             uint32_t gp_offset = *(uint32_t *)&va_list_buf[0];
             uint32_t fp_offset = *(uint32_t *)&va_list_buf[4];
             uint64_t overflow_arg = *(uint64_t *)&va_list_buf[8];
             uint64_t reg_save = *(uint64_t *)&va_list_buf[16];
-            fprintf(stderr, "  vsnprintf va_list: gp=%u fp=%u overflow=0x%llx regsave=0x%llx\n",
+            DEBUG_FPRINTF(stderr, "  vsnprintf va_list: gp=%u fp=%u overflow=0x%llx regsave=0x%llx\n",
                     gp_offset, fp_offset, (unsigned long long)overflow_arg,
                     (unsigned long long)reg_save);
             // With gp_offset=8, args are at regsave[8], regsave[16], regsave[24]
             if (gp_offset == 8) {
                 uint64_t regs[4];
                 if (user_read(reg_save, regs, 32) == 0) {
-                    fprintf(stderr, "  vsnprintf regs: [0]=0x%llx [8]=0x%llx [16]=0x%llx [24]=0x%llx\n",
+                    DEBUG_FPRINTF(stderr, "  vsnprintf regs: [0]=0x%llx [8]=0x%llx [16]=0x%llx [24]=0x%llx\n",
                             (unsigned long long)regs[0], (unsigned long long)regs[1],
                             (unsigned long long)regs[2], (unsigned long long)regs[3]);
                     // Read strings at regs[1], regs[2], regs[3]
@@ -494,7 +506,7 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
                     user_read(regs[1], str1, 31); str1[31] = '\0';
                     user_read(regs[2], str2, 31); str2[31] = '\0';
                     user_read(regs[3], str3, 31); str3[31] = '\0';
-                    fprintf(stderr, "  vsnprintf args: \"%s\" \"%s\" \"%s\"\n", str1, str2, str3);
+                    DEBUG_FPRINTF(stderr, "  vsnprintf args: \"%s\" \"%s\" \"%s\"\n", str1, str2, str3);
                 }
             }
         }
@@ -503,7 +515,7 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
     // Trace calls to vasprintf (musl offset 0x529ae)
     // Runtime address = 0x7efffff5e000 + 0x529ae = 0x7efffffb09ae
     if (real_target == 0x7efffffb09ae) {
-        fprintf(stderr, "CALL_VASPRINTF: rdi(outptr)=0x%llx rsi(fmt)=0x%llx rdx(va_list)=0x%llx ret=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "CALL_VASPRINTF: rdi(outptr)=0x%llx rsi(fmt)=0x%llx rdx(va_list)=0x%llx ret=0x%llx\n",
                 (unsigned long long)rdi, (unsigned long long)rsi, (unsigned long long)rdx,
                 (unsigned long long)ret_addr);
         // Dump va_list and reg_save_area using user_read
@@ -514,14 +526,14 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
             uint32_t fp_offset = *(uint32_t *)&va_list_buf[4];
             uint64_t overflow_arg = *(uint64_t *)&va_list_buf[8];
             uint64_t reg_save = *(uint64_t *)&va_list_buf[16];
-            fprintf(stderr, "  va_list: gp=%u fp=%u overflow=0x%llx regsave=0x%llx\n",
+            DEBUG_FPRINTF(stderr, "  va_list: gp=%u fp=%u overflow=0x%llx regsave=0x%llx\n",
                     gp_offset, fp_offset, (unsigned long long)overflow_arg,
                     (unsigned long long)reg_save);
             // With gp_offset=8, args are at regsave[8], regsave[16], regsave[24]
             if (gp_offset == 8) {
                 uint64_t regs[4];
                 if (user_read(reg_save, regs, 32) == 0) {
-                    fprintf(stderr, "  regs: [0]=0x%llx [8]=0x%llx [16]=0x%llx [24]=0x%llx\n",
+                    DEBUG_FPRINTF(stderr, "  regs: [0]=0x%llx [8]=0x%llx [16]=0x%llx [24]=0x%llx\n",
                             (unsigned long long)regs[0], (unsigned long long)regs[1],
                             (unsigned long long)regs[2], (unsigned long long)regs[3]);
                     // Read strings at regs[1], regs[2], regs[3]
@@ -530,7 +542,7 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
                     user_read(regs[1], str1, 31); str1[31] = '\0';
                     user_read(regs[2], str2, 31); str2[31] = '\0';
                     user_read(regs[3], str3, 31); str3[31] = '\0';
-                    fprintf(stderr, "  args: \"%s\" \"%s\" \"%s\"\n", str1, str2, str3);
+                    DEBUG_FPRINTF(stderr, "  args: \"%s\" \"%s\" \"%s\"\n", str1, str2, str3);
                 }
             }
         }
@@ -539,7 +551,7 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
     // Trace calls to malloc (musl offset 0x14010)
     // Runtime address = 0x7efffff5e000 + 0x14010 = 0x7efffff72010
     if (real_target == 0x7efffff72010) {
-        fprintf(stderr, "CALL_MALLOC: rdi(size)=%llu ret=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "CALL_MALLOC: rdi(size)=%llu ret=0x%llx\n",
                 (unsigned long long)rdi, (unsigned long long)ret_addr);
     }
 
@@ -550,7 +562,7 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
     if (real_target == 0x7efffffb52f0) {
         static int sn_write_count = 0;
         sn_write_count++;
-        fprintf(stderr, "CALL_SN_WRITE[%d]: file=0x%llx src=0x%llx len=%llu ret=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "CALL_SN_WRITE[%d]: file=0x%llx src=0x%llx len=%llu ret=0x%llx\n",
                 sn_write_count,
                 (unsigned long long)rdi, (unsigned long long)rsi,
                 (unsigned long long)rdx, (unsigned long long)ret_addr);
@@ -560,7 +572,7 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
         sample[0] = '\0';
         if (rdx > 0 && user_read(rsi, sample, rdx < 16 ? rdx : 16) == 0) {
             sample[rdx < 16 ? rdx : 16] = '\0';
-            fprintf(stderr, "  sn_write data: \"%s\"\n", sample);
+            DEBUG_FPRINTF(stderr, "  sn_write data: \"%s\"\n", sample);
         }
     }
 
@@ -570,7 +582,7 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
     if (real_target == 0x7efffffaec9b) {
         static int out_count = 0;
         out_count++;
-        fprintf(stderr, "CALL_OUT[%d]: src=0x%llx len=%llu file=0x%llx ret=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "CALL_OUT[%d]: src=0x%llx len=%llu file=0x%llx ret=0x%llx\n",
                 out_count,
                 (unsigned long long)rdi, (unsigned long long)rsi,
                 (unsigned long long)rdx, (unsigned long long)ret_addr);
@@ -580,7 +592,7 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
         sample[0] = '\0';
         if (rsi > 0 && rsi < 1000 && user_read(rdi, sample, rsi < 32 ? rsi : 32) == 0) {
             sample[rsi < 32 ? rsi : 32] = '\0';
-            fprintf(stderr, "  out data: \"%s\"\n", sample);
+            DEBUG_FPRINTF(stderr, "  out data: \"%s\"\n", sample);
         }
     }
 
@@ -590,7 +602,7 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
     if (real_target == 0x7efffffb1c36) {
         static int pc_count = 0;
         pc_count++;
-        fprintf(stderr, "CALL_PRINTF_CORE[%d]: FILE=0x%llx fmt=0x%llx va=0x%llx nl_arg=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "CALL_PRINTF_CORE[%d]: FILE=0x%llx fmt=0x%llx va=0x%llx nl_arg=0x%llx\n",
                 pc_count,
                 (unsigned long long)rdi, (unsigned long long)rsi,
                 (unsigned long long)rdx, (unsigned long long)rcx);
@@ -607,7 +619,7 @@ void helper_debug_ret(uint64_t rax, uint64_t ret_to) {
     // Runtime: 0x7efffff5e000 + 0x529df = 0x7efffffb09df
     //          0x7efffff5e000 + 0x52a09 = 0x7efffffb0a09
     if (ret_to == 0x7efffffb09e4 || ret_to == 0x7efffffb0a0e) {
-        fprintf(stderr, "RET_VSNPRINTF: rax=%lld (length) ret_to=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "RET_VSNPRINTF: rax=%lld (length) ret_to=0x%llx\n",
                 (long long)rax, (unsigned long long)ret_to);
     }
 
@@ -615,17 +627,17 @@ void helper_debug_ret(uint64_t rax, uint64_t ret_to) {
     // First call (measuring): returns to 0x7efffff5e000 + 0x54978 = 0x7efffffb2978
     // Second call (actual): returns to 0x7efffff5e000 + 0x54a0b = 0x7efffffb2a0b
     if (ret_to == 0x7efffffb2978) {
-        fprintf(stderr, "RET_PRINTF_CORE_1ST: rax=%lld (measuring pass) ret_to=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "RET_PRINTF_CORE_1ST: rax=%lld (measuring pass) ret_to=0x%llx\n",
                 (long long)rax, (unsigned long long)ret_to);
     }
     if (ret_to == 0x7efffffb2a0b) {
-        fprintf(stderr, "RET_PRINTF_CORE_2ND: rax=%lld (actual output) ret_to=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "RET_PRINTF_CORE_2ND: rax=%lld (actual output) ret_to=0x%llx\n",
                 (long long)rax, (unsigned long long)ret_to);
     }
 
     // Check for key addresses (old traces)
     else if (ret_to == 0x55555555b11a || ret_to == 0x55555555b46d) {
-        fprintf(stderr, "RET_STRCMP_KEY[%d]: rax=%lld (0x%llx) ret_to=0x%llx - should be non-zero for \"/\" vs \"--help\"\n",
+        DEBUG_FPRINTF(stderr, "RET_STRCMP_KEY[%d]: rax=%lld (0x%llx) ret_to=0x%llx - should be non-zero for \"/\" vs \"--help\"\n",
                 g_ret_count, (long long)(int)rax, (unsigned long long)rax, (unsigned long long)ret_to);
     }
 }
@@ -635,7 +647,7 @@ void helper_debug_ret(uint64_t rax, uint64_t ret_to) {
 void helper_debug_load32_optind(uint64_t guest_addr, uint32_t value) {
     // optind is at 0x55555561a068
     if (guest_addr == 0x55555561a068) {
-        fprintf(stderr, "LOAD32_OPTIND: addr=0x%llx value=%u (optind)\n",
+        DEBUG_FPRINTF(stderr, "LOAD32_OPTIND: addr=0x%llx value=%u (optind)\n",
                 (unsigned long long)guest_addr, value);
     }
 }
@@ -647,7 +659,7 @@ void helper_debug_call_indir(uint64_t target, uint64_t rdi, uint64_t rsi, uint64
         count++;
         // Only show if rsi or rdx is 0x61 ('a') or 0x62 ('b')
         if (rsi == 0x61 || rsi == 0x62 || rdx == 0x61 || rdx == 0x62) {
-            fprintf(stderr, "CALL_INDIR[%d]: target=0x%llx rdi=0x%llx rsi=0x%llx rdx=0x%llx\n",
+            DEBUG_FPRINTF(stderr, "CALL_INDIR[%d]: target=0x%llx rdi=0x%llx rsi=0x%llx rdx=0x%llx\n",
                     count, (unsigned long long)target, (unsigned long long)rdi,
                     (unsigned long long)rsi, (unsigned long long)rdx);
         }
@@ -657,7 +669,7 @@ void helper_debug_call_indir(uint64_t target, uint64_t rdi, uint64_t rsi, uint64
 // Debug: trace RDI value when storing to r12=0
 #ifdef ISH_GUEST_64BIT
 void helper_debug_rbx_rdi(struct cpu_state *cpu) {
-    fprintf(stderr, "DEBUG: rbx=0x%llx rdi=0x%llx rsi=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "DEBUG: rbx=0x%llx rdi=0x%llx rsi=0x%llx\n",
             (unsigned long long)cpu->rbx, (unsigned long long)cpu->rdi,
             (unsigned long long)cpu->rsi);
 }
@@ -668,7 +680,7 @@ void helper_debug_rep_stosq(uint64_t rdi, uint64_t rcx, int64_t df_offset) {
     static int count = 0;
     if (count < 5) {
         count++;
-        fprintf(stderr, "DEBUG_REP_STOSQ[%d]: rdi=0x%llx rcx=0x%llx df_offset=0x%llx (%lld)\n",
+        DEBUG_FPRINTF(stderr, "DEBUG_REP_STOSQ[%d]: rdi=0x%llx rcx=0x%llx df_offset=0x%llx (%lld)\n",
                 count, (unsigned long long)rdi, (unsigned long long)rcx,
                 (unsigned long long)df_offset, (long long)df_offset);
     }
@@ -684,7 +696,7 @@ void helper_debug_cmovne(uint64_t xtmp_src, uint64_t x8_dst, uint64_t cpu_res, u
     static int count = 0;
     if (count < 30) {
         count++;
-        fprintf(stderr, "DEBUG_CMOVNE[%d]: src=0x%llx dst=0x%llx res=0x%llx flags_res=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "DEBUG_CMOVNE[%d]: src=0x%llx dst=0x%llx res=0x%llx flags_res=0x%llx\n",
                 count, (unsigned long long)xtmp_src, (unsigned long long)x8_dst,
                 (unsigned long long)cpu_res, (unsigned long long)flags_res);
     }
@@ -711,7 +723,7 @@ void helper_debug_cmovl(uint64_t xtmp_src, uint64_t x8_dst, uint64_t cpu_res, ui
     int l_cond = (sf != of);  // L condition: SF != OF
 
     // Always print - we need to see this
-    fprintf(stderr, "CMOVL[%d]: src(r8)=%lld dst(r11)=%lld res=%lld SF=%d OF=%llu L=%d -> %s\n",
+    DEBUG_FPRINTF(stderr, "CMOVL[%d]: src(r8)=%lld dst(r11)=%lld res=%lld SF=%d OF=%llu L=%d -> %s\n",
             count, (long long)(int32_t)xtmp_src, (long long)(int32_t)x8_dst,
             (long long)(int32_t)cpu_res, sf, (unsigned long long)of, l_cond,
             l_cond ? "MOVE(keep src)" : "SKIP(keep dst)");
@@ -719,19 +731,19 @@ void helper_debug_cmovl(uint64_t xtmp_src, uint64_t x8_dst, uint64_t cpu_res, ui
 
 // Debug: r9 corruption detection
 void helper_debug_r9_corrupt(uint64_t value, uint64_t ip) {
-    fprintf(stderr, "R9_CORRUPT: value=0x%llx at ip=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "R9_CORRUPT: value=0x%llx at ip=0x%llx\n",
             (unsigned long long)value, (unsigned long long)ip);
 }
 
 // Debug: rdi corruption detection
 void helper_debug_rdi_corrupt(uint64_t value, uint64_t ip) {
-    fprintf(stderr, "RDI_CORRUPT: value=0x%llx at ip=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "RDI_CORRUPT: value=0x%llx at ip=0x%llx\n",
             (unsigned long long)value, (unsigned long long)ip);
 }
 
 // Debug: load64 corruption detection
 void helper_debug_load64_corrupt(uint64_t value, uint64_t ip, uint64_t addr) {
-    fprintf(stderr, "LOAD64_CORRUPT: value=0x%llx at ip=0x%llx from addr=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "LOAD64_CORRUPT: value=0x%llx at ip=0x%llx from addr=0x%llx\n",
             (unsigned long long)value, (unsigned long long)ip, (unsigned long long)addr);
 }
 
@@ -743,7 +755,7 @@ void helper_debug_argv_load(uint64_t value, uint64_t addr) {
         // Print value as string if possible
         char str[9] = {0};
         memcpy(str, &value, 8);
-        fprintf(stderr, "ARGV_LOAD64[%d]: addr=0x%llx value=0x%llx str='%s'\n",
+        DEBUG_FPRINTF(stderr, "ARGV_LOAD64[%d]: addr=0x%llx value=0x%llx str='%s'\n",
                 count, (unsigned long long)addr, (unsigned long long)value, str);
     }
 }
@@ -756,7 +768,7 @@ void helper_debug_byte_load(uint64_t value, uint64_t addr) {
     // Look for loads that might be optstring[0] comparisons
     if (count < 200) {
         char c = (value >= 32 && value < 127) ? (char)value : '.';
-        fprintf(stderr, "BYTE[%d]: addr=0x%llx value=0x%02llx '%c'\n",
+        DEBUG_FPRINTF(stderr, "BYTE[%d]: addr=0x%llx value=0x%02llx '%c'\n",
                 count, (unsigned long long)addr, (unsigned long long)value, c);
     }
 }
@@ -767,7 +779,7 @@ void helper_debug_store64(uint64_t value, uint64_t addr) {
     count++;
     // Show only stores of 'a' (0x61) or 'b' (0x62)
     if (value == 0x61 || value == 0x62) {
-        fprintf(stderr, "STORE64_AB[%d]: addr=0x%llx value=0x%llx ('%c')\n",
+        DEBUG_FPRINTF(stderr, "STORE64_AB[%d]: addr=0x%llx value=0x%llx ('%c')\n",
                 count, (unsigned long long)addr, (unsigned long long)value, (char)value);
     }
 }
@@ -791,7 +803,7 @@ void helper_track_load32(uint32_t value, uint64_t addr) {
 
     // Trace ALL loads around seq 5700-5740 (near the STORE_R15 and STORE_R13)
     if (g_load32_global_count >= 5700 && g_load32_global_count <= 5740) {
-        fprintf(stderr, "LOAD32[seq=%d]: addr=0x%llx value=%u (0x%x)\n",
+        DEBUG_FPRINTF(stderr, "LOAD32[seq=%d]: addr=0x%llx value=%u (0x%x)\n",
                 g_load32_global_count, (unsigned long long)addr, value, value);
     }
 }
@@ -813,7 +825,7 @@ void helper_debug_optind_load(uint32_t value, uint64_t addr) {
     else if ((addr & 0xfff) == 0x060) name = "__environ";
     else if ((addr & 0xfff) == 0x068) name = "optind";
     else if ((addr & 0xfff) == 0x06c) name = "optopt";  // adjacent to optind
-    fprintf(stderr, "OPT_LOAD32[%d]: %s addr=0x%llx value=%d\n",
+    DEBUG_FPRINTF(stderr, "OPT_LOAD32[%d]: %s addr=0x%llx value=%d\n",
             count, name, (unsigned long long)addr, (int)value);
 }
 
@@ -825,7 +837,7 @@ void helper_debug_optind_load64(uint64_t value, uint64_t addr) {
     else if ((addr & 0xfff) == 0x048) name = "opterr";
     else if ((addr & 0xfff) == 0x060) name = "__environ";
     else if ((addr & 0xfff) == 0x068) name = "optind";
-    fprintf(stderr, "OPT_LOAD64[%d]: %s addr=0x%llx value=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "OPT_LOAD64[%d]: %s addr=0x%llx value=0x%llx\n",
             count, name, (unsigned long long)addr, (unsigned long long)value);
 }
 
@@ -835,7 +847,7 @@ void helper_debug_optind_sub_load(uint32_t value, uint64_t addr) {
     const char *name = "???";
     if ((addr & 0xfff) == 0x068) name = "optind";
     else if ((addr & 0xfff) == 0x048) name = "opterr";
-    fprintf(stderr, "OPT_SUB_LOAD[%d]: %s addr=0x%llx value=%d\n",
+    DEBUG_FPRINTF(stderr, "OPT_SUB_LOAD[%d]: %s addr=0x%llx value=%d\n",
             count, name, (unsigned long long)addr, (int)value);
 }
 
@@ -857,14 +869,14 @@ uint32_t helper_debug_optind_store(uint32_t value, uint64_t addr) {
 
 // Debug: trace the fix store operation
 void helper_debug_optind_fix_store(uint64_t addr, uint32_t value) {
-    fprintf(stderr, "OPTIND_FIX_STORE: about to write %d to guest addr 0x%llx\n",
+    DEBUG_FPRINTF(stderr, "OPTIND_FIX_STORE: about to write %d to guest addr 0x%llx\n",
             (int)value, (unsigned long long)addr);
     fflush(stderr);
 }
 
 // Debug: trace before/after restore_c
 void helper_debug_before_restore(uint64_t cpu_ptr) {
-    fprintf(stderr, "BEFORE_RESTORE: _cpu=0x%llx\n", (unsigned long long)cpu_ptr);
+    DEBUG_FPRINTF(stderr, "BEFORE_RESTORE: _cpu=0x%llx\n", (unsigned long long)cpu_ptr);
     fflush(stderr);
 }
 
@@ -872,7 +884,7 @@ void helper_debug_before_restore(uint64_t cpu_ptr) {
 void helper_debug_got_store(uint64_t value, uint64_t addr) {
     static int count = 0;
     count++;
-    fprintf(stderr, "GOT_STORE[%d]: addr=0x%llx value=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "GOT_STORE[%d]: addr=0x%llx value=0x%llx\n",
             count, (unsigned long long)addr, (unsigned long long)value);
 }
 
@@ -886,7 +898,7 @@ void helper_debug_busybox_store32(uint32_t value, uint64_t addr) {
     count++;
     // Only show first 50 stores
     if (count <= 50) {
-        fprintf(stderr, "BUSYBOX_STORE32[%d]: addr=0x%llx value=%d (0x%x)\n",
+        DEBUG_FPRINTF(stderr, "BUSYBOX_STORE32[%d]: addr=0x%llx value=%d (0x%x)\n",
                 count, (unsigned long long)addr, (int)value, (unsigned)value);
     }
 }
@@ -910,7 +922,7 @@ static int opt_store_call_count = 0;
 // Check if any store32 hits the watchpoint (entry 2 flag host address)
 void helper_check_watchpoint_store32(uint32_t value, uint64_t host_addr) {
     if (watchpoint_armed && host_addr == entry2_flag_host_addr) {
-        fprintf(stderr, "*** WATCHPOINT HIT store32: host=0x%llx value=%d (0x%x)\n",
+        DEBUG_FPRINTF(stderr, "*** WATCHPOINT HIT store32: host=0x%llx value=%d (0x%x)\n",
                 (unsigned long long)host_addr, (int)value, (unsigned)value);
     }
 }
@@ -923,7 +935,7 @@ void helper_check_watchpoint_store64(uint64_t value, uint64_t host_addr) {
         if (host_addr <= entry2_flag_host_addr && (host_addr + 7) >= entry2_flag_host_addr) {
             int offset = (int)(entry2_flag_host_addr - host_addr);
             uint32_t byte_at_flag = (value >> (offset * 8)) & 0xFFFFFFFF;
-            fprintf(stderr, "*** WATCHPOINT HIT store64: host=0x%llx value=0x%llx overlaps flag! offset=%d, bytes_at_flag=0x%x\n",
+            DEBUG_FPRINTF(stderr, "*** WATCHPOINT HIT store64: host=0x%llx value=0x%llx overlaps flag! offset=%d, bytes_at_flag=0x%x\n",
                     (unsigned long long)host_addr, (unsigned long long)value, offset, byte_at_flag);
         }
     }
@@ -932,7 +944,7 @@ void helper_check_watchpoint_store64(uint64_t value, uint64_t host_addr) {
 // Check if any store8 hits the watchpoint
 void helper_check_watchpoint_store8(uint8_t value, uint64_t host_addr) {
     if (watchpoint_armed && host_addr >= entry2_flag_host_addr && host_addr < entry2_flag_host_addr + 4) {
-        fprintf(stderr, "*** WATCHPOINT HIT store8: host=0x%llx value=%d (0x%x)\n",
+        DEBUG_FPRINTF(stderr, "*** WATCHPOINT HIT store8: host=0x%llx value=%d (0x%x)\n",
                 (unsigned long long)host_addr, (int)value, (unsigned)value);
     }
 }
@@ -942,7 +954,7 @@ void helper_check_watchpoint_store16(uint16_t value, uint64_t host_addr) {
     if (watchpoint_armed) {
         // 16-bit store writes to [host_addr, host_addr+1]
         if (host_addr + 1 >= entry2_flag_host_addr && host_addr < entry2_flag_host_addr + 4) {
-            fprintf(stderr, "*** WATCHPOINT HIT store16: host=0x%llx value=%d (0x%x)\n",
+            DEBUG_FPRINTF(stderr, "*** WATCHPOINT HIT store16: host=0x%llx value=%d (0x%x)\n",
                     (unsigned long long)host_addr, (int)value, (unsigned)value);
         }
     }
@@ -953,7 +965,7 @@ void helper_debug_opt_table_store32(uint32_t value, uint64_t addr) {
     // Trace ALL stores in option table range
     uint64_t offset = (addr - 0x7efffff5b540) % 0x28;
     uint64_t entry = (addr - 0x7efffff5b540) / 0x28;
-    fprintf(stderr, "OPT_TABLE_STORE32[call=%d,entry=%lld,off=%lld]: addr=0x%llx value=%d (0x%x)\n",
+    DEBUG_FPRINTF(stderr, "OPT_TABLE_STORE32[call=%d,entry=%lld,off=%lld]: addr=0x%llx value=%d (0x%x)\n",
             opt_store_call_count, (long long)entry, (long long)offset, (unsigned long long)addr, (int)value, (unsigned)value);
 }
 
@@ -965,7 +977,7 @@ void helper_debug_opt_table_store32_host(uint32_t value, uint64_t guest_addr, ui
         entry2_flag_host_addr = host_addr;
         volatile uint32_t *ptr = (volatile uint32_t *)host_addr;
         uint32_t before = *ptr;
-        fprintf(stderr, "STORE32_ENTRY2_FLAG: guest=0x%llx host=0x%llx value_to_store=%d (0x%x) mem_before=%d (0x%x)\n",
+        DEBUG_FPRINTF(stderr, "STORE32_ENTRY2_FLAG: guest=0x%llx host=0x%llx value_to_store=%d (0x%x) mem_before=%d (0x%x)\n",
                 (unsigned long long)guest_addr, (unsigned long long)host_addr,
                 (int)value, (unsigned)value, (int)before, (unsigned)before);
     }
@@ -976,7 +988,7 @@ void helper_debug_opt_table_store32_after(uint64_t guest_addr, uint64_t host_add
     if (guest_addr == 0x7efffff5b594) {
         volatile uint32_t *ptr = (volatile uint32_t *)host_addr;
         uint32_t after = *ptr;
-        fprintf(stderr, "STORE32_ENTRY2_FLAG_AFTER: host=0x%llx mem_after=%d (0x%x) - WATCHPOINT ARMED\n",
+        DEBUG_FPRINTF(stderr, "STORE32_ENTRY2_FLAG_AFTER: host=0x%llx mem_after=%d (0x%x) - WATCHPOINT ARMED\n",
                 (unsigned long long)host_addr, (int)after, (unsigned)after);
         // Arm the watchpoint for subsequent stores
         entry2_flag_host_addr = host_addr;
@@ -998,7 +1010,7 @@ void helper_debug_musl_load(uint32_t value, uint64_t addr) {
     count++;
     // Only show first 10 loads to avoid spam
     if (count <= 10) {
-        fprintf(stderr, "MUSL_LOAD32[%d]: addr=0x%llx value=%d (0x%x)\n",
+        DEBUG_FPRINTF(stderr, "MUSL_LOAD32[%d]: addr=0x%llx value=%d (0x%x)\n",
                 count, (unsigned long long)addr, (int)value, (unsigned)value);
     }
 }
@@ -1009,7 +1021,7 @@ void helper_debug_musl_load64(uint64_t value, uint64_t addr) {
     count++;
     // Only show first 10 loads to avoid spam
     if (count <= 10) {
-        fprintf(stderr, "MUSL_LOAD64[%d]: addr=0x%llx value=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "MUSL_LOAD64[%d]: addr=0x%llx value=0x%llx\n",
                 count, (unsigned long long)addr, (unsigned long long)value);
     }
 }
@@ -1020,12 +1032,12 @@ void helper_debug_load64(uint64_t value, uint64_t addr) {
     count++;
     // Trace loads from argv area (0x7efffff5bf*)
     if ((addr >> 8) == 0x7efffff5bfd || (addr >> 8) == 0x7efffff5bfc) {
-        fprintf(stderr, "LOAD64_ARGV[%d]: addr=0x%llx value=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "LOAD64_ARGV[%d]: addr=0x%llx value=0x%llx\n",
                 count, (unsigned long long)addr, (unsigned long long)value);
     }
     // Trace loads from optind (0x55555561a068) or nearby
     if (addr >= 0x55555561a040 && addr < 0x55555561a080) {
-        fprintf(stderr, "LOAD_OPTDATA[%d]: addr=0x%llx value=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "LOAD_OPTDATA[%d]: addr=0x%llx value=0x%llx\n",
                 count, (unsigned long long)addr, (unsigned long long)value);
     }
 }
@@ -1041,7 +1053,7 @@ void helper_debug_load32(uint64_t value, uint64_t addr) {
         after_b_load++;
         // Look for values that could be truncated pointers (in 0x55555555* or 0x7efffff* range)
         if ((value & 0xFFFF0000) == 0x55550000 || (value & 0xFFFF0000) == 0xFFFF0000) {
-            fprintf(stderr, "LOAD32_PTR?[%d]: addr=0x%llx value=0x%llx (possible truncated ptr)\n",
+            DEBUG_FPRINTF(stderr, "LOAD32_PTR?[%d]: addr=0x%llx value=0x%llx (possible truncated ptr)\n",
                     count, (unsigned long long)addr, (unsigned long long)value);
         }
     }
@@ -1056,19 +1068,19 @@ void helper_debug_store8(uint64_t value, uint64_t addr) {
     if (store8_ab_count > 0 && store8_ab_count <= 10) {
         store8_ab_count++;
         char c = (value >= 32 && value < 127) ? (char)value : '?';
-        fprintf(stderr, "STORE8_AFTER_B[%d]: addr=0x%llx value=0x%llx ('%c')\n",
+        DEBUG_FPRINTF(stderr, "STORE8_AFTER_B[%d]: addr=0x%llx value=0x%llx ('%c')\n",
                 count, (unsigned long long)addr, (unsigned long long)value, c);
     }
     // Trace stores to output buffer area (0x7effffffe*)
     if ((addr >> 12) == 0x7effffffe) {
         char c = (value >= 32 && value < 127) ? (char)value : '?';
-        fprintf(stderr, "STORE8_BUF[%d]: addr=0x%llx value=0x%llx ('%c')\n",
+        DEBUG_FPRINTF(stderr, "STORE8_BUF[%d]: addr=0x%llx value=0x%llx ('%c')\n",
                 count, (unsigned long long)addr, (unsigned long long)value, c);
     }
     // Also trace stores of 'a' or 'b' anywhere
     else if (value == 0x61 || value == 0x62) {
         char c = (char)value;
-        fprintf(stderr, "STORE8[%d]: addr=0x%llx value=0x%llx ('%c')\n",
+        DEBUG_FPRINTF(stderr, "STORE8[%d]: addr=0x%llx value=0x%llx ('%c')\n",
                 count, (unsigned long long)addr, (unsigned long long)value, c);
         if (value == 0x62) store8_ab_count = 1;  // start tracing after 'b'
     }
@@ -1080,7 +1092,7 @@ void helper_debug_addr_r13(uint64_t addr, uint64_t r13_value, uint64_t displacem
     count++;
     // Trace ALL addr_r13 calls to see when they happen
     if (count < 100) {
-        fprintf(stderr, "ADDR_R13[%d]: addr=0x%llx r13=0x%llx disp=%lld\n",
+        DEBUG_FPRINTF(stderr, "ADDR_R13[%d]: addr=0x%llx r13=0x%llx disp=%lld\n",
                 count, (unsigned long long)addr, (unsigned long long)r13_value,
                 (long long)displacement);
     }
@@ -1093,7 +1105,7 @@ void helper_debug_byte_load_full(uint64_t value, uint64_t host_addr, uint64_t gu
     // Trace byte loads from 17000-19000 (should be near getopt32 and pwd code)
     if (count > 17000 && count < 19000) {
         char c = (value >= 32 && value < 127) ? (char)value : '.';
-        fprintf(stderr, "BYTE[%d]: guest=0x%llx value=0x%02llx '%c'\n",
+        DEBUG_FPRINTF(stderr, "BYTE[%d]: guest=0x%llx value=0x%02llx '%c'\n",
                 count, (unsigned long long)guest_addr, (unsigned long long)value, c);
     }
 }
@@ -1104,7 +1116,7 @@ void helper_debug_cmp32_x8(uint32_t mem_value, uint32_t reg_value) {
     static int count = 0;
     count++;
     // Always print for now to debug the issue
-    fprintf(stderr, "CMP32_X8[%d]: _tmp=%d (0x%x) w8=%d (0x%x) result=%d\n",
+    DEBUG_FPRINTF(stderr, "CMP32_X8[%d]: _tmp=%d (0x%x) w8=%d (0x%x) result=%d\n",
             count, (int32_t)mem_value, mem_value, (int32_t)reg_value, reg_value,
             (int32_t)(mem_value - reg_value));
 }
@@ -1127,7 +1139,7 @@ void helper_debug_store64_r12_with_rip(uint64_t value, uint64_t rip) {
     static int count = 0;
     count++;
     if (count <= 10) {
-        fprintf(stderr, "R12_7F[%d]: storing 0x%llx to r12 at rip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "R12_7F[%d]: storing 0x%llx to r12 at rip=0x%llx\n",
                 count, (unsigned long long)value, (unsigned long long)rip);
     }
 }
@@ -1144,7 +1156,7 @@ void helper_debug_store64_r15(uint64_t value, uint64_t guest_rip) {
     if (guest_rip >= 0x5555555e7000 && guest_rip <= 0x5555555e7500) {
         // Only trace small values (flag values) and the r15=0 zeroing at 0x931a4
         if (value < 0x1000 || value == 0x8000000 || guest_rip == 0x5555555e71a4) {
-            fprintf(stderr, "STORE_R15[%d]: value=0x%llx @ rip=0x%llx\n",
+            DEBUG_FPRINTF(stderr, "STORE_R15[%d]: value=0x%llx @ rip=0x%llx\n",
                     g_store_r15_count, (unsigned long long)value,
                     (unsigned long long)guest_rip);
         }
@@ -1157,7 +1169,7 @@ void helper_debug_or_mem_addr(uint64_t guest_addr, uint64_t guest_rip, uint64_t 
     count++;
     // Trace at getopt32 OR instruction (0x93285 -> 0x5555555e7285)
     if (guest_rip >= 0x5555555e7280 && guest_rip <= 0x5555555e7290) {
-        fprintf(stderr, "OR_MEM_ADDR[%d]: mem_addr=0x%llx rsi=0x%llx @ rip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "OR_MEM_ADDR[%d]: mem_addr=0x%llx rsi=0x%llx @ rip=0x%llx\n",
                 count, (unsigned long long)guest_addr, (unsigned long long)rsi_val,
                 (unsigned long long)guest_rip);
     }
@@ -1173,7 +1185,7 @@ void helper_debug_store64_r14(uint64_t value, uint64_t guest_rip) {
     // r14 is the length counter in printf_core
     if (guest_rip >= 0x7efffffb1c36 && guest_rip <= 0x7efffffb2914) {
         uint64_t offset = guest_rip - 0x7efffff5e000;
-        fprintf(stderr, "STORE_R14_PRINTF[%d]: value=%lld (0x%llx) @ rip=0x%llx (musl+0x%llx)\n",
+        DEBUG_FPRINTF(stderr, "STORE_R14_PRINTF[%d]: value=%lld (0x%llx) @ rip=0x%llx (musl+0x%llx)\n",
                 g_store_r14_count, (long long)value, (unsigned long long)value,
                 (unsigned long long)guest_rip, (unsigned long long)offset);
     }
@@ -1187,7 +1199,7 @@ void helper_debug_store64_r14(uint64_t value, uint64_t guest_rip) {
         if ((value >= 0x555555610000 && value <= 0x555555620000) ||
             offset == 0x92eec || offset == 0x931b4) {
             if (g_r14_trace_enabled) {
-                fprintf(stderr, "STORE_R14[%d]: value=0x%llx @ rip=0x%llx (offset=0x%llx)\n",
+                DEBUG_FPRINTF(stderr, "STORE_R14[%d]: value=0x%llx @ rip=0x%llx (offset=0x%llx)\n",
                         g_store_r14_count, (unsigned long long)value,
                         (unsigned long long)guest_rip, (unsigned long long)offset);
             }
@@ -1203,7 +1215,7 @@ void helper_debug_add32_x8(uint64_t src, uint64_t dst, uint64_t guest_rip) {
     // Runtime: 0x7efffffb1c36 to 0x7efffffb2914
     if (guest_rip >= 0x7efffffb1c36 && guest_rip <= 0x7efffffb2914) {
         uint64_t result = (src + dst) & 0xFFFFFFFF;
-        fprintf(stderr, "ADD32_X8[%d]: src=%lld dst=%lld result=%lld @ rip=0x%llx (musl+0x%llx)\n",
+        DEBUG_FPRINTF(stderr, "ADD32_X8[%d]: src=%lld dst=%lld result=%lld @ rip=0x%llx (musl+0x%llx)\n",
                 g_add32_x8_count, (long long)(int32_t)src, (long long)(int32_t)dst,
                 (long long)(int32_t)result, (unsigned long long)guest_rip,
                 (unsigned long long)(guest_rip - 0x7efffff5e000));
@@ -1218,7 +1230,7 @@ void helper_debug_store64_r11(uint64_t value, uint64_t guest_rip) {
     // Runtime: 0x7efffffb1c36 to 0x7efffffb2914
     if (guest_rip >= 0x7efffffb1c36 && guest_rip <= 0x7efffffb2914) {
         uint64_t offset = guest_rip - 0x7efffff5e000;
-        fprintf(stderr, "STORE_R11_PRINTF[%d]: value=%lld (0x%llx) @ rip=0x%llx (musl+0x%llx)\n",
+        DEBUG_FPRINTF(stderr, "STORE_R11_PRINTF[%d]: value=%lld (0x%llx) @ rip=0x%llx (musl+0x%llx)\n",
                 g_store_r11_count, (long long)(int32_t)value, (unsigned long long)value,
                 (unsigned long long)guest_rip, (unsigned long long)offset);
     }
@@ -1230,7 +1242,7 @@ void helper_debug_store64_r13(uint64_t value, uint64_t guest_rip) {
     // Trace key stores - look for 0x8000000 or 0 in busybox
     if (guest_rip >= 0x555555550000 && guest_rip <= 0x555555700000) {
         if (value == 0 || value == 0x8000000) {
-            fprintf(stderr, "STORE_R13[%d]: value=0x%llx @ rip=0x%llx\n",
+            DEBUG_FPRINTF(stderr, "STORE_R13[%d]: value=0x%llx @ rip=0x%llx\n",
                     g_store_r13_count, (unsigned long long)value,
                     (unsigned long long)guest_rip);
         }
@@ -1248,7 +1260,7 @@ void helper_debug_or_mem_load(uint64_t guest_addr, uint32_t loaded_value, uint64
     // Trace if the loaded value is 0x8000000 (suspicious) or in the getopt32 range
     if (loaded_value == 0x8000000 || loaded_value == 0x50 ||
         (guest_rip >= 0x5555555e7280 && guest_rip <= 0x5555555e7290)) {
-        fprintf(stderr, "OR_MEM_LOAD[%d]: guest_addr=0x%llx loaded_val=%u (0x%x) @ rip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "OR_MEM_LOAD[%d]: guest_addr=0x%llx loaded_val=%u (0x%x) @ rip=0x%llx\n",
                 count, (unsigned long long)guest_addr, loaded_value, loaded_value,
                 (unsigned long long)guest_rip);
     }
@@ -1262,7 +1274,7 @@ void helper_debug_cmpb_0x3a(uint8_t byte_val, uint64_t addr, uint64_t guest_rip)
     // If byte is NOT ':', the code jumps directly to OR and sets flags!
     if (guest_rip >= 0x5555555e7250 && guest_rip <= 0x5555555e7260) {
         const char *result = (byte_val == 0x3a) ? "MATCH (has arg)" : "NO MATCH (no arg, will OR flags!)";
-        fprintf(stderr, "CMPB_3A[%d]: byte=0x%02x '%c' at addr=0x%llx -> %s @ rip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "CMPB_3A[%d]: byte=0x%02x '%c' at addr=0x%llx -> %s @ rip=0x%llx\n",
                 count, byte_val, (byte_val >= 0x20 && byte_val <= 0x7e) ? (char)byte_val : '?',
                 (unsigned long long)addr, result, (unsigned long long)guest_rip);
     }
@@ -1275,7 +1287,7 @@ void helper_debug_load8_mem(uint32_t byte_value, uint64_t addr) {
     // The host address after TLB translation - we need to match the pattern
     // Just trace all loads of 'a' or 'b' bytes to find our "ab" string
     if (byte_value == 0x61 || byte_value == 0x62) {  // 'a' or 'b'
-        fprintf(stderr, "LOAD8[%d]: addr=0x%llx byte=0x%02x '%c'\n",
+        DEBUG_FPRINTF(stderr, "LOAD8[%d]: addr=0x%llx byte=0x%02x '%c'\n",
                 count, (unsigned long long)addr, byte_value, (char)byte_value);
     }
 }
@@ -1298,7 +1310,7 @@ void helper_debug_load8_mem_full(uint32_t byte_value, uint64_t guest_addr, uint6
     // Guest IP = 0x555555554000 + 0x93256 = 0x5555555e7256
     if (orig_ip == 0x5555555e7256) {
         char c = (byte_value >= 0x20 && byte_value < 0x7f) ? (char)byte_value : '.';
-        fprintf(stderr, "LOAD8_CMP3A[%d]: guest_addr=0x%llx byte=0x%02x '%c' @ ip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "LOAD8_CMP3A[%d]: guest_addr=0x%llx byte=0x%02x '%c' @ ip=0x%llx\n",
                 g_load8_count, (unsigned long long)guest_addr, byte_value, c,
                 (unsigned long long)orig_ip);
     }
@@ -1306,7 +1318,7 @@ void helper_debug_load8_mem_full(uint32_t byte_value, uint64_t guest_addr, uint6
     // Guest IP = 0x555555554000 + 0x92edf = 0x5555555e6edf
     if (orig_ip == 0x5555555e6edf) {
         char c = (byte_value >= 0x20 && byte_value < 0x7f) ? (char)byte_value : '.';
-        fprintf(stderr, "LOAD8_CMP5E[%d]: guest_addr=0x%llx byte=0x%02x '%c' (expected '^'=0x5e) @ ip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "LOAD8_CMP5E[%d]: guest_addr=0x%llx byte=0x%02x '%c' (expected '^'=0x5e) @ ip=0x%llx\n",
                 g_load8_count, (unsigned long long)guest_addr, byte_value, c,
                 (unsigned long long)orig_ip);
     }
@@ -1318,7 +1330,7 @@ void helper_debug_load8_mem_guest(uint32_t byte_value, uint64_t guest_addr) {
     count++;
     if (guest_addr == 0x7efffff5bfdb || guest_addr == 0x7efffff5bfdc || guest_addr == 0x7efffff5bfdd) {
         char c = (byte_value >= 0x20 && byte_value < 0x7f) ? (char)byte_value : '.';
-        fprintf(stderr, "LOAD8_AB[%d]: guest_addr=0x%llx byte=0x%02x '%c'\n",
+        DEBUG_FPRINTF(stderr, "LOAD8_AB[%d]: guest_addr=0x%llx byte=0x%02x '%c'\n",
                 count, (unsigned long long)guest_addr, byte_value, c);
     }
 }
@@ -1334,7 +1346,7 @@ void helper_debug_load64_stack(uint64_t value, uint64_t guest_addr) {
         buf[i] = (b >= 0x20 && b < 0x7f) ? (char)b : '.';
     }
     buf[8] = '\0';
-    fprintf(stderr, "LOAD64_STACK[%d]: guest_addr=0x%llx value=0x%016llx '%s'\n",
+    DEBUG_FPRINTF(stderr, "LOAD64_STACK[%d]: guest_addr=0x%llx value=0x%016llx '%s'\n",
             count, (unsigned long long)guest_addr, (unsigned long long)value, buf);
 }
 
@@ -1345,7 +1357,7 @@ void helper_debug_cmp8_zero(uint32_t byte_value, uint32_t imm) {
     // Trace only printable chars or zero to reduce noise
     if (byte_value == 0 || (byte_value >= 0x20 && byte_value < 0x7f)) {
         char c = (byte_value >= 0x20 && byte_value < 0x7f) ? (char)byte_value : '.';
-        fprintf(stderr, "CMP8_ZERO[%d]: byte=0x%02x '%c' cmp 0 => ZF=%s\n",
+        DEBUG_FPRINTF(stderr, "CMP8_ZERO[%d]: byte=0x%02x '%c' cmp 0 => ZF=%s\n",
                 count, byte_value, c, byte_value == 0 ? "1" : "0");
     }
 }
@@ -1358,12 +1370,12 @@ void helper_debug_load64_any(uint64_t value, const char *source) {
     g_load64_count++;
     // Trace loads around store 18050 or when value is bfdd
     if (value == 0x7efffff5bfdd) {
-        fprintf(stderr, "LOAD64[%d,store=%d,load8=%d]: bfdd from %s\n",
+        DEBUG_FPRINTF(stderr, "LOAD64[%d,store=%d,load8=%d]: bfdd from %s\n",
                 g_load64_count, g_store64_count, helper_get_load8_count(), source);
     }
     // Also trace when value is bfdb (start of "ab" string)
     else if (value == 0x7efffff5bfdb) {
-        fprintf(stderr, "LOAD64[%d,store=%d,load8=%d]: bfdb (start) from %s\n",
+        DEBUG_FPRINTF(stderr, "LOAD64[%d,store=%d,load8=%d]: bfdb (start) from %s\n",
                 g_load64_count, g_store64_count, helper_get_load8_count(), source);
     }
 }
@@ -1375,7 +1387,7 @@ void helper_debug_store64_c(uint64_t rcx_value) {
     // Trace all RCX stores around load8 12975-12978
     int load8 = helper_get_load8_count();
     if (load8 >= 12974 && load8 <= 12980) {
-        fprintf(stderr, "OP[%d] STORE_C: RCX=0x%llx (load8=%d)\n",
+        DEBUG_FPRINTF(stderr, "OP[%d] STORE_C: RCX=0x%llx (load8=%d)\n",
                 g_global_op, (unsigned long long)rcx_value, load8);
     }
 }
@@ -1383,7 +1395,7 @@ void helper_debug_load64_c(uint64_t rcx_value) {
     g_global_op++;
     int load8 = helper_get_load8_count();
     if (load8 >= 12974 && load8 <= 12980) {
-        fprintf(stderr, "OP[%d] LOAD_C:  RCX=0x%llx (load8=%d)\n",
+        DEBUG_FPRINTF(stderr, "OP[%d] LOAD_C:  RCX=0x%llx (load8=%d)\n",
                 g_global_op, (unsigned long long)rcx_value, load8);
     }
 }
@@ -1392,7 +1404,7 @@ void helper_debug_store64_a(uint64_t rax_value) {
     int load8 = helper_get_load8_count();
     // Trace ALL store64_a in range 12980-12990 (to find where RAX gets value 1)
     if (load8 >= 12980 && load8 <= 12990) {
-        fprintf(stderr, "STORE64_A[store=%d,load8=%d]: RAX=0x%llx (%llu)\n",
+        DEBUG_FPRINTF(stderr, "STORE64_A[store=%d,load8=%d]: RAX=0x%llx (%llu)\n",
                 g_store64_count, load8,
                 (unsigned long long)rax_value, (unsigned long long)rax_value);
     }
@@ -1405,12 +1417,12 @@ void helper_debug_rax_eq_1(uint64_t rax_value, uint64_t guest_ip) {
     int load8 = helper_get_load8_count();
     // Only trace in critical range
     if (load8 >= 12983 && load8 <= 12990) {
-        fprintf(stderr, "RAX_EQ_1[%d,load8=%d]: RAX=1 at guest_ip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "RAX_EQ_1[%d,load8=%d]: RAX=1 at guest_ip=0x%llx\n",
                 count, load8, (unsigned long long)guest_ip);
     }
 }
 void helper_debug_rax_set_bfdd(uint64_t rax_value) {
-    fprintf(stderr, "RAX_BFDD: RAX=0x%llx (store64=%d,load8=%d) <-- strlen receives this!\n",
+    DEBUG_FPRINTF(stderr, "RAX_BFDD: RAX=0x%llx (store64=%d,load8=%d) <-- strlen receives this!\n",
             (unsigned long long)rax_value, g_store64_count, helper_get_load8_count());
 }
 
@@ -1424,7 +1436,7 @@ void helper_debug_test8_null_check(uint32_t byte_value) {
     if ((prev2 == 0x61 && prev == 0x62 && byte_value == 0) ||
         (prev2 == 0x62 && prev == 0x61 && byte_value == 0)) {
         char c = (byte_value >= 0x20 && byte_value < 0x7f) ? (char)byte_value : '.';
-        fprintf(stderr, "TEST8_SEQ[%d,load8=%d]: %c->%c->%c (prev2=0x%02x prev=0x%02x cur=0x%02x)\n",
+        DEBUG_FPRINTF(stderr, "TEST8_SEQ[%d,load8=%d]: %c->%c->%c (prev2=0x%02x prev=0x%02x cur=0x%02x)\n",
                 count, helper_get_load8_count(),
                 (prev2 >= 0x20 && prev2 < 0x7f) ? (char)prev2 : '.',
                 (prev >= 0x20 && prev < 0x7f) ? (char)prev : '.',
@@ -1444,7 +1456,7 @@ void helper_debug_cmp8_all_res(uint32_t byte_value, uint32_t imm, int64_t res) {
         // Also trace NULL bytes (potential end-of-string issues)
         if (byte_value == 0x00 || g_cmp8_3a_count >= 25) {
             const char *result = (byte_value == 0x3a) ? "MATCH (opt has arg)" : "NO MATCH (opt sets flags!)";
-            fprintf(stderr, "CMP8_3A[%d]: byte=0x%02x '%c' -> %s\n",
+            DEBUG_FPRINTF(stderr, "CMP8_3A[%d]: byte=0x%02x '%c' -> %s\n",
                     g_cmp8_3a_count, byte_value,
                     (byte_value >= 0x20 && byte_value <= 0x7e) ? (char)byte_value : '?',
                     result);
@@ -1462,7 +1474,7 @@ void helper_debug_test_r8_r15(uint32_t val1, uint32_t val2, int reg_idx) {
     count++;
     // Only trace first 50 to reduce noise
     if (count <= 100) {
-        fprintf(stderr, "TEST_R8_R15[%d]: r%d=%u (0x%x), r%d=%u (0x%x), AND=%u\n",
+        DEBUG_FPRINTF(stderr, "TEST_R8_R15[%d]: r%d=%u (0x%x), r%d=%u (0x%x), AND=%u\n",
                 count, 8 + (reg_idx >> 4), val1, val1,
                 8 + (reg_idx & 0xf), val2, val2, val1 & val2);
     }
@@ -1481,7 +1493,7 @@ void helper_debug_test32_x8(uint32_t val_xtmp, uint32_t val_x8, uint64_t guest_r
     // 0x5555555e7480 to 0x5555555e7490
     if (guest_rip >= 0x5555555e7480 && guest_rip <= 0x5555555e7490) {
         uint32_t result = val_xtmp & val_x8;
-        fprintf(stderr, "TEST32_X8: _xtmp=%u (0x%x) x8=%u (0x%x) result=%u ZF=%d @ rip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "TEST32_X8: _xtmp=%u (0x%x) x8=%u (0x%x) result=%u ZF=%d @ rip=0x%llx\n",
                 val_xtmp, val_xtmp, val_x8, val_x8, result, (result == 0) ? 1 : 0,
                 (unsigned long long)guest_rip);
     }
@@ -1495,7 +1507,7 @@ void helper_debug_test32_imm(uint32_t val, uint32_t mask, uint64_t guest_rip) {
     // 0x5555555e7480 = 0x555555554000 + 0x93480 (testl %r15d, %r15d)
     // Also trace all tests in the getopt32 range
     if (mask == 0xFFFFFFFF && (guest_rip >= 0x5555555e7470 && guest_rip <= 0x5555555e7490)) {
-        fprintf(stderr, "TEST32_IMM[%d]: val=%u (0x%x) -> ZF=%d @ rip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "TEST32_IMM[%d]: val=%u (0x%x) -> ZF=%d @ rip=0x%llx\n",
                 count, val, val, (val == 0) ? 1 : 0, (unsigned long long)guest_rip);
     }
 }
@@ -1504,7 +1516,7 @@ void helper_debug_test32_imm(uint32_t val, uint32_t mask, uint64_t guest_rip) {
 void helper_debug_test8_imm_zero(uint32_t val, uint32_t mask) {
     static int count = 0;
     count++;
-    fprintf(stderr, "TEST8_IMM_ZERO[%d]: val=%u mask=0x%x (ZF=1, JE would be taken)\n",
+    DEBUG_FPRINTF(stderr, "TEST8_IMM_ZERO[%d]: val=%u mask=0x%x (ZF=1, JE would be taken)\n",
             count, val, mask);
 }
 
@@ -1514,13 +1526,13 @@ void helper_debug_test8_imm_result_zero(uint32_t val, uint32_t mask, uint32_t re
     count++;
     // Only trace alignment checks (mask=7) and null byte checks (mask=0xff with val=0)
     if (mask == 7) {
-        fprintf(stderr, "TEST8_ALIGN[%d]: val=0x%02x & 7 = 0 (ALIGNED, ZF=1, JNE skipped) low_bits=%d\n",
+        DEBUG_FPRINTF(stderr, "TEST8_ALIGN[%d]: val=0x%02x & 7 = 0 (ALIGNED, ZF=1, JNE skipped) low_bits=%d\n",
                 count, val, val & 7);
     } else if (val == 0) {
-        fprintf(stderr, "TEST8_NULL[%d]: byte=0 & mask=0x%02x = 0 (ZF=1, null terminator found)\n",
+        DEBUG_FPRINTF(stderr, "TEST8_NULL[%d]: byte=0 & mask=0x%02x = 0 (ZF=1, null terminator found)\n",
                 count, mask);
     } else {
-        fprintf(stderr, "TEST8_ZERO[%d]: val=0x%02x & mask=0x%02x = 0 (ZF=1)\n",
+        DEBUG_FPRINTF(stderr, "TEST8_ZERO[%d]: val=0x%02x & mask=0x%02x = 0 (ZF=1)\n",
                 count, val, mask);
     }
 }
@@ -1530,7 +1542,7 @@ void helper_debug_test8_imm_all(uint32_t val, uint32_t mask) {
     static int count = 0;
     count++;
     char c = (val >= 0x20 && val < 0x7f) ? (char)val : '.';
-    fprintf(stderr, "STRLEN_TEST[%d]: byte=0x%02x '%c' test %s\n",
+    DEBUG_FPRINTF(stderr, "STRLEN_TEST[%d]: byte=0x%02x '%c' test %s\n",
             count, val, c, (val == 0) ? "-> NULL (exit loop)" : "-> non-null (continue)");
 }
 
@@ -1542,7 +1554,7 @@ void helper_debug_test8_imm_align(uint32_t val, uint32_t mask, uint32_t result) 
 void helper_debug_getopt_return(uint32_t eax, uint64_t ip) {
     // Only trace if we're near the getopt32 call return (0x5555555e73a1 = 0x933a1)
     if (ip >= 0x5555555e7390 && ip <= 0x5555555e73b0) {
-        fprintf(stderr, "GETOPT_RETURN: eax=%d (0x%x) at ip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "GETOPT_RETURN: eax=%d (0x%x) at ip=0x%llx\n",
                 (int)eax, eax, (unsigned long long)ip);
     }
 }
@@ -1552,7 +1564,7 @@ void helper_debug_cmp32_neg1(uint32_t eax, uint32_t imm) {
     static int count = 0;
     count++;
     int32_t signed_eax = (int32_t)eax;
-    fprintf(stderr, "CMP32_NEG1[%d]: eax=%d (0x%x) cmp %d => ZF=%s\n",
+    DEBUG_FPRINTF(stderr, "CMP32_NEG1[%d]: eax=%d (0x%x) cmp %d => ZF=%s\n",
             count, signed_eax, eax, (int32_t)imm,
             (eax == imm) ? "1 (equal)" : "0 (not equal)");
 }
@@ -1566,7 +1578,7 @@ void helper_debug_jmp_z(uint32_t flags_res, uint64_t res) {
 void helper_debug_setcc_val1(uint32_t value) {
     int load8 = helper_get_load8_count();
     if (load8 >= 12980 && load8 <= 12990) {
-        fprintf(stderr, "SETCC_VAL1[load8=%d]: tmp=%u\n", load8, value);
+        DEBUG_FPRINTF(stderr, "SETCC_VAL1[load8=%d]: tmp=%u\n", load8, value);
     }
 }
 
@@ -1575,7 +1587,7 @@ extern struct cpu_state *global_cpu;  // Need to pass this
 void helper_debug_setcc_val1_cond(uint32_t value, const char *cond) {
     int load8 = helper_get_load8_count();
     if (load8 >= 12980 && load8 <= 12990) {
-        fprintf(stderr, "SET_%s[load8=%d]: tmp=%u (flags not available here)\n", cond, load8, value);
+        DEBUG_FPRINTF(stderr, "SET_%s[load8=%d]: tmp=%u (flags not available here)\n", cond, load8, value);
     }
 }
 
@@ -1584,7 +1596,7 @@ void helper_debug_setle_val1(uint32_t value, int64_t res, uint32_t of) {
     int load8 = helper_get_load8_count();
     int sf = (res < 0) ? 1 : 0;
     int zf = (res == 0) ? 1 : 0;
-    fprintf(stderr, "SETLE[load8=%d]: tmp=%u res=%lld SF=%d ZF=%d OF=%u (SF^OF=%d, condition=%s)\n",
+    DEBUG_FPRINTF(stderr, "SETLE[load8=%d]: tmp=%u res=%lld SF=%d ZF=%d OF=%u (SF^OF=%d, condition=%s)\n",
             load8, value, (long long)res, sf, zf, of, sf ^ of,
             (zf || (sf != of)) ? "TRUE (<=)" : "FALSE (>)");
 }
@@ -1598,7 +1610,7 @@ void helper_debug_setcc_generic(uint32_t value, int64_t res, uint32_t of) {
     if (load8 >= 12980 && load8 <= 12990) {
         int sf = (res < 0) ? 1 : 0;
         int zf = (res == 0) ? 1 : 0;
-        fprintf(stderr, "SETCC_TRUE[%d,load8=%d]: tmp=%u res=%lld SF=%d ZF=%d OF=%u\n",
+        DEBUG_FPRINTF(stderr, "SETCC_TRUE[%d,load8=%d]: tmp=%u res=%lld SF=%d ZF=%d OF=%u\n",
                 count, load8, value, (long long)res, sf, zf, of);
     }
 }
@@ -1607,7 +1619,7 @@ void helper_debug_setcc_generic(uint32_t value, int64_t res, uint32_t of) {
 void helper_debug_load64_mem_val1(uint64_t value, uint64_t guest_addr) {
     int load8 = helper_get_load8_count();
     if (load8 >= 12980 && load8 <= 12990) {
-        fprintf(stderr, "LOAD64_MEM_VAL1[load8=%d]: addr=0x%llx value=%llu\n",
+        DEBUG_FPRINTF(stderr, "LOAD64_MEM_VAL1[load8=%d]: addr=0x%llx value=%llu\n",
                 load8, (unsigned long long)guest_addr, (unsigned long long)value);
     }
 }
@@ -1615,7 +1627,7 @@ void helper_debug_load64_mem_val1(uint64_t value, uint64_t guest_addr) {
 // Debug: trace RBX stores when value is 1
 void helper_debug_store64_b_val1(uint64_t value) {
     int load8 = helper_get_load8_count();
-    fprintf(stderr, "STORE64_B_VAL1[load8=%d]: RBX=%llu\n",
+    DEBUG_FPRINTF(stderr, "STORE64_B_VAL1[load8=%d]: RBX=%llu\n",
             load8, (unsigned long long)value);
 }
 
@@ -1623,7 +1635,7 @@ void helper_debug_store64_b_val1(uint64_t value) {
 void helper_debug_store64_b_val2(uint64_t value) {
     int load8 = helper_get_load8_count();
     if (load8 >= 12980 && load8 <= 12990) {
-        fprintf(stderr, "STORE64_B_VAL2[load8=%d]: RBX=%llu (strlen result!)\n",
+        DEBUG_FPRINTF(stderr, "STORE64_B_VAL2[load8=%d]: RBX=%llu (strlen result!)\n",
                 load8, (unsigned long long)value);
     }
 }
@@ -1632,7 +1644,7 @@ void helper_debug_store64_b_val2(uint64_t value) {
 void helper_debug_store64_d_all(uint64_t value) {
     int load8 = helper_get_load8_count();
     if (load8 >= 12980 && load8 <= 12990) {
-        fprintf(stderr, "STORE64_D[load8=%d]: RDX=%llu (0x%llx)\n",
+        DEBUG_FPRINTF(stderr, "STORE64_D[load8=%d]: RDX=%llu (0x%llx)\n",
                 load8, (unsigned long long)value, (unsigned long long)value);
     }
 }
@@ -1641,7 +1653,7 @@ void helper_debug_store64_d_all(uint64_t value) {
 void helper_debug_store64_mem_val2(uint64_t value, uint64_t guest_addr) {
     int load8 = helper_get_load8_count();
     if (load8 >= 12975 && load8 <= 12990) {
-        fprintf(stderr, "STORE64_MEM_VAL2[load8=%d]: addr=0x%llx value=%llu (strlen result?)\n",
+        DEBUG_FPRINTF(stderr, "STORE64_MEM_VAL2[load8=%d]: addr=0x%llx value=%llu (strlen result?)\n",
                 load8, (unsigned long long)guest_addr, (unsigned long long)value);
     }
     // Trace stores to busybox file entry array
@@ -1649,7 +1661,7 @@ void helper_debug_store64_mem_val2(uint64_t value, uint64_t guest_addr) {
         static int count = 0;
         count++;
         if (count <= 20) {
-            fprintf(stderr, "STORE64_BBENTRY[%d]: addr=0x%llx value=0x%llx\n",
+            DEBUG_FPRINTF(stderr, "STORE64_BBENTRY[%d]: addr=0x%llx value=0x%llx\n",
                     count, (unsigned long long)guest_addr, (unsigned long long)value);
         }
     }
@@ -1658,7 +1670,7 @@ void helper_debug_store64_mem_val2(uint64_t value, uint64_t guest_addr) {
 // Debug: trace when RDI is set to 0x7f... addresses (path corruption)
 void helper_trace_rdi_7f(uint64_t value, uint64_t guest_rip) {
     if ((value >> 36) == 0x7f0) {
-        fprintf(stderr, "RDI_7F: rdi=0x%llx at rip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "RDI_7F: rdi=0x%llx at rip=0x%llx\n",
                 (unsigned long long)value, (unsigned long long)guest_rip);
     }
 }
@@ -1673,9 +1685,9 @@ void helper_debug_store64_7f_value(uint64_t value, uint64_t guest_addr, uint64_t
     count++;
     // Only show first few and key entries
     if (count <= 6) {
-        fprintf(stderr, "STORE64_7F[%d]: storing 0x%llx to guest 0x%llx at rip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "STORE64_7F[%d]: storing 0x%llx to guest 0x%llx at rip=0x%llx\n",
                 count, (unsigned long long)value, (unsigned long long)guest_addr, (unsigned long long)rip);
-        fprintf(stderr, "  regs: rax=0x%llx r8=0x%llx r12=0x%llx rdi=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "  regs: rax=0x%llx r8=0x%llx r12=0x%llx rdi=0x%llx\n",
                 (unsigned long long)cpu->rax, (unsigned long long)cpu->r8,
                 (unsigned long long)cpu->r12, (unsigned long long)cpu->rdi);
     }
@@ -1687,7 +1699,7 @@ void helper_debug_store8_7f(uint8_t value, uint64_t guest_addr) {
     static int count = 0;
     count++;
     if (count <= 50) {
-        fprintf(stderr, "STORE8_7F[%d]: byte 0x%02x ('%c') to 0x%llx\n",
+        DEBUG_FPRINTF(stderr, "STORE8_7F[%d]: byte 0x%02x ('%c') to 0x%llx\n",
                 count, value, (value >= 32 && value < 127) ? value : '.',
                 (unsigned long long)guest_addr);
     }
@@ -1698,7 +1710,7 @@ void helper_debug_rep_movsb_7f(uint64_t src, uint64_t dst, uint64_t count) {
     static int rep_count = 0;
     rep_count++;
     if (rep_count <= 20) {
-        fprintf(stderr, "REP_MOVSB_7F[%d]: src=0x%llx dst=0x%llx count=%llu\n",
+        DEBUG_FPRINTF(stderr, "REP_MOVSB_7F[%d]: src=0x%llx dst=0x%llx count=%llu\n",
                 rep_count, (unsigned long long)src, (unsigned long long)dst, (unsigned long long)count);
     }
 }
@@ -1708,7 +1720,7 @@ void helper_debug_rep_movsq_7f(uint64_t src, uint64_t dst, uint64_t count) {
     static int rep_count = 0;
     rep_count++;
     if (rep_count <= 20) {
-        fprintf(stderr, "REP_MOVSQ_7F[%d]: src=0x%llx dst=0x%llx count=%llu\n",
+        DEBUG_FPRINTF(stderr, "REP_MOVSQ_7F[%d]: src=0x%llx dst=0x%llx count=%llu\n",
                 rep_count, (unsigned long long)src, (unsigned long long)dst, (unsigned long long)count);
     }
 }
@@ -1719,10 +1731,10 @@ void helper_debug_rep_movsq_all(uint64_t src, uint64_t dst, uint64_t count) {
     rep_count++;
     // Check if this looks like a string copy to heap (dst = 0x7f...)
     if ((dst >> 36) == 0x7f0 && count > 0) {
-        fprintf(stderr, "REP_MOVSQ_7F[%d]: src=0x%llx dst=0x%llx count=%llu\n",
+        DEBUG_FPRINTF(stderr, "REP_MOVSQ_7F[%d]: src=0x%llx dst=0x%llx count=%llu\n",
                 rep_count, (unsigned long long)src, (unsigned long long)dst, (unsigned long long)count);
     } else if (rep_count <= 30) {
-        fprintf(stderr, "REP_MOVSQ[%d]: src=0x%llx dst=0x%llx count=%llu\n",
+        DEBUG_FPRINTF(stderr, "REP_MOVSQ[%d]: src=0x%llx dst=0x%llx count=%llu\n",
                 rep_count, (unsigned long long)src, (unsigned long long)dst, (unsigned long long)count);
     }
 }
@@ -1733,10 +1745,10 @@ void helper_debug_store64_to_7f_rip(uint64_t value, uint64_t guest_addr, uint64_
     count++;
     // Special case: trace when storing the 0x7f0000000a80 address (the problem)
     if (value == 0x7f0000000a80 && count <= 5) {
-        fprintf(stderr, "STORE64_A80[%d]: storing 0x7f0000000a80 to 0x%llx @ rip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "STORE64_A80[%d]: storing 0x7f0000000a80 to 0x%llx @ rip=0x%llx\n",
                 count, (unsigned long long)guest_addr, (unsigned long long)rip);
     } else if (count <= 40) {
-        fprintf(stderr, "STORE64_TO_7F[%d]: val=0x%llx to 0x%llx @ rip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "STORE64_TO_7F[%d]: val=0x%llx to 0x%llx @ rip=0x%llx\n",
                 count, (unsigned long long)value, (unsigned long long)guest_addr, (unsigned long long)rip);
     }
 }
@@ -1750,7 +1762,7 @@ void helper_debug_single_movsb(uint8_t byte, uint64_t src, uint64_t dst) {
     if (count <= 100) {
         // Only show if dst is 0x7f... or src is getdents buffer (0x7efffff4a...)
         if ((dst >> 36) == 0x7f0 || ((src >> 12) == 0x7efffff4a)) {
-            fprintf(stderr, "MOVSB[%d]: '%c' (0x%02x) from 0x%llx to 0x%llx\n",
+            DEBUG_FPRINTF(stderr, "MOVSB[%d]: '%c' (0x%02x) from 0x%llx to 0x%llx\n",
                     count, (byte >= 32 && byte < 127) ? byte : '.',
                     byte, (unsigned long long)src, (unsigned long long)dst);
         }
@@ -1758,7 +1770,7 @@ void helper_debug_single_movsb(uint8_t byte, uint64_t src, uint64_t dst) {
     // Count any copies to 0x7f... destination
     if ((dst >> 36) == 0x7f0) {
         dst_7f_count++;
-        fprintf(stderr, "MOVSB_TO_7F[%d]: '%c' (0x%02x) from 0x%llx to 0x%llx\n",
+        DEBUG_FPRINTF(stderr, "MOVSB_TO_7F[%d]: '%c' (0x%02x) from 0x%llx to 0x%llx\n",
                 dst_7f_count, (byte >= 32 && byte < 127) ? byte : '.',
                 byte, (unsigned long long)src, (unsigned long long)dst);
     }
@@ -1771,7 +1783,7 @@ void helper_debug_load64_7f_base(uint64_t value, uint64_t guest_addr, uint64_t r
         static int count = 0;
         count++;
         if (count <= 20) {
-            fprintf(stderr, "LOAD_7F[%d]: loaded 0x%llx from 0x%llx at rip=0x%llx\n",
+            DEBUG_FPRINTF(stderr, "LOAD_7F[%d]: loaded 0x%llx from 0x%llx at rip=0x%llx\n",
                     count, (unsigned long long)value, (unsigned long long)guest_addr, (unsigned long long)rip);
         }
     }
@@ -1788,14 +1800,14 @@ void helper_debug_load64_reg_save_area(uint64_t value, uint64_t guest_addr) {
     // Slot 0 = RDI, 1 = RSI, 2 = RDX, 3 = RCX, 4 = R8, 5 = R9
     const char *reg_names[] = {"RDI", "RSI", "RDX", "RCX", "R8", "R9"};
     const char *reg = (slot >= 0 && slot < 6) ? reg_names[slot] : "???";
-    fprintf(stderr, "VA_ARG_READ[%d]: slot %d (%s) @ 0x%llx = 0x%llx\n",
+    DEBUG_FPRINTF(stderr, "VA_ARG_READ[%d]: slot %d (%s) @ 0x%llx = 0x%llx\n",
             count, slot, reg, (unsigned long long)guest_addr, (unsigned long long)value);
 }
 
 // Debug: trace loads from 0x7efffff5b930 (strlen result stored here)
 void helper_debug_load64_mem_b930(uint64_t value, uint64_t guest_addr) {
     int load8 = helper_get_load8_count();
-    fprintf(stderr, "LOAD64_MEM_B930[load8=%d]: addr=0x%llx value=%llu (should be strlen=2)\n",
+    DEBUG_FPRINTF(stderr, "LOAD64_MEM_B930[load8=%d]: addr=0x%llx value=%llu (should be strlen=2)\n",
             load8, (unsigned long long)guest_addr, (unsigned long long)value);
 }
 
@@ -1803,7 +1815,7 @@ void helper_debug_load64_mem_b930(uint64_t value, uint64_t guest_addr) {
 void helper_debug_load64_imm_val1(uint64_t value) {
     int load8 = helper_get_load8_count();
     if (load8 >= 12980 && load8 <= 12990) {
-        fprintf(stderr, "LOAD64_IMM_VAL1[load8=%d]: immediate=%llu\n",
+        DEBUG_FPRINTF(stderr, "LOAD64_IMM_VAL1[load8=%d]: immediate=%llu\n",
                 load8, (unsigned long long)value);
     }
 }
@@ -1811,28 +1823,28 @@ void helper_debug_load64_imm_val1(uint64_t value) {
 // Debug: trace DIV64 when quotient is 1
 void helper_debug_div64_rax1(uint64_t value) {
     int load8 = helper_get_load8_count();
-    fprintf(stderr, "DIV64_RAX1[load8=%d]: quotient=%llu\n",
+    DEBUG_FPRINTF(stderr, "DIV64_RAX1[load8=%d]: quotient=%llu\n",
             load8, (unsigned long long)value);
 }
 
 // Debug: trace IDIV32 when quotient is 1
 void helper_debug_idiv32_eax1(uint64_t value) {
     int load8 = helper_get_load8_count();
-    fprintf(stderr, "IDIV32_EAX1[load8=%d]: quotient=%llu\n",
+    DEBUG_FPRINTF(stderr, "IDIV32_EAX1[load8=%d]: quotient=%llu\n",
             load8, (unsigned long long)value);
 }
 
 // Debug: trace CMPXCHG64 not-equal path when RAX becomes 1
 void helper_debug_cmpxchg64_rax1(uint64_t value) {
     int load8 = helper_get_load8_count();
-    fprintf(stderr, "CMPXCHG64_RAX1[load8=%d]: RAX loaded from memory = %llu\n",
+    DEBUG_FPRINTF(stderr, "CMPXCHG64_RAX1[load8=%d]: RAX loaded from memory = %llu\n",
             load8, (unsigned long long)value);
 }
 
 // Debug: trace store32_a when value is 1
 void helper_debug_store32_a_val1(uint64_t value) {
     int load8 = helper_get_load8_count();
-    fprintf(stderr, "STORE32_A_VAL1[load8=%d]: EAX=%llu (RAX zeroed-extended)\n",
+    DEBUG_FPRINTF(stderr, "STORE32_A_VAL1[load8=%d]: EAX=%llu (RAX zeroed-extended)\n",
             load8, (unsigned long long)value);
 }
 
@@ -1841,7 +1853,7 @@ void helper_debug_load64_val1(uint64_t value, const char *regname) {
     int load8 = helper_get_load8_count();
     // Only trace in the range where iov[1].len is being set (load8=12980-12990)
     if (load8 >= 12980 && load8 <= 12990) {
-        fprintf(stderr, "LOAD64_VAL1[load8=%d]: reg=%s value=%llu\n",
+        DEBUG_FPRINTF(stderr, "LOAD64_VAL1[load8=%d]: reg=%s value=%llu\n",
                 load8, regname, (unsigned long long)value);
     }
 }
@@ -1858,7 +1870,7 @@ void helper_debug_iov_store64(uint64_t value, uint64_t addr) {
     else if (addr == 0x7efffff5b868) field = "iov[0].len";
     else if (addr == 0x7efffff5b870) field = "iov[1].base";
     else if (addr == 0x7efffff5b878) field = "iov[1].len";
-    fprintf(stderr, "IOV_STORE[%d,load8=%d,store64=%d]: %s (addr=0x%llx) = 0x%llx (%llu)\n",
+    DEBUG_FPRINTF(stderr, "IOV_STORE[%d,load8=%d,store64=%d]: %s (addr=0x%llx) = 0x%llx (%llu)\n",
             g_iov_store_count, load8, g_store64_count, field, (unsigned long long)addr,
             (unsigned long long)value, (unsigned long long)value);
 }
@@ -1878,7 +1890,7 @@ void helper_debug_store64_entry_a_next(uint64_t value, uint64_t next_gadget) {
     g_store64_a_entry_count++;
     // Trace last 20 stores to RAX before potential crash
     if (g_store64_a_entry_count >= 18490) {
-        fprintf(stderr, "STORE64_A[%d]: val=0x%llx next_gadget=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "STORE64_A[%d]: val=0x%llx next_gadget=0x%llx\n",
                 g_store64_a_entry_count, (unsigned long long)value,
                 (unsigned long long)next_gadget);
         fflush(stderr);
@@ -1893,7 +1905,7 @@ uint64_t helper_load64_r10_via_c(struct cpu_state *cpu) {
     uint64_t val = cpu->r10;
     // Trace last 20 calls before potential crash
     if (g_load64_r10_count >= 1680) {
-        fprintf(stderr, "LOAD64_R10[%d]: cpu=%p r10=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "LOAD64_R10[%d]: cpu=%p r10=0x%llx\n",
                 g_load64_r10_count, (void*)cpu, (unsigned long long)val);
         fflush(stderr);
     }
@@ -1906,7 +1918,7 @@ void helper_count_load64_r10(void) {
     g_load64_r10_call_count++;
     // Only trace around the crash point
     if (g_load64_r10_call_count >= 1660 && g_load64_r10_call_count <= 1670) {
-        fprintf(stderr, "LOAD64_R10_CALL[%d]\n", g_load64_r10_call_count);
+        DEBUG_FPRINTF(stderr, "LOAD64_R10_CALL[%d]\n", g_load64_r10_call_count);
         fflush(stderr);
     }
 }
@@ -1917,7 +1929,7 @@ void helper_count_load64_r10_with_cpu(struct cpu_state *cpu) {
     // Only trace around the crash point
     if (g_load64_r10_call_count >= 1663 && g_load64_r10_call_count <= 1670) {
         uint64_t r10_value = cpu->r10;
-        fprintf(stderr, "LOAD64_R10_CALL[%d]: cpu=%p r10=0x%llx rip=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "LOAD64_R10_CALL[%d]: cpu=%p r10=0x%llx rip=0x%llx\n",
                 g_load64_r10_call_count, (void*)cpu,
                 (unsigned long long)r10_value,
                 (unsigned long long)cpu->rip);
@@ -1929,7 +1941,7 @@ void helper_count_load64_r10_with_cpu(struct cpu_state *cpu) {
 void helper_verify_cpu_after_restore(struct cpu_state *cpu) {
     if (g_load64_r10_call_count >= 1663 && g_load64_r10_call_count <= 1670) {
         uint64_t r10_value = cpu->r10;
-        fprintf(stderr, "VERIFY_AFTER_RESTORE[%d]: cpu=%p r10=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "VERIFY_AFTER_RESTORE[%d]: cpu=%p r10=0x%llx\n",
                 g_load64_r10_call_count, (void*)cpu,
                 (unsigned long long)r10_value);
         fflush(stderr);
@@ -1939,7 +1951,7 @@ void helper_verify_cpu_after_restore(struct cpu_state *cpu) {
 // Load r10 value via C
 uint64_t helper_load_r10_value(struct cpu_state *cpu) {
     if (g_load64_r10_call_count >= 1663 && g_load64_r10_call_count <= 1670) {
-        fprintf(stderr, "LOAD_R10_VIA_C[%d]: cpu=%p r10=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "LOAD_R10_VIA_C[%d]: cpu=%p r10=0x%llx\n",
                 g_load64_r10_call_count, (void*)cpu,
                 (unsigned long long)cpu->r10);
         fflush(stderr);
@@ -1950,7 +1962,7 @@ uint64_t helper_load_r10_value(struct cpu_state *cpu) {
 // Trace state right before gret
 void helper_trace_before_gret(uint64_t xtmp, uint64_t ip) {
     if (g_load64_r10_call_count >= 1663 && g_load64_r10_call_count <= 1670) {
-        fprintf(stderr, "BEFORE_GRET[%d]: xtmp=0x%llx ip=%p\n",
+        DEBUG_FPRINTF(stderr, "BEFORE_GRET[%d]: xtmp=0x%llx ip=%p\n",
                 g_load64_r10_call_count, (unsigned long long)xtmp, (void*)ip);
         fflush(stderr);
     }
@@ -1959,7 +1971,7 @@ void helper_trace_before_gret(uint64_t xtmp, uint64_t ip) {
 // Trace gret: next gadget and current ip
 void helper_trace_gret(uint64_t next_gadget, uint64_t ip) {
     if (g_load64_r10_call_count >= 1663 && g_load64_r10_call_count <= 1670) {
-        fprintf(stderr, "GRET[%d]: next=%p ip=%p\n",
+        DEBUG_FPRINTF(stderr, "GRET[%d]: next=%p ip=%p\n",
                 g_load64_r10_call_count, (void*)next_gadget, (void*)ip);
         fflush(stderr);
     }
@@ -1991,7 +2003,7 @@ static int div64_count = 0;
 
 // Debug: trace address calculation for crash page
 void helper_debug_addr_crash_page(uint64_t addr, uint64_t base_reg, uint64_t rip, const char *reg_name) {
-    fprintf(stderr, "ADDR_CRASH_PAGE: addr=0x%llx base(%s)=0x%llx rip=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "ADDR_CRASH_PAGE: addr=0x%llx base(%s)=0x%llx rip=0x%llx\n",
             (unsigned long long)addr, reg_name, (unsigned long long)base_reg,
             (unsigned long long)rip);
     fflush(stderr);
@@ -2022,7 +2034,7 @@ static int g_load64_a_entry_count = 0;
 void helper_debug_load64_a_entry(uint64_t value, void *ip, void *next_gadget) {
     g_load64_a_entry_count++;
     if (load64_done_count > 11140) {
-        fprintf(stderr, "LOAD64_A[%d]: value=0x%llx ip=%p next=%p\n",
+        DEBUG_FPRINTF(stderr, "LOAD64_A[%d]: value=0x%llx ip=%p next=%p\n",
                 g_load64_a_entry_count, (unsigned long long)value, ip, next_gadget);
         fflush(stderr);
     }
@@ -2031,7 +2043,7 @@ void helper_debug_load64_a_entry(uint64_t value, void *ip, void *next_gadget) {
 // Debug: trace load64_a right before gret
 void helper_debug_load64_a_before_gret(uint64_t xtmp, void *ip, void *next_gadget) {
     if (load64_done_count > 11140) {
-        fprintf(stderr, "LOAD64_A_GRET[%d]: xtmp=0x%llx ip=%p next=%p\n",
+        DEBUG_FPRINTF(stderr, "LOAD64_A_GRET[%d]: xtmp=0x%llx ip=%p next=%p\n",
                 g_load64_a_entry_count, (unsigned long long)xtmp, ip, next_gadget);
         fflush(stderr);
     }
@@ -2042,7 +2054,7 @@ static int g_save_x8_entry_count = 0;
 void helper_debug_save_xtmp_to_x8_entry(uint64_t xtmp, void *ip, void *next_gadget) {
     g_save_x8_entry_count++;
     if (load64_done_count > 11140) {
-        fprintf(stderr, "SAVE_X8[%d]: xtmp=0x%llx ip=%p next=%p\n",
+        DEBUG_FPRINTF(stderr, "SAVE_X8[%d]: xtmp=0x%llx ip=%p next=%p\n",
                 g_save_x8_entry_count, (unsigned long long)xtmp, ip, next_gadget);
         fflush(stderr);
     }
@@ -2053,7 +2065,7 @@ static int g_load64_r8_entry_count = 0;
 void helper_debug_load64_r8_entry(uint64_t r8_value, void *ip, void *next_gadget) {
     g_load64_r8_entry_count++;
     if (load64_done_count > 11140) {
-        fprintf(stderr, "LOAD64_R8[%d]: r8=0x%llx ip=%p next=%p\n",
+        DEBUG_FPRINTF(stderr, "LOAD64_R8[%d]: r8=0x%llx ip=%p next=%p\n",
                 g_load64_r8_entry_count, (unsigned long long)r8_value, ip, next_gadget);
         fflush(stderr);
     }
@@ -2064,7 +2076,7 @@ static int g_mul32_entry_count = 0;
 void helper_debug_mul32_entry(uint64_t operand, uint32_t eax, void *ip, void *next_gadget) {
     g_mul32_entry_count++;
     if (load64_done_count > 11140) {
-        fprintf(stderr, "MUL32[%d]: operand=0x%llx eax=0x%x ip=%p next=%p\n",
+        DEBUG_FPRINTF(stderr, "MUL32[%d]: operand=0x%llx eax=0x%x ip=%p next=%p\n",
                 g_mul32_entry_count, (unsigned long long)operand, eax, ip, next_gadget);
         fflush(stderr);
     }
@@ -2075,7 +2087,7 @@ static int marker_count = 0;
 void helper_debug_emit_marker(const char *marker) {
     marker_count++;
     if (marker_count > 1095) {  // Only trace near crash
-        fprintf(stderr, "MARKER[%d]: %s\n", marker_count, marker);
+        DEBUG_FPRINTF(stderr, "MARKER[%d]: %s\n", marker_count, marker);
         fflush(stderr);
     }
 }
@@ -2083,7 +2095,7 @@ void helper_debug_emit_marker(const char *marker) {
 // Debug: trace CPU pointer value
 void helper_debug_cpu_ptr(void *cpu) {
     if (marker_count > 1095) {
-        fprintf(stderr, "CPU_PTR[%d]: cpu=%p\n", marker_count, cpu);
+        DEBUG_FPRINTF(stderr, "CPU_PTR[%d]: cpu=%p\n", marker_count, cpu);
         fflush(stderr);
     }
 }
@@ -2094,7 +2106,7 @@ static int r13_entry_count = 0;
 void helper_debug_load64_r13_entry(struct cpu_state *cpu) {
     r13_entry_count++;
     if (r13_entry_count > 1095) {  // Only trace after many calls
-        fprintf(stderr, "LOAD64_R13_ENTRY[%d]: cpu=%p r13=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "LOAD64_R13_ENTRY[%d]: cpu=%p r13=0x%llx\n",
                 r13_entry_count, (void*)cpu, (unsigned long long)cpu->r13);
         fflush(stderr);
     }
@@ -2103,7 +2115,7 @@ void helper_debug_load64_r13_entry(struct cpu_state *cpu) {
 // Debug: trace step2 in load64_r13
 void helper_debug_load64_r13_step2(struct cpu_state *cpu, uint64_t loaded_value) {
     if (r13_entry_count > 1095) {
-        fprintf(stderr, "LOAD64_R13_STEP2[%d]: cpu=%p loaded=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "LOAD64_R13_STEP2[%d]: cpu=%p loaded=0x%llx\n",
                 r13_entry_count, (void*)cpu, (unsigned long long)loaded_value);
         fflush(stderr);
     }
@@ -2112,7 +2124,7 @@ void helper_debug_load64_r13_step2(struct cpu_state *cpu, uint64_t loaded_value)
 // Debug: trace step3 in load64_r13
 void helper_debug_load64_r13_step3(uint64_t value) {
     if (r13_entry_count > 1095) {
-        fprintf(stderr, "LOAD64_R13_STEP3[%d]: value=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "LOAD64_R13_STEP3[%d]: value=0x%llx\n",
                 r13_entry_count, (unsigned long long)value);
         fflush(stderr);
     }
@@ -2124,7 +2136,7 @@ void helper_debug_load64_r13_step3(uint64_t value) {
 void helper_debug_div64_entry(uint64_t rax, uint64_t rdx, uint64_t divisor) {
     div64_count++;
     // Always trace near crash
-    fprintf(stderr, "DIV64_ENTRY[%d]: RAX=0x%llx RDX=0x%llx divisor=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "DIV64_ENTRY[%d]: RAX=0x%llx RDX=0x%llx divisor=0x%llx\n",
             div64_count, (unsigned long long)rax, (unsigned long long)rdx,
             (unsigned long long)divisor);
     fflush(stderr);
@@ -2132,14 +2144,14 @@ void helper_debug_div64_entry(uint64_t rax, uint64_t rdx, uint64_t divisor) {
 
 // Debug: trace div64 division by zero
 void helper_debug_div64_by_zero(uint64_t rax, uint64_t rdx) {
-    fprintf(stderr, "DIV64_BY_ZERO: RAX=0x%llx RDX=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "DIV64_BY_ZERO: RAX=0x%llx RDX=0x%llx\n",
             (unsigned long long)rax, (unsigned long long)rdx);
     fflush(stderr);
 }
 
 // Debug: trace div64 result
 void helper_debug_div64_result(uint64_t quotient, uint64_t remainder) {
-    fprintf(stderr, "DIV64_RESULT: quotient=0x%llx remainder=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "DIV64_RESULT: quotient=0x%llx remainder=0x%llx\n",
             (unsigned long long)quotient, (unsigned long long)remainder);
     fflush(stderr);
 }
@@ -2151,7 +2163,7 @@ void helper_debug_rol32(uint32_t before, uint32_t after) {
     if (rol32_count <= 50) {
         // Compute expected result
         uint32_t expected = (before << 1) | (before >> 31);
-        fprintf(stderr, "ROL32[%d]: before=0x%08x after=0x%08x expected=0x%08x %s\n",
+        DEBUG_FPRINTF(stderr, "ROL32[%d]: before=0x%08x after=0x%08x expected=0x%08x %s\n",
                 rol32_count, before, after, expected,
                 after == expected ? "OK" : "MISMATCH!");
     }
@@ -2174,7 +2186,7 @@ void helper_debug_or64_mem_before(uint64_t mem_before, uint64_t guest_addr, uint
     or64_mem_count++;
     uint64_t offset = (guest_addr - 0x7efffff5b540) % 0x28;
     uint64_t entry = (guest_addr - 0x7efffff5b540) / 0x28;
-    fprintf(stderr, "*** OR64_MEM_BEFORE[%d,entry=%lld,off=%lld]: addr=0x%llx mem_before=0x%llx x8=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "*** OR64_MEM_BEFORE[%d,entry=%lld,off=%lld]: addr=0x%llx mem_before=0x%llx x8=0x%llx\n",
             or64_mem_count, (long long)entry, (long long)offset,
             (unsigned long long)guest_addr, (unsigned long long)mem_before,
             (unsigned long long)x8_operand);
@@ -2185,7 +2197,7 @@ void helper_debug_or64_mem(uint64_t result, uint64_t guest_addr, uint64_t x8_ope
     // Use same count as before (incremented in _before)
     uint64_t offset = (guest_addr - 0x7efffff5b540) % 0x28;
     uint64_t entry = (guest_addr - 0x7efffff5b540) / 0x28;
-    fprintf(stderr, "*** OR64_MEM_AFTER[%d,entry=%lld,off=%lld]: addr=0x%llx x8=0x%llx result=0x%llx\n",
+    DEBUG_FPRINTF(stderr, "*** OR64_MEM_AFTER[%d,entry=%lld,off=%lld]: addr=0x%llx x8=0x%llx result=0x%llx\n",
             or64_mem_count, (long long)entry, (long long)offset,
             (unsigned long long)guest_addr, (unsigned long long)x8_operand,
             (unsigned long long)result);
@@ -2198,7 +2210,7 @@ void helper_debug_or32_mem_before(uint32_t mem_before, uint64_t guest_addr, uint
     or32_mem_count++;
     uint64_t offset = (guest_addr - 0x7efffff5b540) % 0x28;
     uint64_t entry = (guest_addr - 0x7efffff5b540) / 0x28;
-    fprintf(stderr, "*** OR32_MEM_BEFORE[%d,entry=%lld,off=%lld]: addr=0x%llx mem_before=0x%x w8=0x%x\n",
+    DEBUG_FPRINTF(stderr, "*** OR32_MEM_BEFORE[%d,entry=%lld,off=%lld]: addr=0x%llx mem_before=0x%x w8=0x%x\n",
             or32_mem_count, (long long)entry, (long long)offset,
             (unsigned long long)guest_addr, (unsigned)mem_before, (unsigned)w8_operand);
 }
@@ -2206,7 +2218,7 @@ void helper_debug_or32_mem_before(uint32_t mem_before, uint64_t guest_addr, uint
 void helper_debug_or32_mem_after(uint32_t result, uint64_t guest_addr, uint32_t w8_operand) {
     uint64_t offset = (guest_addr - 0x7efffff5b540) % 0x28;
     uint64_t entry = (guest_addr - 0x7efffff5b540) / 0x28;
-    fprintf(stderr, "*** OR32_MEM_AFTER[%d,entry=%lld,off=%lld]: addr=0x%llx w8=0x%x result=0x%x\n",
+    DEBUG_FPRINTF(stderr, "*** OR32_MEM_AFTER[%d,entry=%lld,off=%lld]: addr=0x%llx w8=0x%x result=0x%x\n",
             or32_mem_count, (long long)entry, (long long)offset,
             (unsigned long long)guest_addr, (unsigned)w8_operand, (unsigned)result);
 }
@@ -2216,7 +2228,7 @@ void helper_debug_jne_strcmp(uint64_t ip, uint64_t zf_value) {
     // JNE at 0x591b5 in strcmp (interp + 0x591b5 = 0x7efffffb71b5)
     uint64_t jne_addr = 0x7efffff5e000 + 0x591b5;
     if (ip == jne_addr) {
-        fprintf(stderr, "STRCMP_JNE: ip=0x%llx ZF=%llu (should jump if ZF=0)\n",
+        DEBUG_FPRINTF(stderr, "STRCMP_JNE: ip=0x%llx ZF=%llu (should jump if ZF=0)\n",
                 (unsigned long long)ip, (unsigned long long)zf_value);
     }
 }
@@ -2230,10 +2242,10 @@ void helper_debug_movdqu_load(uint64_t low, uint64_t high, uint64_t guest_addr) 
         // Parse va_list structure: gp_offset(4) + fp_offset(4) + overflow_arg_area(8)
         uint32_t gp_offset = (uint32_t)(low & 0xFFFFFFFF);
         uint32_t fp_offset = (uint32_t)((low >> 32) & 0xFFFFFFFF);
-        fprintf(stderr, "MOVDQU_LOAD[%d]: addr=0x%llx low=0x%llx high=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "MOVDQU_LOAD[%d]: addr=0x%llx low=0x%llx high=0x%llx\n",
                 count, (unsigned long long)guest_addr,
                 (unsigned long long)low, (unsigned long long)high);
-        fprintf(stderr, "  -> gp_offset=%u fp_offset=%u overflow_area=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "  -> gp_offset=%u fp_offset=%u overflow_area=0x%llx\n",
                 gp_offset, fp_offset, (unsigned long long)high);
     }
 }
@@ -2243,7 +2255,7 @@ void helper_debug_movaps_load_entry(uint64_t guest_addr) {
     static int count = 0;
     count++;
     if (count <= 30) {
-        fprintf(stderr, "MOVAPS_LOAD_ENTRY[%d]: guest_addr=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "MOVAPS_LOAD_ENTRY[%d]: guest_addr=0x%llx\n",
                 count, (unsigned long long)guest_addr);
     }
 }
@@ -2256,11 +2268,11 @@ void helper_debug_movaps_load_full(uint64_t guest_addr, uint64_t low, uint64_t h
     // va_list format: low contains gp_offset(4) + fp_offset(4), high is overflow_arg_area
     uint32_t gp_offset = low & 0xFFFFFFFF;
     uint32_t fp_offset = (low >> 32) & 0xFFFFFFFF;
-    fprintf(stderr, "MOVAPS_LOAD[%d]: from=0x%llx low=0x%llx high=0x%llx -> xmm%llu\n",
+    DEBUG_FPRINTF(stderr, "MOVAPS_LOAD[%d]: from=0x%llx low=0x%llx high=0x%llx -> xmm%llu\n",
             count, (unsigned long long)guest_addr,
             (unsigned long long)low, (unsigned long long)high,
             (unsigned long long)xmm_idx);
-    fprintf(stderr, "  (va_list? gp_off=%u fp_off=%u overflow_arg=0x%llx)\n",
+    DEBUG_FPRINTF(stderr, "  (va_list? gp_off=%u fp_off=%u overflow_arg=0x%llx)\n",
             gp_offset, fp_offset, (unsigned long long)high);
 }
 
@@ -2271,11 +2283,11 @@ void helper_debug_movaps_store_full(uint64_t guest_addr, uint64_t low, uint64_t 
     if (count <= 50) {
         uint32_t gp_offset = low & 0xFFFFFFFF;
         uint32_t fp_offset = (low >> 32) & 0xFFFFFFFF;
-        fprintf(stderr, "MOVAPS_STORE[%d]: xmm%llu -> 0x%llx low=0x%llx high=0x%llx\n",
+        DEBUG_FPRINTF(stderr, "MOVAPS_STORE[%d]: xmm%llu -> 0x%llx low=0x%llx high=0x%llx\n",
                 count, (unsigned long long)xmm_idx,
                 (unsigned long long)guest_addr,
                 (unsigned long long)low, (unsigned long long)high);
-        fprintf(stderr, "  (va_list? gp_off=%u fp_off=%u overflow_arg=0x%llx)\n",
+        DEBUG_FPRINTF(stderr, "  (va_list? gp_off=%u fp_off=%u overflow_arg=0x%llx)\n",
                 gp_offset, fp_offset, (unsigned long long)high);
     }
 }
