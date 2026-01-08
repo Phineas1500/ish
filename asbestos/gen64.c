@@ -86,7 +86,8 @@ extern void gadget_add64_imm(void);
 extern void gadget_lea_add64_imm(void);  // Flag-preserving add for LEA
 extern void gadget_lea_and64_imm(void);  // Flag-preserving and for LEA 32-bit masking
 extern void gadget_add64_mem(void);
-extern void gadget_add64_x8(void);  // For adding r8-r15
+extern void gadget_add64_x8(void);  // For adding r8-r15 (64-bit)
+extern void gadget_add32_x8(void);  // For adding r8-r15 (32-bit)
 extern void gadget_add32_imm(void);
 extern void gadget_add32_mem(void);
 extern void gadget_add32_a(void);
@@ -278,6 +279,18 @@ extern void gadget_ror32_cl(void);
 extern void gadget_ror64_cl(void);
 extern void gadget_ror32_imm(void);
 extern void gadget_ror64_imm(void);
+extern void gadget_shrd32_imm(void);
+extern void gadget_shrd64_imm(void);
+extern void gadget_shrd32_cl(void);
+extern void gadget_shrd64_cl(void);
+extern void gadget_shld32_imm(void);
+extern void gadget_shld64_imm(void);
+extern void gadget_shld32_cl(void);
+extern void gadget_shld64_cl(void);
+extern void gadget_bsf32(void);
+extern void gadget_bsf64(void);
+extern void gadget_bsr32(void);
+extern void gadget_bsr64(void);
 
 // Bit test gadgets
 extern void gadget_bt64_reg(void);
@@ -385,6 +398,7 @@ extern void gadget_cmov_cz(void);
 extern void gadget_cmov_s(void);
 extern void gadget_cmov_p(void);
 extern void gadget_cmov_sxo(void);
+extern void gadget_debug_cmov_sxo(void);  // Debug wrapper for CMOVL
 extern void gadget_cmov_sxoz(void);
 // Conditional move gadgets (condition true = keep dest)
 extern void gadget_cmovn_o(void);
@@ -797,20 +811,25 @@ static bool gen_mov(struct gen_state *state, struct decoded_inst64 *inst) {
         GEN(load_gadget);
 
         // For 32-bit MOV, mask to zero-extend (x86_64 semantics)
+        // IMPORTANT: Use flag-preserving AND - MOV does NOT modify flags!
         if (size_bits == 32) {
-            GEN(gadget_and64_imm);
+            GEN(gadget_lea_and64_imm);  // Flag-preserving AND
             GEN(0xFFFFFFFF);
         } else if (size_bits == 16) {
-            GEN(gadget_and64_imm);
+            GEN(gadget_lea_and64_imm);  // Flag-preserving AND
             GEN(0xFFFF);
         } else if (size_bits == 8) {
-            GEN(gadget_and64_imm);
+            GEN(gadget_lea_and64_imm);  // Flag-preserving AND
             GEN(0xFF);
         }
 
         gadget_t store_gadget = get_store64_reg_gadget(dst->type);
         if (!store_gadget) return false;
-        // Debug: trace MOV to r12
+        // Debug: trace MOV to r11 or r12
+        if (dst->type == arg64_r11) {
+            fprintf(stderr, "GEN_MOV_R11: ip=0x%llx src=%d size=%d\n",
+                    (unsigned long long)state->orig_ip, src->type, size_bits);
+        }
         if (dst->type == arg64_r12) {
             fprintf(stderr, "GEN: MOV r12, reg at ip=0x%llx\n", (unsigned long long)state->orig_ip);
         }
@@ -821,6 +840,12 @@ static bool gen_mov(struct gen_state *state, struct decoded_inst64 *inst) {
 
     // MOV reg, imm (any GPR including r8-r15)
     if (is_gpr(dst->type) && src->type == arg64_imm) {
+        // Debug: trace MOV to r8-r15 with imm
+        if (dst->type >= arg64_r8 && dst->type <= arg64_r15) {
+            fprintf(stderr, "GEN_MOV_R8_R15_IMM: ip=0x%llx dst=%d (r%d) size=%d imm=0x%llx\n",
+                    (unsigned long long)state->orig_ip, dst->type, 8 + (dst->type - arg64_r8),
+                    size_bits, (unsigned long long)src->imm);
+        }
         // Debug: trace MOV rdx, imm with suspicious value
         if (dst->type == arg64_rdx && (src->imm == 0xffffffffffffff80 || src->imm == 0xffffff80 || src->imm == 0x80)) {
             fprintf(stderr, "GEN_MOV_RDX_IMM: ip=0x%llx size=%d imm=0x%llx (signed=%lld)\n",
@@ -895,6 +920,11 @@ static bool gen_mov(struct gen_state *state, struct decoded_inst64 *inst) {
 
     // MOV [mem], imm
     if (is_mem(dst->type) && src->type == arg64_imm) {
+        // Debug: trace mov [mem], imm with value 8 (likely gp_offset setup)
+        if (src->imm == 8 && size_bits == 32) {
+            fprintf(stderr, "GEN: MOV [mem], imm8 at ip=0x%llx (likely va_start gp_offset)\n",
+                    (unsigned long long)state->orig_ip);
+        }
         // Load immediate
         if (size_bits == 64) {
             GEN(load64_gadgets[8]); // load64_imm
@@ -1355,13 +1385,22 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                 } else if (inst.operands[1].type >= arg64_r8 &&
                            inst.operands[1].type <= arg64_r15) {
                     // ADD reg, r8-r15 (need to load r8-r15 from memory first)
+                    // Debug: trace ADD r14, r11 at printf_core accumulation
+                    if (inst.operands[0].type == arg64_r14 && inst.operands[1].type == arg64_r11) {
+                        fprintf(stderr, "GEN_ADD_R14_R11: ip=0x%llx size=%d\n",
+                                (unsigned long long)state->orig_ip, is64 ? 64 : 32);
+                    }
                     // Save _xtmp (dst) to x8
                     GEN(gadget_save_xtmp_to_x8);
                     // Load r8-r15 into _xtmp
                     gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
                     if (load_src) GEN(load_src);
-                    // add64_x8 does: _xtmp = _xtmp + x8 = src + dst
-                    GEN(gadget_add64_x8);
+                    // add_x8 does: _xtmp = _xtmp + x8 = src + dst
+                    if (is64) {
+                        GEN(gadget_add64_x8);
+                    } else {
+                        GEN(gadget_add32_x8);
+                    }
                 } else if (is_mem(inst.operands[1].type)) {
                     // ADD reg, [mem]
                     // We have: _xtmp = dst value
@@ -1456,7 +1495,11 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     }
                     GEN(state->orig_ip);
                     // 3. Add x8 (source): _xtmp = _xtmp + x8 = mem + src
-                    GEN(gadget_add64_x8);
+                    if (is64) {
+                        GEN(gadget_add64_x8);
+                    } else {
+                        GEN(gadget_add32_x8);
+                    }
                     // 4. Recalculate address and store
                     if (!gen_addr(state, &inst.operands[0], &inst)) {
                         g(interrupt);
@@ -2608,6 +2651,136 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             }
             break;
 
+        case ZYDIS_MNEMONIC_SHRD:
+            // SHRD dst, src, count - double precision shift right
+            // Gadget expects: _xtmp = dst, x8 = src
+            if (inst.operand_count >= 3 && is_gpr(inst.operands[0].type) &&
+                is_gpr(inst.operands[1].type)) {
+                // Load dst into _xtmp
+                gadget_t load_dst = get_load64_reg_gadget(inst.operands[0].type);
+                if (load_dst) GEN(load_dst);
+
+                // Save dst to x8, then load src into _xtmp, then swap
+                GEN(gadget_save_xtmp_to_x8);
+                gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
+                if (load_src) GEN(load_src);
+                GEN(gadget_swap_xtmp_x8);  // Now _xtmp = dst, x8 = src
+
+                bool is_32bit = (inst.operands[0].size == size64_32);
+
+                if (inst.operands[2].type == arg64_imm) {
+                    // SHRD reg, reg, imm
+                    GEN(is_32bit ? gadget_shrd32_imm : gadget_shrd64_imm);
+                    GEN(inst.operands[2].imm);
+                } else if (inst.operands[2].type == arg64_rcx) {
+                    // SHRD reg, reg, cl
+                    GEN(is_32bit ? gadget_shrd32_cl : gadget_shrd64_cl);
+                } else {
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
+                }
+
+                gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
+                if (store) GEN(store);
+            } else {
+                g(interrupt);
+                GEN(INT_UNDEFINED);
+                GEN(state->orig_ip);
+                GEN(state->orig_ip);
+                return 0;
+            }
+            break;
+
+        case ZYDIS_MNEMONIC_SHLD:
+            // SHLD dst, src, count - double precision shift left
+            // Gadget expects: _xtmp = dst, x8 = src
+            if (inst.operand_count >= 3 && is_gpr(inst.operands[0].type) &&
+                is_gpr(inst.operands[1].type)) {
+                // Load dst into _xtmp
+                gadget_t load_dst = get_load64_reg_gadget(inst.operands[0].type);
+                if (load_dst) GEN(load_dst);
+
+                // Save dst to x8, then load src into _xtmp, then swap
+                GEN(gadget_save_xtmp_to_x8);
+                gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
+                if (load_src) GEN(load_src);
+                GEN(gadget_swap_xtmp_x8);  // Now _xtmp = dst, x8 = src
+
+                bool is_32bit = (inst.operands[0].size == size64_32);
+
+                if (inst.operands[2].type == arg64_imm) {
+                    // SHLD reg, reg, imm
+                    GEN(is_32bit ? gadget_shld32_imm : gadget_shld64_imm);
+                    GEN(inst.operands[2].imm);
+                } else if (inst.operands[2].type == arg64_rcx) {
+                    // SHLD reg, reg, cl
+                    GEN(is_32bit ? gadget_shld32_cl : gadget_shld64_cl);
+                } else {
+                    g(interrupt);
+                    GEN(INT_UNDEFINED);
+                    GEN(state->orig_ip);
+                    GEN(state->orig_ip);
+                    return 0;
+                }
+
+                gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
+                if (store) GEN(store);
+            } else {
+                g(interrupt);
+                GEN(INT_UNDEFINED);
+                GEN(state->orig_ip);
+                GEN(state->orig_ip);
+                return 0;
+            }
+            break;
+
+        case ZYDIS_MNEMONIC_BSF:
+            // BSF dst, src - Bit Scan Forward (find lowest set bit)
+            if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type) &&
+                is_gpr(inst.operands[1].type)) {
+                // Load source into _xtmp
+                gadget_t load = get_load64_reg_gadget(inst.operands[1].type);
+                if (load) GEN(load);
+
+                bool is_32bit = (inst.operands[0].size == size64_32);
+                GEN(is_32bit ? gadget_bsf32 : gadget_bsf64);
+
+                gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
+                if (store) GEN(store);
+            } else {
+                g(interrupt);
+                GEN(INT_UNDEFINED);
+                GEN(state->orig_ip);
+                GEN(state->orig_ip);
+                return 0;
+            }
+            break;
+
+        case ZYDIS_MNEMONIC_BSR:
+            // BSR dst, src - Bit Scan Reverse (find highest set bit)
+            if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type) &&
+                is_gpr(inst.operands[1].type)) {
+                // Load source into _xtmp
+                gadget_t load = get_load64_reg_gadget(inst.operands[1].type);
+                if (load) GEN(load);
+
+                bool is_32bit = (inst.operands[0].size == size64_32);
+                GEN(is_32bit ? gadget_bsr32 : gadget_bsr64);
+
+                gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
+                if (store) GEN(store);
+            } else {
+                g(interrupt);
+                GEN(INT_UNDEFINED);
+                GEN(state->orig_ip);
+                GEN(state->orig_ip);
+                return 0;
+            }
+            break;
+
         case ZYDIS_MNEMONIC_LEA:
             // LEA - load effective address
             if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
@@ -3042,7 +3215,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                     case ZYDIS_MNEMONIC_CMOVNS:  cmov_gadget = gadget_cmovn_s; break;
                     case ZYDIS_MNEMONIC_CMOVP:   cmov_gadget = gadget_cmov_p; break;
                     case ZYDIS_MNEMONIC_CMOVNP:  cmov_gadget = gadget_cmovn_p; break;
-                    case ZYDIS_MNEMONIC_CMOVL:   cmov_gadget = gadget_cmov_sxo; break;
+                    case ZYDIS_MNEMONIC_CMOVL:   cmov_gadget = gadget_debug_cmov_sxo; break;  // Use debug wrapper
                     case ZYDIS_MNEMONIC_CMOVNL:  cmov_gadget = gadget_debug_cmovn_sxo; break;  // Use debug wrapper
                     case ZYDIS_MNEMONIC_CMOVLE:  cmov_gadget = gadget_cmov_sxoz; break;
                     case ZYDIS_MNEMONIC_CMOVNLE: cmov_gadget = gadget_cmovn_sxoz; break;
@@ -3978,15 +4151,23 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         case ZYDIS_MNEMONIC_MOVDQA:
         case ZYDIS_MNEMONIC_MOVDQU:
             // MOVAPS/MOVUPS/MOVDQA/MOVDQU - Move 128 bits (aligned/unaligned)
+            fprintf(stderr, "GEN: MOVDQU/MOVAPS at ip=0x%llx operands=%d op0=%d op1=%d is_xmm(%d,%d) is_mem(%d,%d)\n",
+                    (unsigned long long)state->orig_ip, inst.operand_count,
+                    inst.operands[0].type, inst.operands[1].type,
+                    is_xmm(inst.operands[0].type), is_xmm(inst.operands[1].type),
+                    is_mem(inst.operands[0].type), is_mem(inst.operands[1].type));
+            fflush(stderr);
             if (inst.operand_count >= 2) {
                 if (is_xmm(inst.operands[0].type) && is_xmm(inst.operands[1].type)) {
                     // xmm, xmm: Copy between XMM registers
+                    fprintf(stderr, "  -> xmm, xmm form\n");
                     GEN(load64_gadgets[8]);  // load64_imm: Load source XMM index
                     GEN(get_xmm_index(inst.operands[1].type));
                     GEN(gadget_movaps_xmm_xmm);
                     GEN(get_xmm_index(inst.operands[0].type));
                 } else if (is_xmm(inst.operands[0].type) && is_mem(inst.operands[1].type)) {
                     // xmm, [mem]: Load from memory to XMM
+                    fprintf(stderr, "  -> xmm, [mem] form\n");
                     if (!gen_addr(state, &inst.operands[1], &inst)) {
                         g(interrupt);
                         GEN(INT_UNDEFINED);
@@ -4073,6 +4254,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
         case ZYDIS_MNEMONIC_MOVSQ:
             // REP MOVSQ - move [RSI] to [RDI], repeat RCX times
+            fprintf(stderr, "GEN: REP MOVSQ at ip=0x%llx\n", (unsigned long long)state->orig_ip);
             GEN(gadget_rep_movsq);
             GEN(state->orig_ip);  // For segfault handler
             break;
@@ -4082,6 +4264,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             // Check if REP prefix is present
             if (inst.has_rep) {
                 // REP MOVSB - repeat RCX times
+                fprintf(stderr, "GEN: REP MOVSB at ip=0x%llx\n", (unsigned long long)state->orig_ip);
                 GEN(gadget_rep_movsb);
                 GEN(state->orig_ip);  // For segfault handler
             } else {

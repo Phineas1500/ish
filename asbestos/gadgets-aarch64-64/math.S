@@ -50,6 +50,25 @@
     str _addr, [_cpu, LOCAL_value_addr]
     read_prep 64, load64_mem
     ldr _xtmp, [_addr]                 // Direct ARM64 load
+    // Check for loads from reg_save_area (0x7efffff5bbf0-0x7efffff5bc20)
+    // This traces va_arg reads during vsnprintf
+    ldr x9, [_cpu, LOCAL_value_addr]   // guest address
+    movz x10, 0xbbf0
+    movk x10, 0xfff5, lsl 16
+    movk x10, 0x7eff, lsl 32
+    cmp x9, x10
+    b.lo 68f
+    movz x10, 0xbc20
+    movk x10, 0xfff5, lsl 16
+    movk x10, 0x7eff, lsl 32
+    cmp x9, x10
+    b.hs 68f
+    save_c
+    mov x0, _xtmp                      // loaded value
+    ldr x1, [_cpu, LOCAL_value_addr]   // guest address
+    bl NAME(helper_debug_load64_reg_save_area)
+    restore_c
+68:
     // Check for suspicious value 0xffffffffffffff80
     movn x9, 0x7f               // x9 = 0xffffffffffffff80
     cmp _xtmp, x9
@@ -66,10 +85,12 @@
     mov x10, 0x7f0              // pattern to match
     cmp x9, x10
     b.ne 67f
+    ldr x10, [_cpu, CPU_rip]    // Get RIP before save_c
     save_c
     mov x0, _xtmp
     ldr x1, [_cpu, LOCAL_value_addr]
-    bl NAME(helper_debug_load64_mem_suspicious)
+    mov x2, x10                 // Pass RIP
+    bl NAME(helper_debug_load64_7f_base)
     restore_c
 67:
     // Debug: trace AFTER restore_c to check state before gret
@@ -276,6 +297,22 @@
     // Save _xtmp (value to store) BEFORE write_prep might clobber it via TLB miss
     str _xtmp, [_cpu, LOCAL_value]
     write_prep 64, store64_mem
+    // Check if storing TO 0x7f... address (heap destination)
+    ldr x19, [_cpu, LOCAL_value_addr]
+    lsr x9, x19, 36
+    mov x10, 0x7f0
+    cmp x9, x10
+    b.ne 88f
+    mov x11, _cpu          // Save _cpu before save_c clobbers x1
+    ldr x19, [_cpu, LOCAL_value]
+    ldr x12, [_cpu, CPU_rip]  // Get RIP
+    save_c
+    mov x0, x19            // value being stored
+    ldr x1, [x11, LOCAL_value_addr]  // guest dest address
+    mov x2, x12            // guest RIP
+    bl NAME(helper_debug_store64_to_7f_rip)
+    restore_c
+88:
     // BYPASS ALL STORES VIA C CODE TO DEBUG
     ldr x19, [_cpu, LOCAL_value]    // value to store (saved before write_prep)
     save_c
@@ -291,9 +328,13 @@
     mov x10, 0x7f0
     cmp x9, x10
     b.ne 50f
+    ldr x10, [_cpu, CPU_rip]  // Load guest RIP BEFORE save_c
+    mov x11, _cpu             // Save _cpu before it gets clobbered
     save_c
-    mov x0, x19
-    ldr x1, [_cpu, LOCAL_value_addr]
+    mov x0, x19               // value
+    ldr x1, [x11, LOCAL_value_addr]  // guest_addr (use saved _cpu)
+    mov x2, x10               // rip
+    mov x3, x11               // cpu pointer (use saved _cpu)
     bl NAME(helper_debug_store64_7f_value)
     restore_c
 50:
@@ -361,6 +402,24 @@
     bl NAME(helper_debug_busybox_store64)
     restore_c
 1:
+    // Debug: trace stores to va_list area (0x7efffff5bb00-0x7efffff5bcf0)
+    ldr x9, [_cpu, LOCAL_value_addr]
+    movz x10, 0xbb00
+    movk x10, 0xfff5, lsl 16
+    movk x10, 0x7eff, lsl 32
+    cmp x9, x10
+    b.lo 98f
+    movz x10, 0xbcf0
+    movk x10, 0xfff5, lsl 16
+    movk x10, 0x7eff, lsl 32
+    cmp x9, x10
+    b.hs 98f
+    save_c
+    mov x0, _xtmp
+    mov x1, x9
+    bl NAME(helper_debug_va_list_store64)
+    restore_c
+98:
     gret 1
     write_bullshit 64, store64_mem
 
@@ -476,7 +535,39 @@
     str w0, [_addr]                   // Store corrected value
     write_done 32, store32_mem_fix
 1:
+    // Debug and fix: trace stores to va_list area (0x7efffff5bb00-0x7efffff5bcf0)
+    ldr x9, [_cpu, LOCAL_value_addr]
+    movz x10, 0xbb00
+    movk x10, 0xfff5, lsl 16
+    movk x10, 0x7eff, lsl 32
+    cmp x9, x10
+    b.lo 99f
+    movz x10, 0xbcf0
+    movk x10, 0xfff5, lsl 16
+    movk x10, 0x7eff, lsl 32
+    cmp x9, x10
+    b.hs 99f
+    // Call helper which may return a corrected value (8->16 for gp_offset)
+    save_c
+    uxtw x0, _tmp
+    mov x1, x9
+    bl NAME(helper_debug_va_list_store32)
+    // x0 now contains the (possibly corrected) value
+    // Save it to LOCAL_value - but _cpu was trashed by C call
+    ldr x1, [sp, 8]                   // Reload _cpu from stack
+    str w0, [x1, LOCAL_value]         // Save corrected value
+    restore_c
+    // Re-do the store with the (possibly corrected) value
+    ldr x9, [_cpu, LOCAL_value_addr]  // Guest address
+    ldr w0, [_cpu, LOCAL_value]       // Corrected value
+    mov _addr, x9                     // Set guest address
+    // Do the fix store
+    write_prep 32, store32_mem_vafix
+    str w0, [_addr]                   // Store corrected value
+    write_done 32, store32_mem_vafix
+99:
     gret 1
+    write_bullshit 32, store32_mem_vafix
     write_bullshit 32, store32_mem
     write_bullshit 32, store32_mem_fix
 
@@ -494,13 +585,22 @@
     write_bullshit 16, store16_mem
 
 .gadget store8_mem
+    // Save guest address BEFORE write_prep translates it to host
+    str _addr, [_cpu, LOCAL_value_addr]
     write_prep 8, store8_mem
-    // Watchpoint check for entry 2 flag
+    // Check if guest address is in 0x7f0000000xxx range (malloc'd heap)
+    ldr x9, [_cpu, LOCAL_value_addr]
+    lsr x10, x9, 36
+    mov x11, 0x7f0
+    cmp x10, x11
+    b.ne 1f
+    // Trace store8 to 0x7f... address
     save_c
     uxtb x0, _tmp        // value (byte)
-    mov x1, _addr        // host addr
-    bl NAME(helper_check_watchpoint_store8)
+    ldr x1, [_cpu, LOCAL_value_addr]  // guest addr
+    bl NAME(helper_debug_store8_7f)
     restore_c
+1:
     strb _tmp, [_addr]
     write_done 8, store8_mem
     gret 1
@@ -520,15 +620,36 @@
     gret
 
 .gadget store64_r11
+    // Debug: trace stores to r11 in printf_core range
+    ldr x10, [_cpu, CPU_rip]
+    save_c
+    mov x0, _xtmp
+    mov x1, x10
+    bl NAME(helper_debug_store64_r11)
+    restore_c
     str _xtmp, [_cpu, CPU_r11]
     gret
 
 .gadget store64_r12
-    // Debug: trace r12 stores
+    // Debug: trace r12 stores with RIP when 0x7f... value
+    lsr x9, _xtmp, 36
+    mov x10, 0x7f0
+    cmp x9, x10
+    b.ne 1f
+    ldr x10, [_cpu, CPU_rip]  // Get RIP
+    mov x11, _cpu             // Save _cpu
+    save_c
+    mov x0, _xtmp             // value
+    mov x1, x10               // rip
+    bl NAME(helper_debug_store64_r12_with_rip)
+    restore_c
+    b 2f
+1:
     save_c
     mov x0, _xtmp
     bl NAME(helper_debug_store64_r12)
     restore_c
+2:
     str _xtmp, [_cpu, CPU_r12]
     gret
 
@@ -627,6 +748,15 @@
     adds _xtmp, _xtmp, x8
     setf_oc
     setf_zsp
+    gret
+
+// 32-bit ADD with x8 (for adding r8-r15 in 32-bit mode)
+// Result is zero-extended to 64 bits (x86_64 semantics)
+.gadget add32_x8
+    adds _tmp, _tmp, w8        // 32-bit add with flags
+    uxtw _xtmp, _tmp           // zero-extend to 64-bit
+    setf_oc
+    setf_zsp w
     gret
 
 // ============================================================
@@ -1963,6 +2093,261 @@ div64_by_zero_nodebug:
 1:  gret 1
 
 // ============================================================
+// SHRD (double precision shift right) gadgets
+// SHRD dst, src, count: shift src:dst right by count, store low bits in dst
+// Expects: _xtmp = dst, x8 = src (from save_xtmp_to_x8 + load src)
+// ============================================================
+
+// SHRD by immediate - 64-bit
+// shrd rax, rdx, imm: result = (rax >> imm) | (rdx << (64 - imm))
+.gadget shrd64_imm
+    ldr w11, [_ip]
+    and w11, w11, 63
+    cbz w11, 1f
+    // CF = bit (count-1) of dst before shift
+    sub w10, w11, 1
+    lsr x9, _xtmp, x10
+    and w9, w9, 1
+    strb w9, [_cpu, CPU_cf]
+    // OF = MSB of original dst (meaningful only if count=1)
+    lsr x9, _xtmp, 63
+    strb w9, [_cpu, CPU_of]
+    // result = (dst >> count) | (src << (64 - count))
+    lsr _xtmp, _xtmp, x11
+    neg w10, w11
+    add w10, w10, 64
+    lsl x9, x8, x10
+    orr _xtmp, _xtmp, x9
+    setf_zsp
+1:  gret 1
+
+// SHRD by immediate - 32-bit
+.gadget shrd32_imm
+    ldr w11, [_ip]
+    and w11, w11, 31
+    cbz w11, 1f
+    // CF = bit (count-1) of dst
+    sub w10, w11, 1
+    lsr w9, _tmp, w10
+    and w9, w9, 1
+    strb w9, [_cpu, CPU_cf]
+    // OF = MSB of original dst
+    lsr w9, _tmp, 31
+    strb w9, [_cpu, CPU_of]
+    // result = (dst >> count) | (src << (32 - count))
+    lsr _tmp, _tmp, w11
+    neg w10, w11
+    add w10, w10, 32
+    lsl w9, w8, w10
+    orr _tmp, _tmp, w9
+    // Zero extend result to 64 bits (x86_64 semantics)
+    uxtw _xtmp, _tmp
+    setf_zsp w
+1:  gret 1
+
+// SHRD by CL - 64-bit
+.gadget shrd64_cl
+    and w11, ecx, 63
+    cbz w11, 1f
+    sub w10, w11, 1
+    lsr x9, _xtmp, x10
+    and w9, w9, 1
+    strb w9, [_cpu, CPU_cf]
+    lsr x9, _xtmp, 63
+    strb w9, [_cpu, CPU_of]
+    lsr _xtmp, _xtmp, x11
+    neg w10, w11
+    add w10, w10, 64
+    lsl x9, x8, x10
+    orr _xtmp, _xtmp, x9
+    setf_zsp
+1:  gret
+
+// SHRD by CL - 32-bit
+.gadget shrd32_cl
+    and w11, ecx, 31
+    cbz w11, 1f
+    sub w10, w11, 1
+    lsr w9, _tmp, w10
+    and w9, w9, 1
+    strb w9, [_cpu, CPU_cf]
+    lsr w9, _tmp, 31
+    strb w9, [_cpu, CPU_of]
+    lsr _tmp, _tmp, w11
+    neg w10, w11
+    add w10, w10, 32
+    lsl w9, w8, w10
+    orr _tmp, _tmp, w9
+    uxtw _xtmp, _tmp
+    setf_zsp w
+1:  gret
+
+// ============================================================
+// SHLD (double precision shift left) gadgets
+// SHLD dst, src, count: shift dst:src left by count, store high bits in dst
+// Expects: _xtmp = dst, x8 = src
+// ============================================================
+
+// SHLD by immediate - 64-bit
+// shld rax, rdx, imm: result = (rax << imm) | (rdx >> (64 - imm))
+.gadget shld64_imm
+    ldr w11, [_ip]
+    and w11, w11, 63
+    cbz w11, 1f
+    // CF = bit (64-count) of dst before shift (the bit that's about to be shifted out)
+    mov w10, 64
+    sub w10, w10, w11
+    lsr x9, _xtmp, x10
+    and w9, w9, 1
+    strb w9, [_cpu, CPU_cf]
+    // OF = MSB XOR CF of result (meaningful only if count=1)
+    lsr x9, _xtmp, 63
+    strb w9, [_cpu, CPU_of]
+    // result = (dst << count) | (src >> (64 - count))
+    lsl _xtmp, _xtmp, x11
+    lsr x9, x8, x10
+    orr _xtmp, _xtmp, x9
+    setf_zsp
+1:  gret 1
+
+// SHLD by immediate - 32-bit
+.gadget shld32_imm
+    ldr w11, [_ip]
+    and w11, w11, 31
+    cbz w11, 1f
+    mov w10, 32
+    sub w10, w10, w11
+    lsr w9, _tmp, w10
+    and w9, w9, 1
+    strb w9, [_cpu, CPU_cf]
+    lsr w9, _tmp, 31
+    strb w9, [_cpu, CPU_of]
+    lsl _tmp, _tmp, w11
+    lsr w9, w8, w10
+    orr _tmp, _tmp, w9
+    uxtw _xtmp, _tmp
+    setf_zsp w
+1:  gret 1
+
+// SHLD by CL - 64-bit
+.gadget shld64_cl
+    and w11, ecx, 63
+    cbz w11, 1f
+    mov w10, 64
+    sub w10, w10, w11
+    lsr x9, _xtmp, x10
+    and w9, w9, 1
+    strb w9, [_cpu, CPU_cf]
+    lsr x9, _xtmp, 63
+    strb w9, [_cpu, CPU_of]
+    lsl _xtmp, _xtmp, x11
+    lsr x9, x8, x10
+    orr _xtmp, _xtmp, x9
+    setf_zsp
+1:  gret
+
+// SHLD by CL - 32-bit
+.gadget shld32_cl
+    and w11, ecx, 31
+    cbz w11, 1f
+    mov w10, 32
+    sub w10, w10, w11
+    lsr w9, _tmp, w10
+    and w9, w9, 1
+    strb w9, [_cpu, CPU_cf]
+    lsr w9, _tmp, 31
+    strb w9, [_cpu, CPU_of]
+    lsl _tmp, _tmp, w11
+    lsr w9, w8, w10
+    orr _tmp, _tmp, w9
+    uxtw _xtmp, _tmp
+    setf_zsp w
+1:  gret
+
+// ============================================================
+// BSF/BSR (bit scan forward/reverse) gadgets
+// ============================================================
+
+// BSF - Bit Scan Forward (find lowest set bit)
+// If src is 0, ZF=1 and dst is undefined
+// Otherwise, ZF=0 and dst = index of lowest set bit
+.gadget bsf64
+    cbz _xtmp, 1f               // If zero, set ZF and skip
+    rbit x9, _xtmp              // Reverse bits
+    clz x9, x9                  // Count leading zeros = trailing zeros in original
+    mov _xtmp, x9               // Result = bit index
+    // ZF = 0 (source was non-zero)
+    mov w9, 1                   // Non-zero value for CPU_res
+    str x9, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret
+1:  // Source was zero - set ZF, leave destination unchanged
+    str xzr, [_cpu, CPU_res]    // Zero result for ZF=1
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret
+
+.gadget bsf32
+    uxtw _xtmp, _tmp            // Zero extend for safety
+    cbz _xtmp, 1f
+    rbit w9, _tmp               // Reverse 32 bits
+    clz w9, w9                  // Count leading zeros
+    uxtw _xtmp, w9              // Result = bit index, zero extended
+    mov w9, 1
+    str x9, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret
+1:  str xzr, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret
+
+// BSR - Bit Scan Reverse (find highest set bit)
+// If src is 0, ZF=1 and dst is undefined
+// Otherwise, ZF=0 and dst = index of highest set bit
+.gadget bsr64
+    cbz _xtmp, 1f
+    clz x9, _xtmp               // Count leading zeros
+    mov x10, 63
+    sub _xtmp, x10, x9          // Result = 63 - clz = bit index
+    mov w9, 1
+    str x9, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret
+1:  str xzr, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret
+
+.gadget bsr32
+    uxtw _xtmp, _tmp
+    cbz _xtmp, 1f
+    clz w9, _tmp
+    mov w10, 31
+    sub w9, w10, w9
+    uxtw _xtmp, w9
+    mov w9, 1
+    str x9, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret
+1:  str xzr, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret
+
+// ============================================================
 // Zero/Sign extend gadgets
 // ============================================================
 
@@ -2339,6 +2724,19 @@ NAME(imul32_r8_r15_gadgets):
     ldr x9, [_addr]            // Load high 64 bits
     ldr x8, [_cpu, LOCAL_value]     // Restore low
 
+    // Debug: trace the load with values
+    str x8, [_cpu, LOCAL_value]        // Save low again
+    str x9, [_cpu, LOCAL_value+8]      // Save high
+    save_c
+    ldr x0, [_cpu, LOCAL_value_addr]   // guest_addr
+    mov x1, x8                         // low
+    mov x2, x9                         // high
+    ldr x3, [_ip, 8]                   // xmm index
+    bl NAME(helper_debug_movaps_load_full)
+    restore_c
+    ldr x8, [_cpu, LOCAL_value]        // Restore low
+    ldr x9, [_cpu, LOCAL_value+8]      // Restore high
+
     // Store to XMM register
     ldr x10, [_ip, 8]          // XMM register index (after orig_ip)
     lsl x10, x10, 4            // Multiply by 16
@@ -2364,6 +2762,15 @@ NAME(imul32_r8_r15_gadgets):
     add x10, _cpu, x10         // x10 = &xmm[n]
     ldr x8, [x10]              // Load low 64 bits
     ldr x9, [x10, 8]           // Load high 64 bits
+
+    // Debug: trace the store with values
+    save_c
+    ldr x0, [_cpu, LOCAL_value_addr]   // guest_addr
+    mov x1, x8                         // low
+    mov x2, x9                         // high
+    ldr x3, [_ip, 8]                   // xmm index
+    bl NAME(helper_debug_movaps_store_full)
+    restore_c
 
     // Store to memory (16 bytes)
     str x8, [_cpu, LOCAL_value]     // Temporarily store low

@@ -559,25 +559,25 @@ void handle_interrupt(int interrupt) {
                     fprintf(stderr, "LSTAT[%d]: rdi(path)=0x%llx rip=0x%llx\n",
                             lstat_count, (unsigned long long)cpu->rdi,
                             (unsigned long long)cpu->rip);
-                    // Dump memory at 0x7f0000000000 region
-                    uint64_t mem[8];
-                    for (int i = 0; i < 8; i++) {
-                        user_read(0x7f0000000000 + i*8, &mem[i], 8);
+                    // Dump memory at path address - show first 32 bytes as string
+                    char pathbuf[64];
+                    if (user_read(cpu->rdi, pathbuf, 63) == 0) {
+                        pathbuf[63] = '\0';
+                        fprintf(stderr, "  path bytes: ");
+                        for (int i = 0; i < 16; i++) {
+                            fprintf(stderr, "%02x ", (unsigned char)pathbuf[i]);
+                        }
+                        fprintf(stderr, " = \"%s\"\n", pathbuf);
                     }
-                    fprintf(stderr, "  [0x7f0000000000..0x40]: %llx %llx %llx %llx %llx %llx %llx %llx\n",
-                            (unsigned long long)mem[0], (unsigned long long)mem[1],
-                            (unsigned long long)mem[2], (unsigned long long)mem[3],
-                            (unsigned long long)mem[4], (unsigned long long)mem[5],
-                            (unsigned long long)mem[6], (unsigned long long)mem[7]);
-                    // Dump around 0xa80
-                    for (int i = 0; i < 8; i++) {
-                        user_read(0x7f0000000a80 + i*8, &mem[i], 8);
+                    // Check name pointer at offset +10 (0x55555561c078)
+                    uint64_t name_ptr;
+                    if (user_read(0x55555561c078, &name_ptr, 8) == 0) {
+                        fprintf(stderr, "  name_ptr=0x%llx", (unsigned long long)name_ptr);
+                        if ((name_ptr >> 36) == 0x7f0) {
+                            fprintf(stderr, " (IN BSS - BUG!)");
+                        }
+                        fprintf(stderr, "\n");
                     }
-                    fprintf(stderr, "  [0x7f0000000a80..0xac0]: %llx %llx %llx %llx %llx %llx %llx %llx\n",
-                            (unsigned long long)mem[0], (unsigned long long)mem[1],
-                            (unsigned long long)mem[2], (unsigned long long)mem[3],
-                            (unsigned long long)mem[4], (unsigned long long)mem[5],
-                            (unsigned long long)mem[6], (unsigned long long)mem[7]);
                 }
             }
             int64_t result = syscall_table[syscall_num](cpu->rdi, cpu->rsi, cpu->rdx, cpu->r10, cpu->r8, cpu->r9);

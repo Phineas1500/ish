@@ -118,10 +118,12 @@ void helper_debug_sign_extend32(uint64_t before) {
     uint32_t word = before & 0xFFFFFFFF;
     int32_t signed_word = (int32_t)word;
     int64_t extended = (int64_t)signed_word;
-    // Only trace if it produces the suspicious value
-    if ((uint64_t)extended == 0xffffffffffffff80) {
-        fprintf(stderr, "SIGN_EXTEND32: before=0x%llx word=0x%08x -> will produce 0x%llx\n",
-                (unsigned long long)before, word, (unsigned long long)extended);
+    // Trace all for debugging printf issue
+    static int count = 0;
+    count++;
+    if (count <= 30) {
+        fprintf(stderr, "SIGN_EXTEND32[%d]: before=0x%llx word=0x%08x -> 0x%llx\n",
+                count, (unsigned long long)before, word, (unsigned long long)extended);
     }
 }
 
@@ -425,28 +427,173 @@ void helper_debug_store_r12(uint64_t new_value, uint64_t rbx_value, uint64_t r15
 
 // Debug: trace CALL arguments - called before CALL
 static int g_call_count = 0;
-void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret_addr) {
+void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret_addr,
+                       uint64_t rdx, uint64_t rcx) {
     g_call_count++;
     // Strip the fake_ip flag bit
     uint64_t real_target = target & 0x7FFFFFFFFFFFFFFF;
-    // Trace calls to strcmp (0x7efffffb71a9) that have --help address
-    // --help is at busybox+0xa334a = 0x5555555f734a
-    if (rsi == 0x5555555f734a || rdi == 0x5555555f734a) {
-        fprintf(stderr, "CALL_STRCMP_HELP[%d]: rdi=0x%llx rsi=0x%llx target=0x%llx ret_addr=0x%llx\n",
-                g_call_count, (unsigned long long)rdi, (unsigned long long)rsi,
-                (unsigned long long)real_target, (unsigned long long)ret_addr);
+
+    // Trace calls where rdi (buffer) is 0x7f0000000xxx (heap)
+    // This catches memcpy, strcpy, vsnprintf with heap destination
+    if ((rdi >> 36) == 0x7f0) {
+        static int heap_call_count = 0;
+        heap_call_count++;
+        if (heap_call_count <= 20) {
+            fprintf(stderr, "CALL_HEAP_DST[%d]: target=0x%llx rdi=0x%llx rsi=0x%llx ret=0x%llx\n",
+                    heap_call_count, (unsigned long long)real_target,
+                    (unsigned long long)rdi, (unsigned long long)rsi,
+                    (unsigned long long)ret_addr);
+        }
     }
-    // Always trace calls to bb_show_usage (0x55555555afad) to see who calls it
-    else if (real_target == 0x55555555afad) {
-        fprintf(stderr, "CALL_BB_SHOW_USAGE[%d]: ret=0x%llx rdi=0x%llx rsi=0x%llx\n",
-                g_call_count, (unsigned long long)ret_addr, (unsigned long long)rdi,
-                (unsigned long long)rsi);
+
+    // Trace calls to vsnprintf (musl offset 0x57390)
+    // Runtime address = 0x7efffff5e000 + 0x57390 = 0x7efffffb5390
+    // vsnprintf(char *buf, size_t n, const char *fmt, va_list ap)
+    //   rdi=buf, rsi=n, rdx=fmt, rcx=va_list_ptr (GUEST address)
+    if (real_target == 0x7efffffb5390) {
+        fprintf(stderr, "CALL_VSNPRINTF: buf=0x%llx size=%llu fmt=0x%llx va_list=0x%llx ret=0x%llx\n",
+                (unsigned long long)rdi, (unsigned long long)rsi,
+                (unsigned long long)rdx, (unsigned long long)rcx,
+                (unsigned long long)ret_addr);
+        // Read and display format string
+        extern int user_read(uint64_t addr, void *buf, size_t count);
+        char fmt_str[64];
+        if (user_read(rdx, fmt_str, 63) == 0) {
+            fmt_str[63] = '\0';
+            fprintf(stderr, "  vsnprintf format: \"%s\"\n", fmt_str);
+            // Also show as hex for debugging
+            fprintf(stderr, "  format hex: ");
+            for (int i = 0; i < 16 && fmt_str[i]; i++)
+                fprintf(stderr, "%02x ", (unsigned char)fmt_str[i]);
+            fprintf(stderr, "\n");
+        }
+        // Dump va_list contents using user_read
+        uint8_t va_list_buf[24];
+        if (user_read(rcx, va_list_buf, 24) == 0) {
+            // Show raw bytes first
+            fprintf(stderr, "  vsnprintf va_list raw: ");
+            for (int i = 0; i < 24; i++) fprintf(stderr, "%02x ", va_list_buf[i]);
+            fprintf(stderr, "\n");
+            uint32_t gp_offset = *(uint32_t *)&va_list_buf[0];
+            uint32_t fp_offset = *(uint32_t *)&va_list_buf[4];
+            uint64_t overflow_arg = *(uint64_t *)&va_list_buf[8];
+            uint64_t reg_save = *(uint64_t *)&va_list_buf[16];
+            fprintf(stderr, "  vsnprintf va_list: gp=%u fp=%u overflow=0x%llx regsave=0x%llx\n",
+                    gp_offset, fp_offset, (unsigned long long)overflow_arg,
+                    (unsigned long long)reg_save);
+            // With gp_offset=8, args are at regsave[8], regsave[16], regsave[24]
+            if (gp_offset == 8) {
+                uint64_t regs[4];
+                if (user_read(reg_save, regs, 32) == 0) {
+                    fprintf(stderr, "  vsnprintf regs: [0]=0x%llx [8]=0x%llx [16]=0x%llx [24]=0x%llx\n",
+                            (unsigned long long)regs[0], (unsigned long long)regs[1],
+                            (unsigned long long)regs[2], (unsigned long long)regs[3]);
+                    // Read strings at regs[1], regs[2], regs[3]
+                    char str1[32], str2[32], str3[32];
+                    str1[0] = str2[0] = str3[0] = '\0';
+                    user_read(regs[1], str1, 31); str1[31] = '\0';
+                    user_read(regs[2], str2, 31); str2[31] = '\0';
+                    user_read(regs[3], str3, 31); str3[31] = '\0';
+                    fprintf(stderr, "  vsnprintf args: \"%s\" \"%s\" \"%s\"\n", str1, str2, str3);
+                }
+            }
+        }
     }
-    // Trace all calls around the interesting range (1455-1520)
-    else if (g_call_count >= 1455 && g_call_count <= 1520) {
-        fprintf(stderr, "CALL[%d]: target=0x%llx ret=0x%llx rdi=0x%llx rsi=0x%llx\n",
-                g_call_count, (unsigned long long)real_target, (unsigned long long)ret_addr,
-                (unsigned long long)rdi, (unsigned long long)rsi);
+
+    // Trace calls to vasprintf (musl offset 0x529ae)
+    // Runtime address = 0x7efffff5e000 + 0x529ae = 0x7efffffb09ae
+    if (real_target == 0x7efffffb09ae) {
+        fprintf(stderr, "CALL_VASPRINTF: rdi(outptr)=0x%llx rsi(fmt)=0x%llx rdx(va_list)=0x%llx ret=0x%llx\n",
+                (unsigned long long)rdi, (unsigned long long)rsi, (unsigned long long)rdx,
+                (unsigned long long)ret_addr);
+        // Dump va_list and reg_save_area using user_read
+        uint8_t va_list_buf[24];
+        extern int user_read(uint64_t addr, void *buf, size_t count);
+        if (user_read(rdx, va_list_buf, 24) == 0) {
+            uint32_t gp_offset = *(uint32_t *)&va_list_buf[0];
+            uint32_t fp_offset = *(uint32_t *)&va_list_buf[4];
+            uint64_t overflow_arg = *(uint64_t *)&va_list_buf[8];
+            uint64_t reg_save = *(uint64_t *)&va_list_buf[16];
+            fprintf(stderr, "  va_list: gp=%u fp=%u overflow=0x%llx regsave=0x%llx\n",
+                    gp_offset, fp_offset, (unsigned long long)overflow_arg,
+                    (unsigned long long)reg_save);
+            // With gp_offset=8, args are at regsave[8], regsave[16], regsave[24]
+            if (gp_offset == 8) {
+                uint64_t regs[4];
+                if (user_read(reg_save, regs, 32) == 0) {
+                    fprintf(stderr, "  regs: [0]=0x%llx [8]=0x%llx [16]=0x%llx [24]=0x%llx\n",
+                            (unsigned long long)regs[0], (unsigned long long)regs[1],
+                            (unsigned long long)regs[2], (unsigned long long)regs[3]);
+                    // Read strings at regs[1], regs[2], regs[3]
+                    char str1[32], str2[32], str3[32];
+                    str1[0] = str2[0] = str3[0] = '\0';
+                    user_read(regs[1], str1, 31); str1[31] = '\0';
+                    user_read(regs[2], str2, 31); str2[31] = '\0';
+                    user_read(regs[3], str3, 31); str3[31] = '\0';
+                    fprintf(stderr, "  args: \"%s\" \"%s\" \"%s\"\n", str1, str2, str3);
+                }
+            }
+        }
+    }
+
+    // Trace calls to malloc (musl offset 0x14010)
+    // Runtime address = 0x7efffff5e000 + 0x14010 = 0x7efffff72010
+    if (real_target == 0x7efffff72010) {
+        fprintf(stderr, "CALL_MALLOC: rdi(size)=%llu ret=0x%llx\n",
+                (unsigned long long)rdi, (unsigned long long)ret_addr);
+    }
+
+    // Trace calls to sn_write (musl offset 0x572f0)
+    // Runtime address = 0x7efffff5e000 + 0x572f0 = 0x7efffffb52f0
+    // sn_write(FILE *f, const unsigned char *s, size_t l)
+    //   rdi=FILE, rsi=source buffer, rdx=length to write
+    if (real_target == 0x7efffffb52f0) {
+        static int sn_write_count = 0;
+        sn_write_count++;
+        fprintf(stderr, "CALL_SN_WRITE[%d]: file=0x%llx src=0x%llx len=%llu ret=0x%llx\n",
+                sn_write_count,
+                (unsigned long long)rdi, (unsigned long long)rsi,
+                (unsigned long long)rdx, (unsigned long long)ret_addr);
+        // Read a few bytes from source to see what's being written
+        extern int user_read(uint64_t addr, void *buf, size_t count);
+        char sample[17];
+        sample[0] = '\0';
+        if (rdx > 0 && user_read(rsi, sample, rdx < 16 ? rdx : 16) == 0) {
+            sample[rdx < 16 ? rdx : 16] = '\0';
+            fprintf(stderr, "  sn_write data: \"%s\"\n", sample);
+        }
+    }
+
+    // Trace calls to out() function (musl offset 0x50c9b)
+    // Runtime address = 0x7efffff5e000 + 0x50c9b = 0x7efffffaec9b
+    // out(const char *s, size_t l, FILE *f) - note: different argument order!
+    if (real_target == 0x7efffffaec9b) {
+        static int out_count = 0;
+        out_count++;
+        fprintf(stderr, "CALL_OUT[%d]: src=0x%llx len=%llu file=0x%llx ret=0x%llx\n",
+                out_count,
+                (unsigned long long)rdi, (unsigned long long)rsi,
+                (unsigned long long)rdx, (unsigned long long)ret_addr);
+        // Read a few bytes from source to see what's being output
+        extern int user_read(uint64_t addr, void *buf, size_t count);
+        char sample[33];
+        sample[0] = '\0';
+        if (rsi > 0 && rsi < 1000 && user_read(rdi, sample, rsi < 32 ? rsi : 32) == 0) {
+            sample[rsi < 32 ? rsi : 32] = '\0';
+            fprintf(stderr, "  out data: \"%s\"\n", sample);
+        }
+    }
+
+    // Trace calls to printf_core (musl offset 0x53c36)
+    // Runtime: 0x7efffff5e000 + 0x53c36 = 0x7efffffb1c36
+    // printf_core(FILE *f, const char *fmt, va_list *ap, union arg *nl_arg, int *nl_type)
+    if (real_target == 0x7efffffb1c36) {
+        static int pc_count = 0;
+        pc_count++;
+        fprintf(stderr, "CALL_PRINTF_CORE[%d]: FILE=0x%llx fmt=0x%llx va=0x%llx nl_arg=0x%llx\n",
+                pc_count,
+                (unsigned long long)rdi, (unsigned long long)rsi,
+                (unsigned long long)rdx, (unsigned long long)rcx);
     }
 }
 
@@ -454,15 +601,32 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
 static int g_ret_count = 0;
 void helper_debug_ret(uint64_t rax, uint64_t ret_to) {
     g_ret_count++;
-    // Check for key addresses
-    if (ret_to == 0x55555555b11a || ret_to == 0x55555555b46d) {
+
+    // Trace returns FROM vsnprintf (ret_to is inside vasprintf)
+    // vasprintf calls vsnprintf at 0x529df and 0x52a09 (offsets relative to musl base)
+    // Runtime: 0x7efffff5e000 + 0x529df = 0x7efffffb09df
+    //          0x7efffff5e000 + 0x52a09 = 0x7efffffb0a09
+    if (ret_to == 0x7efffffb09e4 || ret_to == 0x7efffffb0a0e) {
+        fprintf(stderr, "RET_VSNPRINTF: rax=%lld (length) ret_to=0x%llx\n",
+                (long long)rax, (unsigned long long)ret_to);
+    }
+
+    // Trace returns FROM printf_core
+    // First call (measuring): returns to 0x7efffff5e000 + 0x54978 = 0x7efffffb2978
+    // Second call (actual): returns to 0x7efffff5e000 + 0x54a0b = 0x7efffffb2a0b
+    if (ret_to == 0x7efffffb2978) {
+        fprintf(stderr, "RET_PRINTF_CORE_1ST: rax=%lld (measuring pass) ret_to=0x%llx\n",
+                (long long)rax, (unsigned long long)ret_to);
+    }
+    if (ret_to == 0x7efffffb2a0b) {
+        fprintf(stderr, "RET_PRINTF_CORE_2ND: rax=%lld (actual output) ret_to=0x%llx\n",
+                (long long)rax, (unsigned long long)ret_to);
+    }
+
+    // Check for key addresses (old traces)
+    else if (ret_to == 0x55555555b11a || ret_to == 0x55555555b46d) {
         fprintf(stderr, "RET_STRCMP_KEY[%d]: rax=%lld (0x%llx) ret_to=0x%llx - should be non-zero for \"/\" vs \"--help\"\n",
                 g_ret_count, (long long)(int)rax, (unsigned long long)rax, (unsigned long long)ret_to);
-    }
-    // Trace all returns in interesting range (expanded to see bb_show_usage path)
-    else if (g_ret_count >= 1450 && g_ret_count <= 1530) {
-        fprintf(stderr, "RET[%d]: rax=%lld ret_to=0x%llx\n",
-                g_ret_count, (long long)(int)rax, (unsigned long long)ret_to);
     }
 }
 
@@ -533,6 +697,24 @@ void helper_debug_cmovge(uint64_t xtmp_src, uint64_t x8_dst, uint64_t cpu_res, u
     int load8 = helper_get_load8_count();
     // Disabled - too verbose
     (void)count; (void)load8; (void)xtmp_src; (void)x8_dst; (void)cpu_res; (void)of;
+}
+
+// Debug: CMOVL (cmov_sxo) - trace before cmov decision in printf_core range
+// src = r8 (string length), dst = r11 (original value from r13)
+// res = result of CMP r13, r8 = r13 - r8
+// L condition: SF != OF (r13 < r8 signed)
+void helper_debug_cmovl(uint64_t xtmp_src, uint64_t x8_dst, uint64_t cpu_res, uint64_t of) {
+    static int count = 0;
+    count++;
+    // Calculate SF from res
+    int sf = ((int64_t)cpu_res < 0) ? 1 : 0;
+    int l_cond = (sf != of);  // L condition: SF != OF
+
+    // Always print - we need to see this
+    fprintf(stderr, "CMOVL[%d]: src(r8)=%lld dst(r11)=%lld res=%lld SF=%d OF=%llu L=%d -> %s\n",
+            count, (long long)(int32_t)xtmp_src, (long long)(int32_t)x8_dst,
+            (long long)(int32_t)cpu_res, sf, (unsigned long long)of, l_cond,
+            l_cond ? "MOVE(keep src)" : "SKIP(keep dst)");
 }
 
 // Debug: r9 corruption detection
@@ -919,7 +1101,12 @@ void helper_debug_byte_load_full(uint64_t value, uint64_t host_addr, uint64_t gu
 // Debug: trace CMP32 x8 - called to trace comparisons
 // At getopt32: mem_value = stack[-0x568], reg_value = r12d
 void helper_debug_cmp32_x8(uint32_t mem_value, uint32_t reg_value) {
-    (void)mem_value; (void)reg_value;
+    static int count = 0;
+    count++;
+    // Always print for now to debug the issue
+    fprintf(stderr, "CMP32_X8[%d]: _tmp=%d (0x%x) w8=%d (0x%x) result=%d\n",
+            count, (int32_t)mem_value, mem_value, (int32_t)reg_value, reg_value,
+            (int32_t)(mem_value - reg_value));
 }
 
 void helper_debug_cmp32_reg_entry(uint64_t reg_index, uint32_t tmp_value) {
@@ -930,9 +1117,19 @@ void helper_debug_cmp32_ebp(uint32_t tmp_value, uint32_t ebp_value) {
     (void)tmp_value; (void)ebp_value;
 }
 
-// Debug: trace store to r12
+// Debug: trace store to r12 - normal (not 0x7f...)
 void helper_debug_store64_r12(uint64_t value) {
-    (void)value;
+    (void)value;  // Only trace 0x7f... values via helper_debug_store64_r12_with_rip
+}
+
+// Debug: trace store to r12 - with RIP for 0x7f... values
+void helper_debug_store64_r12_with_rip(uint64_t value, uint64_t rip) {
+    static int count = 0;
+    count++;
+    if (count <= 10) {
+        fprintf(stderr, "R12_7F[%d]: storing 0x%llx to r12 at rip=0x%llx\n",
+                count, (unsigned long long)value, (unsigned long long)rip);
+    }
 }
 
 // External for correlation
@@ -970,6 +1167,17 @@ static int g_store_r14_count = 0;
 static int g_r14_trace_enabled = 1;
 void helper_debug_store64_r14(uint64_t value, uint64_t guest_rip) {
     g_store_r14_count++;
+
+    // Trace r14 stores in printf_core range (musl 0x53c36-0x54914)
+    // Runtime: 0x7efffff5e000 + 0x53c36 = 0x7efffffb1c36 to 0x7efffffb2914
+    // r14 is the length counter in printf_core
+    if (guest_rip >= 0x7efffffb1c36 && guest_rip <= 0x7efffffb2914) {
+        uint64_t offset = guest_rip - 0x7efffff5e000;
+        fprintf(stderr, "STORE_R14_PRINTF[%d]: value=%lld (0x%llx) @ rip=0x%llx (musl+0x%llx)\n",
+                g_store_r14_count, (long long)value, (unsigned long long)value,
+                (unsigned long long)guest_rip, (unsigned long long)offset);
+    }
+
     // Trace r14 stores in getopt32 range - r14 holds option string pointer
     // busybox base = 0x555555554000, getopt32 range is ~0x92e00-0x93500
     if (guest_rip >= 0x5555555e6000 && guest_rip <= 0x5555555e8000) {
@@ -984,6 +1192,35 @@ void helper_debug_store64_r14(uint64_t value, uint64_t guest_rip) {
                         (unsigned long long)guest_rip, (unsigned long long)offset);
             }
         }
+    }
+}
+
+// Debug: trace add32_x8 gadget values (for ADD r8-r15, r8-r15)
+static int g_add32_x8_count = 0;
+void helper_debug_add32_x8(uint64_t src, uint64_t dst, uint64_t guest_rip) {
+    g_add32_x8_count++;
+    // Only trace in printf_core range (musl 0x53c36-0x54914)
+    // Runtime: 0x7efffffb1c36 to 0x7efffffb2914
+    if (guest_rip >= 0x7efffffb1c36 && guest_rip <= 0x7efffffb2914) {
+        uint64_t result = (src + dst) & 0xFFFFFFFF;
+        fprintf(stderr, "ADD32_X8[%d]: src=%lld dst=%lld result=%lld @ rip=0x%llx (musl+0x%llx)\n",
+                g_add32_x8_count, (long long)(int32_t)src, (long long)(int32_t)dst,
+                (long long)(int32_t)result, (unsigned long long)guest_rip,
+                (unsigned long long)(guest_rip - 0x7efffff5e000));
+    }
+}
+
+// Debug: trace stores to r11 in printf_core range
+static int g_store_r11_count = 0;
+void helper_debug_store64_r11(uint64_t value, uint64_t guest_rip) {
+    g_store_r11_count++;
+    // Trace r11 stores in printf_core range (musl 0x53c36-0x54914)
+    // Runtime: 0x7efffffb1c36 to 0x7efffffb2914
+    if (guest_rip >= 0x7efffffb1c36 && guest_rip <= 0x7efffffb2914) {
+        uint64_t offset = guest_rip - 0x7efffff5e000;
+        fprintf(stderr, "STORE_R11_PRINTF[%d]: value=%lld (0x%llx) @ rip=0x%llx (musl+0x%llx)\n",
+                g_store_r11_count, (long long)(int32_t)value, (unsigned long long)value,
+                (unsigned long long)guest_rip, (unsigned long long)offset);
     }
 }
 
@@ -1426,14 +1663,131 @@ void helper_trace_rdi_7f(uint64_t value, uint64_t guest_rip) {
     }
 }
 
+// Forward declaration
+struct cpu_state;
+
 // Debug: trace stores of 0x7f... values (path corruption source)
-void helper_debug_store64_7f_value(uint64_t value, uint64_t guest_addr) {
+void helper_debug_store64_7f_value(uint64_t value, uint64_t guest_addr, uint64_t rip, struct cpu_state *cpu) {
     static int count = 0;
     count++;
-    if (count <= 30) {
-        fprintf(stderr, "STORE64_7F[%d]: storing 0x%llx to guest 0x%llx\n",
-                count, (unsigned long long)value, (unsigned long long)guest_addr);
+    // Only show first few and key entries
+    if (count <= 6) {
+        fprintf(stderr, "STORE64_7F[%d]: storing 0x%llx to guest 0x%llx at rip=0x%llx\n",
+                count, (unsigned long long)value, (unsigned long long)guest_addr, (unsigned long long)rip);
+        fprintf(stderr, "  regs: rax=0x%llx r8=0x%llx r12=0x%llx rdi=0x%llx\n",
+                (unsigned long long)cpu->rax, (unsigned long long)cpu->r8,
+                (unsigned long long)cpu->r12, (unsigned long long)cpu->rdi);
     }
+}
+
+// Debug: trace byte stores to 0x7f0000000xxx addresses (malloc'd heap)
+void helper_debug_store8_7f(uint8_t value, uint64_t guest_addr) {
+    static int count = 0;
+    count++;
+    if (count <= 50) {
+        fprintf(stderr, "STORE8_7F[%d]: byte 0x%02x ('%c') to 0x%llx\n",
+                count, value, (value >= 32 && value < 127) ? value : '.',
+                (unsigned long long)guest_addr);
+    }
+}
+
+// Debug: trace REP MOVSB when destination is 0x7f... (strdup/memcpy to heap)
+void helper_debug_rep_movsb_7f(uint64_t src, uint64_t dst, uint64_t count) {
+    static int rep_count = 0;
+    rep_count++;
+    if (rep_count <= 20) {
+        fprintf(stderr, "REP_MOVSB_7F[%d]: src=0x%llx dst=0x%llx count=%llu\n",
+                rep_count, (unsigned long long)src, (unsigned long long)dst, (unsigned long long)count);
+    }
+}
+
+// Debug: trace REP MOVSQ when destination is 0x7f...
+void helper_debug_rep_movsq_7f(uint64_t src, uint64_t dst, uint64_t count) {
+    static int rep_count = 0;
+    rep_count++;
+    if (rep_count <= 20) {
+        fprintf(stderr, "REP_MOVSQ_7F[%d]: src=0x%llx dst=0x%llx count=%llu\n",
+                rep_count, (unsigned long long)src, (unsigned long long)dst, (unsigned long long)count);
+    }
+}
+
+// Debug: trace ALL REP MOVSQ calls with RIP
+void helper_debug_rep_movsq_all(uint64_t src, uint64_t dst, uint64_t count) {
+    static int rep_count = 0;
+    rep_count++;
+    // Check if this looks like a string copy to heap (dst = 0x7f...)
+    if ((dst >> 36) == 0x7f0 && count > 0) {
+        fprintf(stderr, "REP_MOVSQ_7F[%d]: src=0x%llx dst=0x%llx count=%llu\n",
+                rep_count, (unsigned long long)src, (unsigned long long)dst, (unsigned long long)count);
+    } else if (rep_count <= 30) {
+        fprintf(stderr, "REP_MOVSQ[%d]: src=0x%llx dst=0x%llx count=%llu\n",
+                rep_count, (unsigned long long)src, (unsigned long long)dst, (unsigned long long)count);
+    }
+}
+
+// Debug: trace store64 TO 0x7f... addresses (writing to heap) with RIP
+void helper_debug_store64_to_7f_rip(uint64_t value, uint64_t guest_addr, uint64_t rip) {
+    static int count = 0;
+    count++;
+    // Special case: trace when storing the 0x7f0000000a80 address (the problem)
+    if (value == 0x7f0000000a80 && count <= 5) {
+        fprintf(stderr, "STORE64_A80[%d]: storing 0x7f0000000a80 to 0x%llx @ rip=0x%llx\n",
+                count, (unsigned long long)guest_addr, (unsigned long long)rip);
+    } else if (count <= 40) {
+        fprintf(stderr, "STORE64_TO_7F[%d]: val=0x%llx to 0x%llx @ rip=0x%llx\n",
+                count, (unsigned long long)value, (unsigned long long)guest_addr, (unsigned long long)rip);
+    }
+}
+
+// Debug: trace single_movsb byte copies (for string copy understanding)
+void helper_debug_single_movsb(uint8_t byte, uint64_t src, uint64_t dst) {
+    static int count = 0;
+    static int dst_7f_count = 0;
+    count++;
+    // Show first 100 copies, focusing on interesting ranges
+    if (count <= 100) {
+        // Only show if dst is 0x7f... or src is getdents buffer (0x7efffff4a...)
+        if ((dst >> 36) == 0x7f0 || ((src >> 12) == 0x7efffff4a)) {
+            fprintf(stderr, "MOVSB[%d]: '%c' (0x%02x) from 0x%llx to 0x%llx\n",
+                    count, (byte >= 32 && byte < 127) ? byte : '.',
+                    byte, (unsigned long long)src, (unsigned long long)dst);
+        }
+    }
+    // Count any copies to 0x7f... destination
+    if ((dst >> 36) == 0x7f0) {
+        dst_7f_count++;
+        fprintf(stderr, "MOVSB_TO_7F[%d]: '%c' (0x%02x) from 0x%llx to 0x%llx\n",
+                dst_7f_count, (byte >= 32 && byte < 127) ? byte : '.',
+                byte, (unsigned long long)src, (unsigned long long)dst);
+    }
+}
+
+// Debug: trace ALL loads that return 0x7f000000.... values (BSS base)
+void helper_debug_load64_7f_base(uint64_t value, uint64_t guest_addr, uint64_t rip) {
+    // Trace any load that returns a value in the 0x7f0000000 range
+    if ((value >> 28) == 0x7f0000000) {
+        static int count = 0;
+        count++;
+        if (count <= 20) {
+            fprintf(stderr, "LOAD_7F[%d]: loaded 0x%llx from 0x%llx at rip=0x%llx\n",
+                    count, (unsigned long long)value, (unsigned long long)guest_addr, (unsigned long long)rip);
+        }
+    }
+}
+
+// Debug: trace loads from reg_save_area (va_arg reads during vsnprintf)
+// This helps understand what vsnprintf sees when reading varargs
+void helper_debug_load64_reg_save_area(uint64_t value, uint64_t guest_addr) {
+    static int count = 0;
+    count++;
+    // Calculate which register slot this is
+    // reg_save_area is at 0x7efffff5bbf0, each slot is 8 bytes
+    int slot = (guest_addr - 0x7efffff5bbf0) / 8;
+    // Slot 0 = RDI, 1 = RSI, 2 = RDX, 3 = RCX, 4 = R8, 5 = R9
+    const char *reg_names[] = {"RDI", "RSI", "RDX", "RCX", "R8", "R9"};
+    const char *reg = (slot >= 0 && slot < 6) ? reg_names[slot] : "???";
+    fprintf(stderr, "VA_ARG_READ[%d]: slot %d (%s) @ 0x%llx = 0x%llx\n",
+            count, slot, reg, (unsigned long long)guest_addr, (unsigned long long)value);
 }
 
 // Debug: trace loads from 0x7efffff5b930 (strlen result stored here)
@@ -1859,4 +2213,78 @@ void helper_debug_jne_strcmp(uint64_t ip, uint64_t zf_value) {
         fprintf(stderr, "STRCMP_JNE: ip=0x%llx ZF=%llu (should jump if ZF=0)\n",
                 (unsigned long long)ip, (unsigned long long)zf_value);
     }
+}
+
+// Debug: trace MOVDQU/MOVUPS load (128-bit load from memory to XMM)
+// This is crucial for va_list copying in vasprintf
+void helper_debug_movdqu_load(uint64_t low, uint64_t high, uint64_t guest_addr) {
+    static int count = 0;
+    count++;
+    if (count <= 30) {
+        // Parse va_list structure: gp_offset(4) + fp_offset(4) + overflow_arg_area(8)
+        uint32_t gp_offset = (uint32_t)(low & 0xFFFFFFFF);
+        uint32_t fp_offset = (uint32_t)((low >> 32) & 0xFFFFFFFF);
+        fprintf(stderr, "MOVDQU_LOAD[%d]: addr=0x%llx low=0x%llx high=0x%llx\n",
+                count, (unsigned long long)guest_addr,
+                (unsigned long long)low, (unsigned long long)high);
+        fprintf(stderr, "  -> gp_offset=%u fp_offset=%u overflow_area=0x%llx\n",
+                gp_offset, fp_offset, (unsigned long long)high);
+    }
+}
+
+// Debug: trace entry to movaps_load gadget
+void helper_debug_movaps_load_entry(uint64_t guest_addr) {
+    static int count = 0;
+    count++;
+    if (count <= 30) {
+        fprintf(stderr, "MOVAPS_LOAD_ENTRY[%d]: guest_addr=0x%llx\n",
+                count, (unsigned long long)guest_addr);
+    }
+}
+
+// Debug: trace complete movaps_load - values and destination
+void helper_debug_movaps_load_full(uint64_t guest_addr, uint64_t low, uint64_t high, uint64_t xmm_idx) {
+    static int count = 0;
+    count++;
+    // Always trace for debugging
+    // va_list format: low contains gp_offset(4) + fp_offset(4), high is overflow_arg_area
+    uint32_t gp_offset = low & 0xFFFFFFFF;
+    uint32_t fp_offset = (low >> 32) & 0xFFFFFFFF;
+    fprintf(stderr, "MOVAPS_LOAD[%d]: from=0x%llx low=0x%llx high=0x%llx -> xmm%llu\n",
+            count, (unsigned long long)guest_addr,
+            (unsigned long long)low, (unsigned long long)high,
+            (unsigned long long)xmm_idx);
+    fprintf(stderr, "  (va_list? gp_off=%u fp_off=%u overflow_arg=0x%llx)\n",
+            gp_offset, fp_offset, (unsigned long long)high);
+}
+
+// Debug: trace movaps_store - what's being written
+void helper_debug_movaps_store_full(uint64_t guest_addr, uint64_t low, uint64_t high, uint64_t xmm_idx) {
+    static int count = 0;
+    count++;
+    if (count <= 50) {
+        uint32_t gp_offset = low & 0xFFFFFFFF;
+        uint32_t fp_offset = (low >> 32) & 0xFFFFFFFF;
+        fprintf(stderr, "MOVAPS_STORE[%d]: xmm%llu -> 0x%llx low=0x%llx high=0x%llx\n",
+                count, (unsigned long long)xmm_idx,
+                (unsigned long long)guest_addr,
+                (unsigned long long)low, (unsigned long long)high);
+        fprintf(stderr, "  (va_list? gp_off=%u fp_off=%u overflow_arg=0x%llx)\n",
+                gp_offset, fp_offset, (unsigned long long)high);
+    }
+}
+
+// Debug: trace stores to xasprintf's va_list area (around 0x7efffff5bbd0-0x7efffff5bbe8)
+// This should catch va_start setup
+// Returns possibly-fixed value
+uint32_t helper_debug_va_list_store32(uint32_t value, uint64_t guest_addr) {
+    // Just pass through - xasprintf's gp_offset=8 is correct (1 named param)
+    (void)guest_addr;
+    return value;
+}
+
+void helper_debug_va_list_store64(uint64_t value, uint64_t guest_addr) {
+    // Disabled for now
+    (void)value;
+    (void)guest_addr;
 }

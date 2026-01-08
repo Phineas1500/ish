@@ -31,6 +31,8 @@
     mov x1, rdi                 // rdi argument
     mov x2, rsi                 // rsi argument
     mov x3, x8                  // return address
+    mov x4, rdx                 // rdx (format string for vsnprintf)
+    mov x5, rcx                 // rcx (va_list for vsnprintf)
     bl NAME(helper_debug_call)
     restore_c
     ldr x8, [_ip, 16]           // Reload x8 (clobbered by call)
@@ -65,6 +67,8 @@
     mov x1, rdi                 // rdi argument
     mov x2, rsi                 // rsi argument
     mov x3, x8                  // return address
+    mov x4, rdx                 // rdx (format string for vsnprintf)
+    mov x5, rcx                 // rcx (va_list for vsnprintf)
     bl NAME(helper_debug_call)
     restore_c
     ldr x8, [_ip, 16]           // Reload x8 (clobbered by call)
@@ -430,6 +434,36 @@
 1:  // L condition true, keep destination
     mov _xtmp, x8
 2:  gret
+
+// Debug wrapper for cmov_sxo (CMOVL) - trace before cmov decision
+// CMOVL: if L (SF != OF), keep source (_xtmp)
+// Used in printf_core for min(r13, r8) calculation
+.gadget debug_cmov_sxo
+    // Save values before save_c clobbers them
+    stp _xtmp, x8, [sp, -0x70]!         // sp -= 0x70, [sp] = _xtmp (src=r8), [sp+8] = x8 (dst=r11)
+    save_c                               // sp -= 0x60 more
+    // Load CPU values BEFORE clobbering x1 (which is _cpu!)
+    ldr x2, [_cpu, CPU_res]             // arg2 = cpu_res (load FIRST while _cpu valid)
+    ldrb w3, [_cpu, CPU_of]             // arg3 = OF flag (load FIRST while _cpu valid)
+    // Now load args that clobber _cpu (x1)
+    ldr x0, [sp, 0x60]                  // arg0 = source (_xtmp = r8)
+    ldr x1, [sp, 0x68]                  // arg1 = destination (x8 = r11) - safe to clobber x1 now
+    bl NAME(helper_debug_cmovl)
+    restore_c                            // sp += 0x60
+    ldp _xtmp, x8, [sp], 0x70           // restore and sp += 0x70
+    // Now do the actual cmov_sxo logic (L = SF XOR OF)
+    // If L (SF != OF), keep source (_xtmp)
+    // If NOT L (SF == OF), keep destination (x8)
+    ldr x9, [_cpu, CPU_res]
+    cmp x9, 0
+    cset w9, lt                          // SF = (res < 0)
+    ldrb w10, [_cpu, CPU_of]
+    cmp w9, w10
+    b.ne 1f                              // SF != OF (L condition true), keep src
+    // L condition false, keep destination (x8)
+    mov _xtmp, x8
+1:  // L condition true, keep source (_xtmp) - no action needed
+    gret
 
 // ============================================================
 // Flags operations

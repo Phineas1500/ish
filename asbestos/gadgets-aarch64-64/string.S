@@ -89,6 +89,13 @@
 // IMPORTANT: x11 is clobbered by read_prep/write_prep, must reload in loop!
 // ============================================================
 .gadget rep_movsq
+    // Trace ALL calls (first 30) to understand memcpy patterns
+    save_c
+    mov x0, rsi          // src
+    mov x1, rdi          // dst
+    mov x2, rcx          // count
+    bl NAME(helper_debug_rep_movsq_all)
+    restore_c
     cbz rcx, .Lrep_movsq_done
 .Lrep_movsq_loop:
     mov _addr, rsi
@@ -151,6 +158,18 @@
 // Note: First argument at [_ip] is orig_ip for segfault handler
 // IMPORTANT: x11 is clobbered by read_prep/write_prep, must reload in loop!
 .gadget rep_movsb
+    // Trace: check if dst (RDI) is in 0x7f0000000xxx range
+    lsr x9, rdi, 36
+    mov x10, 0x7f0
+    cmp x9, x10
+    b.ne 1f
+    save_c
+    mov x0, rsi          // src
+    mov x1, rdi          // dst
+    mov x2, rcx          // count
+    bl NAME(helper_debug_rep_movsb_7f)
+    restore_c
+1:
     cbz rcx, .Lrep_movsb_done
 .Lrep_movsb_loop:
     mov _addr, rsi
@@ -180,9 +199,18 @@
 // Single MOVSB - Move exactly one byte from [RSI] to [RDI], then update RSI/RDI
 // Used when MOVSB appears without REP prefix
 .gadget single_movsb
+    // Trace when dst (RDI) is in 0x7f range OR src (RSI) is getdents buffer
+    str rsi, [_cpu, LOCAL_value_addr]   // save src before read_prep
     mov _addr, rsi
     read_prep 8, single_movsb_r
     ldrb _tmp, [_addr]
+    // Trace the byte copy
+    save_c
+    uxtb x0, _tmp           // byte value
+    ldr x1, [_cpu, LOCAL_value_addr]  // src
+    mov x2, rdi             // dst
+    bl NAME(helper_debug_single_movsb)
+    restore_c
     mov _addr, rdi
     write_prep 8, single_movsb_w
     strb _tmp, [_addr]
