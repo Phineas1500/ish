@@ -3,6 +3,9 @@
 #include <execinfo.h>
 #include "emu/cpu.h"
 #include "emu/cpuid.h"
+#include "kernel/task.h"
+#include "kernel/calls.h"
+#include "kernel/memory.h"
 
 // Debug output guard: define DEBUG_64BIT_VERBOSE=1 to enable verbose debug output
 // By default, debug output is disabled for performance
@@ -222,6 +225,48 @@ void helper_debug_null_call_indir(uint64_t target, uint64_t rsp) {
     DEBUG_FPRINTF(stderr, "DEBUG_NULL_JUMP[call_indir]: target=0x%llx RSP=0x%llx\n",
             (unsigned long long)target, (unsigned long long)rsp);
 }
+static int call_indir_entry_count = 0;
+void helper_debug_call_indir_entry(uint64_t target, uint64_t rsp) {
+    extern int fiber_exit_count;
+    call_indir_entry_count++;
+    // Trace during problem time (fiber_exit >= 37020)
+    if (fiber_exit_count >= 37020) {
+        fprintf(stderr, "CALL_INDIR_ENTRY[%d]: target=0x%llx rsp=0x%llx fiber_exit=%d\n",
+                call_indir_entry_count, (unsigned long long)target,
+                (unsigned long long)rsp, fiber_exit_count);
+    }
+}
+
+static int crosspage_store_count = 0;
+void helper_debug_crosspage_store(uint64_t guest_addr, uint64_t size) {
+    extern int fiber_exit_count;
+    crosspage_store_count++;
+    if (crosspage_store_count <= 50 || fiber_exit_count >= 37020) {
+        fprintf(stderr, "CROSSPAGE_STORE[%d]: addr=0x%llx size=%llu fiber_exit=%d\n",
+                crosspage_store_count, (unsigned long long)guest_addr,
+                (unsigned long long)size, fiber_exit_count);
+    }
+}
+
+static int call_indir_after_restore_count = 0;
+void helper_debug_call_indir_after_restore(uint64_t target) {
+    extern int fiber_exit_count;
+    call_indir_after_restore_count++;
+    if (fiber_exit_count >= 37020) {
+        fprintf(stderr, "CALL_INDIR_AFTER_RESTORE[%d]: target=0x%llx fiber_exit=%d\n",
+                call_indir_after_restore_count, (unsigned long long)target, fiber_exit_count);
+    }
+}
+
+static int call_indir_exit_count = 0;
+void helper_debug_call_indir_exit(uint64_t target) {
+    extern int fiber_exit_count;
+    call_indir_exit_count++;
+    if (fiber_exit_count >= 37020) {
+        fprintf(stderr, "CALL_INDIR_EXIT[%d]: target=0x%llx fiber_exit=%d\n",
+                call_indir_exit_count, (unsigned long long)target, fiber_exit_count);
+    }
+}
 void helper_debug_null_ret(uint64_t target, uint64_t rsp) {
     DEBUG_FPRINTF(stderr, "DEBUG_NULL_JUMP[ret]: target=0x%llx RSP=0x%llx\n",
             (unsigned long long)target, (unsigned long long)rsp);
@@ -229,11 +274,17 @@ void helper_debug_null_ret(uint64_t target, uint64_t rsp) {
 static uint64_t last_good_rip = 0;
 static uint64_t rip_history[16];
 static int rip_history_idx = 0;
+int fiber_exit_count = 0;  // Not static - referenced from other functions
 void helper_debug_trace_rip(uint64_t rip) {
+    fiber_exit_count++;
     rip_history[rip_history_idx % 16] = rip;
     rip_history_idx++;
     if (rip != 0) {
         last_good_rip = rip;
+    }
+    // Trace fiber exits after call 1476 (fiber_exit=37024)
+    if (fiber_exit_count >= 37020) {
+        fprintf(stderr, "FIBER_EXIT[%d]: rip=0x%llx\n", fiber_exit_count, (unsigned long long)rip);
     }
 }
 void helper_debug_print_rip_history(void) {
@@ -288,12 +339,15 @@ void helper_debug_segfault(uint64_t ip_ptr, uint64_t ip_contents, uint64_t segfa
 }
 
 // Debug: TLB miss - show state when TLB miss occurs
+static int tlb_miss_count = 0;
 void helper_debug_tlb_miss(uint64_t ip_ptr, uint64_t ip_contents, uint64_t access_addr) {
-    // Trace ALL TLB misses for crash page
-    if ((access_addr >> 12) == 0x55555561c) {
-        DEBUG_FPRINTF(stderr, "TLB_MISS_ASM: addr=0x%llx ip_ptr=0x%llx ip_contents=0x%llx\n",
-                (unsigned long long)access_addr, (unsigned long long)ip_ptr,
-                (unsigned long long)ip_contents);
+    extern int fiber_exit_count;
+    tlb_miss_count++;
+    // Trace TLB misses during problem time
+    if (fiber_exit_count >= 37020) {
+        fprintf(stderr, "TLB_MISS[%d]: addr=0x%llx fiber_exit=%d ip_ptr=0x%llx\n",
+                tlb_miss_count, (unsigned long long)access_addr, fiber_exit_count,
+                (unsigned long long)ip_ptr);
     }
 }
 
@@ -439,11 +493,101 @@ void helper_debug_store_r12(uint64_t new_value, uint64_t rbx_value, uint64_t r15
 
 // Debug: trace CALL arguments - called before CALL
 static int g_call_count = 0;
+// Helper to read a few bytes from guest memory (safe version without locks)
+static void read_guest_string_safe(uint64_t addr, char *buf, size_t maxlen) {
+    if (current && current->mem) {
+        // Use mem_ptr with read lock already held
+        void *ptr = mem_ptr(current->mem, addr, MEM_READ);
+        if (ptr) {
+            strncpy(buf, (char *)ptr, maxlen - 1);
+            buf[maxlen - 1] = '\0';
+        } else {
+            snprintf(buf, maxlen, "(unmapped:%llx)", (unsigned long long)addr);
+        }
+    } else {
+        snprintf(buf, maxlen, "(no-mem)");
+    }
+}
+
 void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret_addr,
                        uint64_t rdx, uint64_t rcx) {
     g_call_count++;
     // Strip the fake_ip flag bit
     uint64_t real_target = target & 0x7FFFFFFFFFFFFFFF;
+
+    // Trace busybox string parsing wrapper at 0xa02d (runtime 0x55555555e02d)
+    // This is bb_strtoull_or_warn/strtol wrapper - rdi=string to parse, rdx=base
+    if (real_target == 0x55555555e02d) {
+        char str[64] = {0};
+        read_guest_string_safe(rdi, str, sizeof(str));
+        fprintf(stderr, "BB_STRTOL: rdi(str)=0x%llx=\"%s\" rsi(endptr)=0x%llx rdx(base)=%llu\n",
+                (unsigned long long)rdi, str, (unsigned long long)rsi, (unsigned long long)rdx);
+    }
+
+    // Debug: trace all CALLs to busybox code (0x555555554000 - 0x555555700000)
+    if (real_target >= 0x555555554000 && real_target < 0x555555700000) {
+        static int bb_call_count = 0;
+        bb_call_count++;
+        if (bb_call_count <= 50) {
+            fprintf(stderr, "BB_CALL[%d]: target=0x%llx rdi=0x%llx rsi=0x%llx rdx=0x%llx\n",
+                    bb_call_count, (unsigned long long)real_target,
+                    (unsigned long long)rdi, (unsigned long long)rsi, (unsigned long long)rdx);
+        }
+        // Trace the bb_error_msg call (target 0x55555555bb8c) - shows the invalid string
+        if (real_target == 0x55555555bb8c) {
+            char str[64] = {0};
+            read_guest_string_safe(rsi, str, sizeof(str));
+            fprintf(stderr, "BB_ERROR_MSG: format=0x%llx arg=\"%s\"\n",
+                    (unsigned long long)rdi, str);
+        }
+        // Trace the duration parser at 0x5555555e6127 (file addr 0x92127)
+        // rdi = buffer to store result, rsi = format/string to parse
+        if (real_target == 0x5555555e6127) {
+            char str[64] = {0};
+            read_guest_string_safe(rsi, str, sizeof(str));
+            fprintf(stderr, "BB_DURATION_PARSE: buf=0x%llx str=0x%llx=\"%s\" rdx=0x%llx\n",
+                    (unsigned long long)rdi, (unsigned long long)rsi, str, (unsigned long long)rdx);
+        }
+        // Trace function at 0x5555555f1338 (file addr 0x9d338)
+        if (real_target == 0x5555555f1338) {
+            char str[64] = {0};
+            read_guest_string_safe(rsi, str, sizeof(str));
+            fprintf(stderr, "BB_FUNC_9d338: rdi=0x%llx rsi=0x%llx=\"%s\" rdx=0x%llx\n",
+                    (unsigned long long)rdi, (unsigned long long)rsi, str, (unsigned long long)rdx);
+        }
+        // Trace sleep_main at 0x5555555cdb31 (file addr 0x79b31)
+        // rdi = argc, rsi = argv pointer
+        if (real_target == 0x5555555cdb31) {
+            // Read argv pointers
+            char arg0[64] = {0}, arg1[64] = {0};
+            uint64_t argv_ptr[4] = {0};
+            void *argv_mem = mem_ptr(current->mem, rsi, MEM_READ);
+            if (argv_mem) {
+                memcpy(argv_ptr, argv_mem, sizeof(argv_ptr));
+            }
+            read_guest_string_safe(argv_ptr[0], arg0, sizeof(arg0));
+            read_guest_string_safe(argv_ptr[1], arg1, sizeof(arg1));
+            fprintf(stderr, "SLEEP_MAIN: argc=%llu argv=0x%llx [0]=0x%llx=\"%s\" [1]=0x%llx=\"%s\"\n",
+                    (unsigned long long)rdi, (unsigned long long)rsi,
+                    (unsigned long long)argv_ptr[0], arg0,
+                    (unsigned long long)argv_ptr[1], arg1);
+        }
+    }
+
+    // After sleep_main is called, trace ALL calls (not just to busybox) to see what happens
+    static int after_sleep_main = 0;
+    if (real_target == 0x5555555cdb31) {
+        after_sleep_main = 1;
+        fprintf(stderr, "DEBUG: Set after_sleep_main=1 for sleep_main\n");
+    }
+    if (after_sleep_main > 0 && after_sleep_main <= 30) {
+        fprintf(stderr, "CALL_AFTER_SLEEP[%d]: target=0x%llx rdi=0x%llx rsi=0x%llx rdx=0x%llx\n",
+                after_sleep_main, (unsigned long long)real_target,
+                (unsigned long long)rdi, (unsigned long long)rsi, (unsigned long long)rdx);
+        after_sleep_main++;
+    }
+
+    // Minimal tracing - removed user_read calls that caused hangs
 
     // Trace calls where rdi (buffer) is 0x7f0000000xxx (heap)
     // This catches memcpy, strcpy, vsnprintf with heap destination
@@ -462,90 +606,21 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
     // Runtime address = 0x7efffff5e000 + 0x57390 = 0x7efffffb5390
     // vsnprintf(char *buf, size_t n, const char *fmt, va_list ap)
     //   rdi=buf, rsi=n, rdx=fmt, rcx=va_list_ptr (GUEST address)
+    // NOTE: user_read calls removed - they can cause deadlock when called from gadget context
     if (real_target == 0x7efffffb5390) {
         DEBUG_FPRINTF(stderr, "CALL_VSNPRINTF: buf=0x%llx size=%llu fmt=0x%llx va_list=0x%llx ret=0x%llx\n",
                 (unsigned long long)rdi, (unsigned long long)rsi,
                 (unsigned long long)rdx, (unsigned long long)rcx,
                 (unsigned long long)ret_addr);
-        // Read and display format string
-        extern int user_read(uint64_t addr, void *buf, size_t count);
-        char fmt_str[64];
-        if (user_read(rdx, fmt_str, 63) == 0) {
-            fmt_str[63] = '\0';
-            DEBUG_FPRINTF(stderr, "  vsnprintf format: \"%s\"\n", fmt_str);
-            // Also show as hex for debugging
-            DEBUG_FPRINTF(stderr, "  format hex: ");
-            for (int i = 0; i < 16 && fmt_str[i]; i++)
-                DEBUG_FPRINTF(stderr, "%02x ", (unsigned char)fmt_str[i]);
-            DEBUG_FPRINTF(stderr, "\n");
-        }
-        // Dump va_list contents using user_read
-        uint8_t va_list_buf[24];
-        if (user_read(rcx, va_list_buf, 24) == 0) {
-            // Show raw bytes first
-            DEBUG_FPRINTF(stderr, "  vsnprintf va_list raw: ");
-            for (int i = 0; i < 24; i++) DEBUG_FPRINTF(stderr, "%02x ", va_list_buf[i]);
-            DEBUG_FPRINTF(stderr, "\n");
-            uint32_t gp_offset = *(uint32_t *)&va_list_buf[0];
-            uint32_t fp_offset = *(uint32_t *)&va_list_buf[4];
-            uint64_t overflow_arg = *(uint64_t *)&va_list_buf[8];
-            uint64_t reg_save = *(uint64_t *)&va_list_buf[16];
-            DEBUG_FPRINTF(stderr, "  vsnprintf va_list: gp=%u fp=%u overflow=0x%llx regsave=0x%llx\n",
-                    gp_offset, fp_offset, (unsigned long long)overflow_arg,
-                    (unsigned long long)reg_save);
-            // With gp_offset=8, args are at regsave[8], regsave[16], regsave[24]
-            if (gp_offset == 8) {
-                uint64_t regs[4];
-                if (user_read(reg_save, regs, 32) == 0) {
-                    DEBUG_FPRINTF(stderr, "  vsnprintf regs: [0]=0x%llx [8]=0x%llx [16]=0x%llx [24]=0x%llx\n",
-                            (unsigned long long)regs[0], (unsigned long long)regs[1],
-                            (unsigned long long)regs[2], (unsigned long long)regs[3]);
-                    // Read strings at regs[1], regs[2], regs[3]
-                    char str1[32], str2[32], str3[32];
-                    str1[0] = str2[0] = str3[0] = '\0';
-                    user_read(regs[1], str1, 31); str1[31] = '\0';
-                    user_read(regs[2], str2, 31); str2[31] = '\0';
-                    user_read(regs[3], str3, 31); str3[31] = '\0';
-                    DEBUG_FPRINTF(stderr, "  vsnprintf args: \"%s\" \"%s\" \"%s\"\n", str1, str2, str3);
-                }
-            }
-        }
     }
 
     // Trace calls to vasprintf (musl offset 0x529ae)
     // Runtime address = 0x7efffff5e000 + 0x529ae = 0x7efffffb09ae
+    // NOTE: user_read calls removed - they can cause deadlock when called from gadget context
     if (real_target == 0x7efffffb09ae) {
         DEBUG_FPRINTF(stderr, "CALL_VASPRINTF: rdi(outptr)=0x%llx rsi(fmt)=0x%llx rdx(va_list)=0x%llx ret=0x%llx\n",
                 (unsigned long long)rdi, (unsigned long long)rsi, (unsigned long long)rdx,
                 (unsigned long long)ret_addr);
-        // Dump va_list and reg_save_area using user_read
-        uint8_t va_list_buf[24];
-        extern int user_read(uint64_t addr, void *buf, size_t count);
-        if (user_read(rdx, va_list_buf, 24) == 0) {
-            uint32_t gp_offset = *(uint32_t *)&va_list_buf[0];
-            uint32_t fp_offset = *(uint32_t *)&va_list_buf[4];
-            uint64_t overflow_arg = *(uint64_t *)&va_list_buf[8];
-            uint64_t reg_save = *(uint64_t *)&va_list_buf[16];
-            DEBUG_FPRINTF(stderr, "  va_list: gp=%u fp=%u overflow=0x%llx regsave=0x%llx\n",
-                    gp_offset, fp_offset, (unsigned long long)overflow_arg,
-                    (unsigned long long)reg_save);
-            // With gp_offset=8, args are at regsave[8], regsave[16], regsave[24]
-            if (gp_offset == 8) {
-                uint64_t regs[4];
-                if (user_read(reg_save, regs, 32) == 0) {
-                    DEBUG_FPRINTF(stderr, "  regs: [0]=0x%llx [8]=0x%llx [16]=0x%llx [24]=0x%llx\n",
-                            (unsigned long long)regs[0], (unsigned long long)regs[1],
-                            (unsigned long long)regs[2], (unsigned long long)regs[3]);
-                    // Read strings at regs[1], regs[2], regs[3]
-                    char str1[32], str2[32], str3[32];
-                    str1[0] = str2[0] = str3[0] = '\0';
-                    user_read(regs[1], str1, 31); str1[31] = '\0';
-                    user_read(regs[2], str2, 31); str2[31] = '\0';
-                    user_read(regs[3], str3, 31); str3[31] = '\0';
-                    DEBUG_FPRINTF(stderr, "  args: \"%s\" \"%s\" \"%s\"\n", str1, str2, str3);
-                }
-            }
-        }
     }
 
     // Trace calls to malloc (musl offset 0x14010)
@@ -559,41 +634,21 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
     // Runtime address = 0x7efffff5e000 + 0x572f0 = 0x7efffffb52f0
     // sn_write(FILE *f, const unsigned char *s, size_t l)
     //   rdi=FILE, rsi=source buffer, rdx=length to write
+    // NOTE: user_read calls removed - they can cause deadlock when called from gadget context
     if (real_target == 0x7efffffb52f0) {
-        static int sn_write_count = 0;
-        sn_write_count++;
-        DEBUG_FPRINTF(stderr, "CALL_SN_WRITE[%d]: file=0x%llx src=0x%llx len=%llu ret=0x%llx\n",
-                sn_write_count,
+        DEBUG_FPRINTF(stderr, "CALL_SN_WRITE: file=0x%llx src=0x%llx len=%llu ret=0x%llx\n",
                 (unsigned long long)rdi, (unsigned long long)rsi,
                 (unsigned long long)rdx, (unsigned long long)ret_addr);
-        // Read a few bytes from source to see what's being written
-        extern int user_read(uint64_t addr, void *buf, size_t count);
-        char sample[17];
-        sample[0] = '\0';
-        if (rdx > 0 && user_read(rsi, sample, rdx < 16 ? rdx : 16) == 0) {
-            sample[rdx < 16 ? rdx : 16] = '\0';
-            DEBUG_FPRINTF(stderr, "  sn_write data: \"%s\"\n", sample);
-        }
     }
 
     // Trace calls to out() function (musl offset 0x50c9b)
     // Runtime address = 0x7efffff5e000 + 0x50c9b = 0x7efffffaec9b
     // out(const char *s, size_t l, FILE *f) - note: different argument order!
+    // NOTE: user_read calls removed - they can cause deadlock when called from gadget context
     if (real_target == 0x7efffffaec9b) {
-        static int out_count = 0;
-        out_count++;
-        DEBUG_FPRINTF(stderr, "CALL_OUT[%d]: src=0x%llx len=%llu file=0x%llx ret=0x%llx\n",
-                out_count,
+        DEBUG_FPRINTF(stderr, "CALL_OUT: src=0x%llx len=%llu file=0x%llx ret=0x%llx\n",
                 (unsigned long long)rdi, (unsigned long long)rsi,
                 (unsigned long long)rdx, (unsigned long long)ret_addr);
-        // Read a few bytes from source to see what's being output
-        extern int user_read(uint64_t addr, void *buf, size_t count);
-        char sample[33];
-        sample[0] = '\0';
-        if (rsi > 0 && rsi < 1000 && user_read(rdi, sample, rsi < 32 ? rsi : 32) == 0) {
-            sample[rsi < 32 ? rsi : 32] = '\0';
-            DEBUG_FPRINTF(stderr, "  out data: \"%s\"\n", sample);
-        }
     }
 
     // Trace calls to printf_core (musl offset 0x53c36)
@@ -607,12 +662,25 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
                 (unsigned long long)rdi, (unsigned long long)rsi,
                 (unsigned long long)rdx, (unsigned long long)rcx);
     }
+
+    // Removed strtod/bb_* traces that used user_read (caused hangs)
 }
 
 // Debug: trace RET return value (RAX) after specific calls
 static int g_ret_count = 0;
 void helper_debug_ret(uint64_t rax, uint64_t ret_to) {
     g_ret_count++;
+
+    // Unconditionally trace all returns in the range of interest
+    if (ret_to >= 0x55555555b950 && ret_to <= 0x55555555bc00) {
+        fprintf(stderr, "RET[%d]: rax=0x%llx -> 0x%llx\n",
+                g_ret_count, (unsigned long long)rax, (unsigned long long)ret_to);
+    }
+    // Also trace all returns after 1460
+    if (g_ret_count >= 1460) {
+        fprintf(stderr, "RET_ALL[%d]: rax=0x%llx -> 0x%llx\n",
+                g_ret_count, (unsigned long long)rax, (unsigned long long)ret_to);
+    }
 
     // Trace returns FROM vsnprintf (ret_to is inside vasprintf)
     // vasprintf calls vsnprintf at 0x529df and 0x52a09 (offsets relative to musl base)
@@ -2264,16 +2332,13 @@ void helper_debug_movaps_load_entry(uint64_t guest_addr) {
 void helper_debug_movaps_load_full(uint64_t guest_addr, uint64_t low, uint64_t high, uint64_t xmm_idx) {
     static int count = 0;
     count++;
-    // Always trace for debugging
-    // va_list format: low contains gp_offset(4) + fp_offset(4), high is overflow_arg_area
-    uint32_t gp_offset = low & 0xFFFFFFFF;
-    uint32_t fp_offset = (low >> 32) & 0xFFFFFFFF;
-    DEBUG_FPRINTF(stderr, "MOVAPS_LOAD[%d]: from=0x%llx low=0x%llx high=0x%llx -> xmm%llu\n",
-            count, (unsigned long long)guest_addr,
-            (unsigned long long)low, (unsigned long long)high,
-            (unsigned long long)xmm_idx);
-    DEBUG_FPRINTF(stderr, "  (va_list? gp_off=%u fp_off=%u overflow_arg=0x%llx)\n",
-            gp_offset, fp_offset, (unsigned long long)high);
+    // Unconditionally print first 50 for debugging
+    if (count <= 50) {
+        fprintf(stderr, "MOVAPS_LOAD[%d]: from=0x%llx low=0x%llx high=0x%llx -> xmm%llu\n",
+                count, (unsigned long long)guest_addr,
+                (unsigned long long)low, (unsigned long long)high,
+                (unsigned long long)xmm_idx);
+    }
 }
 
 // Debug: trace movaps_store - what's being written
@@ -2281,14 +2346,10 @@ void helper_debug_movaps_store_full(uint64_t guest_addr, uint64_t low, uint64_t 
     static int count = 0;
     count++;
     if (count <= 50) {
-        uint32_t gp_offset = low & 0xFFFFFFFF;
-        uint32_t fp_offset = (low >> 32) & 0xFFFFFFFF;
-        DEBUG_FPRINTF(stderr, "MOVAPS_STORE[%d]: xmm%llu -> 0x%llx low=0x%llx high=0x%llx\n",
+        fprintf(stderr, "MOVAPS_STORE[%d]: xmm%llu -> 0x%llx low=0x%llx high=0x%llx\n",
                 count, (unsigned long long)xmm_idx,
                 (unsigned long long)guest_addr,
                 (unsigned long long)low, (unsigned long long)high);
-        DEBUG_FPRINTF(stderr, "  (va_list? gp_off=%u fp_off=%u overflow_arg=0x%llx)\n",
-                gp_offset, fp_offset, (unsigned long long)high);
     }
 }
 
@@ -2305,4 +2366,32 @@ void helper_debug_va_list_store64(uint64_t value, uint64_t guest_addr) {
     // Disabled for now
     (void)value;
     (void)guest_addr;
+}
+
+// Execution counter - called on basic block transitions to detect infinite loops
+static int exec_counter = 0;
+static int trace_enabled = 0;
+static int trace_print_count = 0;
+
+void helper_exec_trace(uint64_t rip) {
+    exec_counter++;
+    // Print first 50 executions after trace is enabled (syscall 8)
+    if (trace_enabled && trace_print_count < 50) {
+        trace_print_count++;
+        fprintf(stderr, "EXEC[%d]: rip=0x%llx\n", exec_counter, (unsigned long long)rip);
+        fflush(stderr);
+    }
+    // After 1000000 executions, print to detect infinite loops
+    if (exec_counter == 1000000) {
+        fprintf(stderr, "EXEC: reached 1M executions at rip=0x%llx, likely infinite loop\n",
+                (unsigned long long)rip);
+        fflush(stderr);
+    }
+}
+
+// Called after syscall 8 (getuid) to enable per-instruction tracing
+void helper_enable_exec_trace(void) {
+    fprintf(stderr, "EXEC: Enabling trace after syscall 8 (counter=%d)\n", exec_counter);
+    fflush(stderr);
+    trace_enabled = 1;
 }

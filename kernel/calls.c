@@ -484,6 +484,18 @@ void handle_interrupt(int interrupt) {
   // x86_64: syscall instruction (INT_SYSCALL64) with different ABI
   if (interrupt == INT_SYSCALL64) {
     unsigned syscall_num = cpu->rax;
+    static int syscall_counter = 0;
+    syscall_counter++;
+    fprintf(stderr, "SYSCALL[%d]: num=%u rip=0x%llx regs: rdi=0x%llx rsi=0x%llx rdx=0x%llx\n",
+            syscall_counter, syscall_num, (unsigned long long)cpu->rip,
+            (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi,
+            (unsigned long long)cpu->rdx);
+    fflush(stderr);
+    // Enable execution tracing after syscall 8 (getuid) to see where we get stuck
+    extern void helper_enable_exec_trace(void);
+    if (syscall_counter == 8) {
+      helper_enable_exec_trace();
+    }
     if (syscall_num >= NUM_SYSCALLS || syscall_table[syscall_num] == NULL) {
       printk("%d(%s) missing syscall %d\n", current->pid, current->comm,
              syscall_num);

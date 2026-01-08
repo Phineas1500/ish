@@ -386,6 +386,31 @@ extern void gadget_rep_movsq(void);
 extern void gadget_rep_movsd(void);
 extern void gadget_rep_movsb(void);
 extern void gadget_single_movsb(void); // Single MOVSB without REP prefix
+// SSE MOVSD (Move Scalar Double-Precision) - NOT the string operation!
+extern void gadget_movsd_xmm_xmm(void);  // movsd xmm, xmm
+extern void gadget_movsd_xmm_mem(void);  // movsd xmm, m64
+extern void gadget_movsd_mem_xmm(void);  // movsd m64, xmm
+// SSE CVTSI2SD - Convert Integer to Scalar Double
+extern void gadget_cvtsi2sd_reg64(void); // cvtsi2sd xmm, r64
+extern void gadget_cvtsi2sd_reg32(void); // cvtsi2sd xmm, r32
+extern void gadget_cvtsi2sd_mem64(void); // cvtsi2sd xmm, m64
+extern void gadget_cvtsi2sd_mem32(void); // cvtsi2sd xmm, m32
+extern void gadget_cvttsd2si_reg64(void); // cvttsd2si r64, xmm
+extern void gadget_cvttsd2si_reg32(void); // cvttsd2si r32, xmm
+extern void gadget_cvttsd2si_mem64(void); // cvttsd2si r64, m64
+extern void gadget_cvttsd2si_mem32(void); // cvttsd2si r32, m32
+// SSE ADDSD - Add Scalar Double
+extern void gadget_addsd_xmm_xmm(void);  // addsd xmm, xmm
+extern void gadget_addsd_xmm_mem(void);  // addsd xmm, m64
+// SSE SUBSD - Subtract Scalar Double
+extern void gadget_subsd_xmm_xmm(void);  // subsd xmm, xmm
+extern void gadget_subsd_xmm_mem(void);  // subsd xmm, m64
+// SSE MULSD - Multiply Scalar Double
+extern void gadget_mulsd_xmm_xmm(void);  // mulsd xmm, xmm
+extern void gadget_mulsd_xmm_mem(void);  // mulsd xmm, m64
+// SSE COMISD - Compare Scalar Double (sets EFLAGS)
+extern void gadget_comisd_xmm_xmm(void); // comisd xmm, xmm
+extern void gadget_comisd_xmm_mem(void); // comisd xmm, m64
 extern void
 gadget_repne_scasb(void); // REPNE SCASB - scan for byte not equal to AL
 extern void gadget_repe_scasb(void);   // REPE SCASB - scan for byte equal to AL
@@ -1090,6 +1115,21 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
   // Advance IP past this instruction
   state->ip += len;
+
+  // Special tracing for the stuck area (0x55555555b950 - 0x55555555bb00)
+  // Also trace duration parsing at 0x55555555c744 and strtod at 0x7efffffb83bd
+  // strtod offset = 0x583bd in musl
+  if ((state->orig_ip >= 0x55555555b950 && state->orig_ip <= 0x55555555bc00) ||
+      (state->orig_ip >= 0x55555555c740 && state->orig_ip <= 0x55555555c900) ||
+      (state->orig_ip >= 0x7efffffb83b0 && state->orig_ip <= 0x7efffffb8500)) {
+    fprintf(stderr, "TRANSLATE[0x%llx]: mnemonic=%d len=%d bytes:",
+            (unsigned long long)state->orig_ip, inst.mnemonic, len);
+    for (int i = 0; i < len && i < 10; i++) {
+      fprintf(stderr, " %02x", code[i]);
+    }
+    fprintf(stderr, "\n");
+    fflush(stderr);
+  }
 
 // Debug trace disabled
 
@@ -4820,6 +4860,277 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     }
     break;
 
+  case ZYDIS_MNEMONIC_CVTSI2SD:
+    // CVTSI2SD xmm, r/m32 or r/m64 - Convert integer to scalar double
+    // Converts a signed integer to double-precision floating-point
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      // Determine if 64-bit by checking operand type
+      // 64-bit registers are rax-rdi (arg64_rax to arg64_rdi) and r8-r15
+      bool is_64bit = false;
+      if (is_gpr(inst.operands[1].type)) {
+        // Check if it's a 64-bit register (not 32-bit like eax, r8d, etc.)
+        // arg64_rax through arg64_r15 are 64-bit
+        // Our decoder already distinguishes between eax (32-bit) and rax (64-bit)
+        enum arg64 op = inst.operands[1].type;
+        is_64bit = (op >= arg64_rax && op <= arg64_rdi) ||
+                   (op >= arg64_r8 && op <= arg64_r15);
+      } else {
+        // For memory operands, check the instruction operand width from inst
+        // The instruction f2 48 0f 2a has REX.W (48), making it 64-bit
+        // Check the code bytes for REX.W prefix
+        is_64bit = (code[0] == 0x48 ||
+                    (code[0] == 0xf2 && code[1] == 0x48) ||
+                    (code[0] == 0xf3 && code[1] == 0x48));
+      }
+
+      if (is_gpr(inst.operands[1].type)) {
+        // Register source
+        gadget_t load = get_load64_reg_gadget(inst.operands[1].type);
+        if (load) {
+          GEN(load);
+        }
+        fprintf(stderr, "GEN: CVTSI2SD xmm%d, reg (%s) at ip=0x%llx\n",
+                dst_xmm, is_64bit ? "64-bit" : "32-bit",
+                (unsigned long long)state->orig_ip);
+        if (is_64bit) {
+          GEN(gadget_cvtsi2sd_reg64);
+        } else {
+          GEN(gadget_cvtsi2sd_reg32);
+        }
+        GEN(dst_xmm);
+      } else {
+        // Memory source
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        fprintf(stderr, "GEN: CVTSI2SD xmm%d, mem (%s) at ip=0x%llx\n",
+                dst_xmm, is_64bit ? "64-bit" : "32-bit",
+                (unsigned long long)state->orig_ip);
+        if (is_64bit) {
+          GEN(gadget_cvtsi2sd_mem64);
+        } else {
+          GEN(gadget_cvtsi2sd_mem32);
+        }
+        GEN(dst_xmm);
+        GEN(state->orig_ip);
+      }
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_ADDSD:
+    // ADDSD xmm, xmm/m64 - Add Scalar Double-Precision Floating-Point
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      if (is_xmm(inst.operands[1].type)) {
+        // xmm, xmm
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        fprintf(stderr, "GEN: ADDSD xmm%d, xmm%d at ip=0x%llx\n",
+                dst_xmm, src_xmm, (unsigned long long)state->orig_ip);
+        GEN(load64_gadgets[8]); // load64_imm: Load source XMM index
+        GEN(src_xmm);
+        GEN(gadget_addsd_xmm_xmm);
+        GEN(dst_xmm);
+      } else {
+        // xmm, m64
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        fprintf(stderr, "GEN: ADDSD xmm%d, mem at ip=0x%llx\n",
+                dst_xmm, (unsigned long long)state->orig_ip);
+        GEN(gadget_addsd_xmm_mem);
+        GEN(dst_xmm);
+        GEN(state->orig_ip);
+      }
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_SUBSD:
+    // SUBSD xmm, xmm/m64 - Subtract Scalar Double-Precision Floating-Point
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      if (is_xmm(inst.operands[1].type)) {
+        // xmm, xmm
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        fprintf(stderr, "GEN: SUBSD xmm%d, xmm%d at ip=0x%llx\n",
+                dst_xmm, src_xmm, (unsigned long long)state->orig_ip);
+        GEN(load64_gadgets[8]); /* load64_imm: Load source XMM index */
+        GEN(src_xmm);
+        GEN(gadget_subsd_xmm_xmm);
+        GEN(dst_xmm);
+      } else {
+        // xmm, m64
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        fprintf(stderr, "GEN: SUBSD xmm%d, mem at ip=0x%llx\n",
+                dst_xmm, (unsigned long long)state->orig_ip);
+        GEN(gadget_subsd_xmm_mem);
+        GEN(dst_xmm);
+        GEN(state->orig_ip);
+      }
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_MULSD:
+    // MULSD xmm, xmm/m64 - Multiply Scalar Double-Precision Floating-Point
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      if (is_xmm(inst.operands[1].type)) {
+        // xmm, xmm
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        fprintf(stderr, "GEN: MULSD xmm%d, xmm%d at ip=0x%llx\n",
+                dst_xmm, src_xmm, (unsigned long long)state->orig_ip);
+        GEN(load64_gadgets[8]); /* load64_imm: Load source XMM index */
+        GEN(src_xmm);
+        GEN(gadget_mulsd_xmm_xmm);
+        GEN(dst_xmm);
+      } else {
+        // xmm, m64
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        fprintf(stderr, "GEN: MULSD xmm%d, mem at ip=0x%llx\n",
+                dst_xmm, (unsigned long long)state->orig_ip);
+        GEN(gadget_mulsd_xmm_mem);
+        GEN(dst_xmm);
+        GEN(state->orig_ip);
+      }
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_COMISD:
+  case ZYDIS_MNEMONIC_UCOMISD:
+    // COMISD/UCOMISD xmm, xmm/m64 - Compare Scalar Double, set EFLAGS
+    // UCOMISD is unordered (doesn't signal on QNaN), COMISD signals
+    // Both set ZF, PF, CF based on comparison result
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
+      int src1_xmm = get_xmm_index(inst.operands[0].type);
+      if (is_xmm(inst.operands[1].type)) {
+        // xmm, xmm
+        int src2_xmm = get_xmm_index(inst.operands[1].type);
+        fprintf(stderr, "GEN: COMISD xmm%d, xmm%d at ip=0x%llx\n",
+                src1_xmm, src2_xmm, (unsigned long long)state->orig_ip);
+        GEN(load64_gadgets[8]); // load64_imm: Load first XMM index
+        GEN(src1_xmm);
+        GEN(gadget_comisd_xmm_xmm);
+        GEN(src2_xmm);
+      } else {
+        // xmm, m64
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        fprintf(stderr, "GEN: COMISD xmm%d, mem at ip=0x%llx\n",
+                src1_xmm, (unsigned long long)state->orig_ip);
+        GEN(gadget_comisd_xmm_mem);
+        GEN(src1_xmm);
+        GEN(state->orig_ip);
+      }
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_CVTTSD2SI:
+    // CVTTSD2SI r32/r64, xmm/m64 - Convert with Truncation Scalar Double to Signed Integer
+    if (inst.operand_count >= 2) {
+      // Determine if 64-bit from operand size
+      int is_64bit = (inst.operands[0].size == size64_64);
+
+      // Get destination register
+      enum arg64 dst_type = inst.operands[0].type;
+
+      if (is_xmm(inst.operands[1].type)) {
+        // CVTTSD2SI reg, xmm
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        fprintf(stderr, "GEN: CVTTSD2SI dst=%d, xmm%d at ip=0x%llx (64bit=%d)\n",
+                dst_type, src_xmm, (unsigned long long)state->orig_ip, is_64bit);
+        GEN(is_64bit ? gadget_cvttsd2si_reg64 : gadget_cvttsd2si_reg32);
+        GEN(src_xmm);
+        // Store to destination register
+        // For r8-r15, we always use store64 since 32-bit ops zero-extend
+        if (dst_type >= arg64_r8 && dst_type <= arg64_r15) {
+          GEN(store64_r8_r15[dst_type - arg64_r8]);
+        } else {
+          GEN(is_64bit ? store64_gadgets[dst_type] : store32_gadgets[dst_type]);
+        }
+      } else {
+        // CVTTSD2SI reg, m64
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        fprintf(stderr, "GEN: CVTTSD2SI dst=%d, mem at ip=0x%llx (64bit=%d)\n",
+                dst_type, (unsigned long long)state->orig_ip, is_64bit);
+        GEN(is_64bit ? gadget_cvttsd2si_mem64 : gadget_cvttsd2si_mem32);
+        GEN(state->orig_ip);
+        // Store to destination register
+        if (dst_type >= arg64_r8 && dst_type <= arg64_r15) {
+          GEN(store64_r8_r15[dst_type - arg64_r8]);
+        } else {
+          GEN(is_64bit ? store64_gadgets[dst_type] : store32_gadgets[dst_type]);
+        }
+      }
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
   case ZYDIS_MNEMONIC_STOSQ:
     // REP STOSQ - store RAX to [RDI], repeat RCX times
     // Check for REP prefix (handled implicitly by our gadget)
@@ -4865,11 +5176,61 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_MOVSD:
-    // REP MOVSD - move dword [RSI] to [RDI], repeat RCX times
-    DEBUG_FPRINTF(stderr, "GEN: REP MOVSD at ip=0x%llx\n",
-            (unsigned long long)state->orig_ip);
-    GEN(gadget_rep_movsd);
-    GEN(state->orig_ip); // For segfault handler
+    // MOVSD has two completely different meanings:
+    // 1. SSE: Move Scalar Double-Precision (uses XMM registers)
+    // 2. String: Move String Dword (uses RSI/RDI implicitly)
+    if (inst.operand_count >= 2 &&
+        (is_xmm(inst.operands[0].type) || is_xmm(inst.operands[1].type))) {
+      // SSE MOVSD - Move Scalar Double-Precision Floating-Point
+      // movsd xmm1, xmm2/m64 or movsd xmm1/m64, xmm2
+      if (is_xmm(inst.operands[0].type) && is_xmm(inst.operands[1].type)) {
+        // xmm to xmm: copy low 64 bits, preserve high 64 bits of dest
+        int dst_xmm = get_xmm_index(inst.operands[0].type);
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        fprintf(stderr, "GEN: SSE MOVSD xmm%d, xmm%d at ip=0x%llx\n",
+                dst_xmm, src_xmm, (unsigned long long)state->orig_ip);
+        GEN(load64_gadgets[8]); // load64_imm: Load source XMM index
+        GEN(src_xmm);
+        GEN(gadget_movsd_xmm_xmm);
+        GEN(dst_xmm);
+      } else if (is_xmm(inst.operands[0].type)) {
+        // xmm, m64: load scalar double from memory into XMM low 64 bits
+        int dst_xmm = get_xmm_index(inst.operands[0].type);
+        fprintf(stderr, "GEN: SSE MOVSD xmm%d, mem at ip=0x%llx\n",
+                dst_xmm, (unsigned long long)state->orig_ip);
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        GEN(gadget_movsd_xmm_mem);
+        GEN(dst_xmm);
+        GEN(state->orig_ip);
+      } else {
+        // m64, xmm: store scalar double from XMM low 64 bits to memory
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        fprintf(stderr, "GEN: SSE MOVSD mem, xmm%d at ip=0x%llx\n",
+                src_xmm, (unsigned long long)state->orig_ip);
+        if (!gen_addr(state, &inst.operands[0], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        GEN(gadget_movsd_mem_xmm);
+        GEN(src_xmm);
+        GEN(state->orig_ip);
+      }
+    } else {
+      // String MOVSD - REP MOVSD moves dwords from [RSI] to [RDI]
+      DEBUG_FPRINTF(stderr, "GEN: REP MOVSD (string) at ip=0x%llx\n",
+              (unsigned long long)state->orig_ip);
+      GEN(gadget_rep_movsd);
+      GEN(state->orig_ip); // For segfault handler
+    }
     break;
 
   case ZYDIS_MNEMONIC_SCASB:
@@ -4894,7 +5255,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
   default:
     // Unimplemented instruction
-    DEBUG_FPRINTF(stderr,
+    fprintf(stderr,
             "UNHANDLED: ip=0x%llx mnemonic=%d bytes=%02x %02x %02x %02x\n",
             (unsigned long long)state->orig_ip, inst.mnemonic, code[0], code[1],
             code[2], code[3]);

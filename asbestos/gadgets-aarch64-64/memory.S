@@ -285,6 +285,12 @@ crosspage_load:
 // Cross-page write handler
 .global crosspage_store
 crosspage_store:
+    // Debug: trace crosspage_store entry
+    save_c
+    ldr x0, [_cpu, LOCAL_value_addr]   // guest addr
+    mov x1, x19                        // size
+    bl NAME(helper_debug_crosspage_store)
+    restore_c
     save_c
     sub x0, _tlb, TLB_entries
     add x2, _cpu, LOCAL_value

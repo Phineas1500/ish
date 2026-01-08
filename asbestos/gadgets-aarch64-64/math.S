@@ -2925,3 +2925,479 @@ NAME(imul32_r8_r15_gadgets):
     str x10, [x9]              // Store low
     str x12, [x9, 8]           // Store high
     gret 1
+
+// ============================================================
+// MOVSD (Move Scalar Double-Precision) - SSE instruction
+// NOT the string operation MOVSD!
+// ============================================================
+
+// MOVSD xmm, xmm - Copy low 64 bits, preserve high 64 bits of dest
+// _xtmp = source XMM index, [_ip] = destination XMM index
+.gadget movsd_xmm_xmm
+    // Source XMM - get low 64 bits
+    lsl x8, _xtmp, 4           // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[src]
+    ldr x10, [x8]              // Load src low 64 bits
+
+    // Destination XMM
+    ldr x9, [_ip]              // Destination XMM index
+    lsl x9, x9, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[dst]
+    str x10, [x9]              // Store to dst low 64 bits (high preserved)
+    gret 1
+
+// MOVSD xmm, m64 - Load 64 bits from memory to XMM low, zero high
+// _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
+.gadget movsd_xmm_mem
+    read_prep 64, movsd_xmm_mem
+    ldr _xtmp, [_addr]         // Load 64 bits from memory
+
+    // Store to XMM register
+    ldr x8, [_ip]              // XMM register index
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[n]
+    str _xtmp, [x8]            // Store to low 64 bits
+    str xzr, [x8, 8]           // Zero high 64 bits
+    gret 2
+    read_bullshit 64, movsd_xmm_mem
+
+// MOVSD m64, xmm - Store XMM low 64 bits to memory
+// _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
+.gadget movsd_mem_xmm
+    // Load XMM low 64 bits
+    ldr x8, [_ip]              // XMM register index
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[n]
+    ldr _xtmp, [x8]            // Load low 64 bits
+
+    // Store to memory
+    write_prep 64, movsd_mem_xmm
+    str _xtmp, [_addr]         // Store 64 bits to memory
+    write_done 64, movsd_mem_xmm
+    gret 2
+    write_bullshit 64, movsd_mem_xmm
+
+// ============================================================
+// CVTSI2SD - Convert Signed Integer to Scalar Double
+// ============================================================
+
+// CVTSI2SD xmm, r64 - Convert 64-bit signed integer to double
+// _xtmp = source integer (64-bit), [_ip] = destination XMM index
+.gadget cvtsi2sd_reg64
+    // Convert integer to double using ARM64 scvtf
+    scvtf d0, _xtmp            // Convert signed int64 to double
+
+    // Store to XMM register (low 64 bits)
+    ldr x8, [_ip]              // XMM register index
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[n]
+    str d0, [x8]               // Store double to low 64 bits
+    // High 64 bits are preserved (per Intel docs for scalar operations)
+    gret 1
+
+// CVTSI2SD xmm, r32 - Convert 32-bit signed integer to double
+// _xtmp = source integer (32-bit in low word), [_ip] = destination XMM index
+.gadget cvtsi2sd_reg32
+    // Sign-extend 32-bit to 64-bit, then convert
+    sxtw x8, w0                // Sign-extend w0 (low 32 bits of _xtmp)
+    scvtf d0, x8               // Convert signed int32 to double
+
+    // Store to XMM register (low 64 bits)
+    ldr x8, [_ip]              // XMM register index
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[n]
+    str d0, [x8]               // Store double to low 64 bits
+    gret 1
+
+// CVTSI2SD xmm, m64 - Convert 64-bit integer from memory to double
+// _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
+.gadget cvtsi2sd_mem64
+    read_prep 64, cvtsi2sd_mem64
+    ldr x8, [_addr]            // Load 64-bit integer from memory
+
+    // Convert integer to double
+    scvtf d0, x8               // Convert signed int64 to double
+
+    // Store to XMM register
+    ldr x9, [_ip]              // XMM register index
+    lsl x9, x9, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[n]
+    str d0, [x9]               // Store double to low 64 bits
+    gret 2
+    read_bullshit 64, cvtsi2sd_mem64
+
+// CVTSI2SD xmm, m32 - Convert 32-bit integer from memory to double
+// _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
+.gadget cvtsi2sd_mem32
+    read_prep 32, cvtsi2sd_mem32
+    ldrsw x8, [_addr]          // Load 32-bit integer (sign-extended) from memory
+
+    // Convert integer to double
+    scvtf d0, x8               // Convert signed int32 to double
+
+    // Store to XMM register
+    ldr x9, [_ip]              // XMM register index
+    lsl x9, x9, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[n]
+    str d0, [x9]               // Store double to low 64 bits
+    gret 2
+    read_bullshit 32, cvtsi2sd_mem32
+
+// ============================================================
+// CVTTSD2SI - Convert with Truncation Scalar Double to Signed Integer
+// Truncation means round toward zero (unlike CVTSD2SI which uses rounding mode)
+// ============================================================
+
+// CVTTSD2SI r64, xmm - Convert truncated double to 64-bit signed integer
+// [_ip] = source XMM index, result in _xtmp
+.gadget cvttsd2si_reg64
+    ldr x8, [_ip]              // XMM register index
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[n]
+    ldr d0, [x8]               // Load double from XMM
+
+    // Convert to signed 64-bit integer with truncation toward zero
+    fcvtzs _xtmp, d0           // ARM64 fcvtzs = convert to signed int, toward zero
+    gret 1
+
+// CVTTSD2SI r32, xmm - Convert truncated double to 32-bit signed integer
+// [_ip] = source XMM index, result in _tmp (low 32 bits of _xtmp)
+.gadget cvttsd2si_reg32
+    ldr x8, [_ip]              // XMM register index
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[n]
+    ldr d0, [x8]               // Load double from XMM
+
+    // Convert to signed 32-bit integer with truncation toward zero
+    fcvtzs w0, d0              // Convert to 32-bit signed int
+    uxtw _xtmp, w0             // Zero-extend to 64-bit in _xtmp
+    gret 1
+
+// CVTTSD2SI r64, m64 - Convert truncated double from memory to 64-bit signed integer
+// _addr = memory address (GUEST), result in _xtmp
+.gadget cvttsd2si_mem64
+    read_prep 64, cvttsd2si_mem64
+    ldr d0, [_addr]            // Load double from memory
+
+    // Convert to signed 64-bit integer with truncation toward zero
+    fcvtzs _xtmp, d0
+    gret 1
+    read_bullshit 64, cvttsd2si_mem64
+
+// CVTTSD2SI r32, m64 - Convert truncated double from memory to 32-bit signed integer
+// _addr = memory address (GUEST), result in _tmp
+.gadget cvttsd2si_mem32
+    read_prep 64, cvttsd2si_mem32
+    ldr d0, [_addr]            // Load double from memory
+
+    // Convert to signed 32-bit integer with truncation toward zero
+    fcvtzs w0, d0
+    uxtw _xtmp, w0             // Zero-extend to 64-bit in _xtmp
+    gret 1
+    read_bullshit 64, cvttsd2si_mem32
+
+// ============================================================
+// ADDSD - Add Scalar Double-Precision
+// ============================================================
+
+// ADDSD xmm, xmm - Add two scalar doubles
+// _xtmp = source XMM index, [_ip] = destination XMM index
+.gadget addsd_xmm_xmm
+    // Load source XMM low 64 bits
+    lsl x8, _xtmp, 4           // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[src]
+    ldr d0, [x8]               // Load src double
+
+    // Load destination XMM low 64 bits
+    ldr x9, [_ip]              // Destination XMM index
+    lsl x9, x9, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[dst]
+    ldr d1, [x9]               // Load dst double
+
+    // Add
+    fadd d1, d1, d0            // dst = dst + src
+
+    // Store result
+    str d1, [x9]               // Store to dst low 64 bits
+    gret 1
+
+// ADDSD xmm, m64 - Add scalar double from memory
+// _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
+.gadget addsd_xmm_mem
+    read_prep 64, addsd_xmm_mem
+    ldr d0, [_addr]            // Load double from memory
+
+    // Load destination XMM low 64 bits
+    ldr x9, [_ip]              // Destination XMM index
+    lsl x9, x9, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[dst]
+    ldr d1, [x9]               // Load dst double
+
+    // Add
+    fadd d1, d1, d0            // dst = dst + src
+
+    // Store result
+    str d1, [x9]               // Store to dst low 64 bits
+    gret 2
+    read_bullshit 64, addsd_xmm_mem
+
+// ============================================================
+// SUBSD - Subtract Scalar Double-Precision
+// ============================================================
+
+// SUBSD xmm, xmm - Subtract two scalar doubles
+// _xtmp = source XMM index, [_ip] = destination XMM index
+.gadget subsd_xmm_xmm
+    // Load source XMM low 64 bits
+    lsl x8, _xtmp, 4           // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[src]
+    ldr d0, [x8]               // Load src double
+
+    // Load destination XMM low 64 bits
+    ldr x9, [_ip]              // Destination XMM index
+    lsl x9, x9, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[dst]
+    ldr d1, [x9]               // Load dst double
+
+    // Subtract
+    fsub d1, d1, d0            // dst = dst - src
+
+    // Store result
+    str d1, [x9]               // Store to dst low 64 bits
+    gret 1
+
+// SUBSD xmm, m64 - Subtract scalar double from memory
+// _addr = memory address (GUEST), [_ip] = destination XMM index, [_ip+8] = orig_ip
+.gadget subsd_xmm_mem
+    read_prep 64, subsd_xmm_mem
+    ldr d0, [_addr]            // Load double from memory
+
+    // Load destination XMM low 64 bits
+    ldr x9, [_ip]              // Destination XMM index
+    lsl x9, x9, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[dst]
+    ldr d1, [x9]               // Load dst double
+
+    // Subtract
+    fsub d1, d1, d0            // dst = dst - src
+
+    // Store result
+    str d1, [x9]               // Store to dst low 64 bits
+    gret 2
+    read_bullshit 64, subsd_xmm_mem
+
+// ============================================================
+// MULSD - Multiply Scalar Double-Precision
+// ============================================================
+
+// MULSD xmm, xmm - Multiply two scalar doubles
+// _xtmp = source XMM index, [_ip] = destination XMM index
+.gadget mulsd_xmm_xmm
+    // Load source XMM low 64 bits
+    lsl x8, _xtmp, 4           // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[src]
+    ldr d0, [x8]               // Load src double
+
+    // Load destination XMM low 64 bits
+    ldr x9, [_ip]              // Destination XMM index
+    lsl x9, x9, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[dst]
+    ldr d1, [x9]               // Load dst double
+
+    // Multiply
+    fmul d1, d1, d0            // dst = dst * src
+
+    // Store result
+    str d1, [x9]               // Store to dst low 64 bits
+    gret 1
+
+// MULSD xmm, m64 - Multiply scalar double from memory
+// _addr = memory address (GUEST), [_ip] = destination XMM index, [_ip+8] = orig_ip
+.gadget mulsd_xmm_mem
+    read_prep 64, mulsd_xmm_mem
+    ldr d0, [_addr]            // Load double from memory
+
+    // Load destination XMM low 64 bits
+    ldr x9, [_ip]              // Destination XMM index
+    lsl x9, x9, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[dst]
+    ldr d1, [x9]               // Load dst double
+
+    // Multiply
+    fmul d1, d1, d0            // dst = dst * src
+
+    // Store result
+    str d1, [x9]               // Store to dst low 64 bits
+    gret 2
+    read_bullshit 64, mulsd_xmm_mem
+
+// ============================================================
+// COMISD/UCOMISD - Compare Scalar Double (sets x86 EFLAGS)
+// Result in ZF, PF, CF:
+//   src1 > src2:  ZF=0, PF=0, CF=0
+//   src1 < src2:  ZF=0, PF=0, CF=1
+//   src1 == src2: ZF=1, PF=0, CF=0
+//   unordered:    ZF=1, PF=1, CF=1
+// ============================================================
+
+// COMISD xmm, xmm - Compare two scalar doubles
+// _xtmp = first XMM index, [_ip] = second XMM index
+.gadget comisd_xmm_xmm
+    // Load first XMM
+    lsl x8, _xtmp, 4           // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[src1]
+    ldr d0, [x8]               // Load first double
+
+    // Load second XMM
+    ldr x9, [_ip]              // Second XMM index
+    lsl x9, x9, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[src2]
+    ldr d1, [x9]               // Load second double
+
+    // Compare (ARM64 fcmp sets NZCV)
+    fcmp d0, d1
+
+    // Convert ARM64 flags to x86 flags
+    // ARM64 fcmp results:
+    //   d0 > d1:  N=0, Z=0, C=1, V=0
+    //   d0 < d1:  N=1, Z=0, C=0, V=0
+    //   d0 == d1: N=0, Z=1, C=1, V=0
+    //   unordered: N=0, Z=0, C=1, V=1
+    //
+    // x86 COMISD results:
+    //   d0 > d1:  ZF=0, PF=0, CF=0
+    //   d0 < d1:  ZF=0, PF=0, CF=1
+    //   d0 == d1: ZF=1, PF=0, CF=0
+    //   unordered: ZF=1, PF=1, CF=1
+    // Always: SF=0, OF=0
+
+    // Clear SF, OF
+    strb wzr, [_cpu, CPU_of]
+
+    // Clear ZF_RES and PF_RES bits so flags are read from eflags
+    ldr w10, [_cpu, CPU_flags_res]
+    mov w11, (ZF_RES | PF_RES | SF_RES)
+    bic w10, w10, w11
+    str w10, [_cpu, CPU_flags_res]
+
+    // Load eflags and clear ZF, PF, SF bits
+    ldr w10, [_cpu, CPU_eflags]
+    mov w11, (ZF_FLAG | PF_FLAG | SF_FLAG)
+    bic w10, w10, w11
+
+    // Default: CF=0
+    strb wzr, [_cpu, CPU_cf]
+
+    // Check for unordered (V=1)
+    b.vs .Lcomisd_unordered
+    // Check for equal (Z=1)
+    b.eq .Lcomisd_equal
+    // Check for less than (N=1, means d0 < d1)
+    b.mi .Lcomisd_less
+    // Otherwise greater (d0 > d1): ZF=0, PF=0, CF=0
+    b .Lcomisd_done
+
+.Lcomisd_unordered:
+    // ZF=1, PF=1, CF=1
+    mov w11, (ZF_FLAG | PF_FLAG)
+    orr w10, w10, w11
+    mov w11, 1
+    strb w11, [_cpu, CPU_cf]
+    b .Lcomisd_done
+
+.Lcomisd_equal:
+    // ZF=1, PF=0, CF=0
+    orr w10, w10, ZF_FLAG
+    b .Lcomisd_done
+
+.Lcomisd_less:
+    // ZF=0, PF=0, CF=1
+    mov w11, 1
+    strb w11, [_cpu, CPU_cf]
+    // Fall through to done
+
+.Lcomisd_done:
+    str w10, [_cpu, CPU_eflags]
+    gret 1
+
+// COMISD xmm, m64 - Compare scalar double from XMM with memory
+// _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
+.gadget comisd_xmm_mem
+    read_prep 64, comisd_xmm_mem
+    ldr d1, [_addr]            // Load second double from memory
+
+    // Load first XMM
+    ldr x9, [_ip]              // XMM index
+    lsl x9, x9, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[src1]
+    ldr d0, [x9]               // Load first double
+
+    // Compare (ARM64 fcmp sets NZCV)
+    fcmp d0, d1
+
+    // Clear SF, OF
+    strb wzr, [_cpu, CPU_of]
+
+    // Clear ZF_RES and PF_RES bits so flags are read from eflags
+    ldr w10, [_cpu, CPU_flags_res]
+    mov w11, (ZF_RES | PF_RES | SF_RES)
+    bic w10, w10, w11
+    str w10, [_cpu, CPU_flags_res]
+
+    // Load eflags and clear ZF, PF, SF bits
+    ldr w10, [_cpu, CPU_eflags]
+    mov w11, (ZF_FLAG | PF_FLAG | SF_FLAG)
+    bic w10, w10, w11
+
+    // Default: CF=0
+    strb wzr, [_cpu, CPU_cf]
+
+    b.vs .Lcomisd_mem_unord
+    b.eq .Lcomisd_mem_eq
+    b.mi .Lcomisd_mem_lt
+    b .Lcomisd_mem_done
+
+.Lcomisd_mem_unord:
+    // ZF=1, PF=1, CF=1
+    mov w11, (ZF_FLAG | PF_FLAG)
+    orr w10, w10, w11
+    mov w11, 1
+    strb w11, [_cpu, CPU_cf]
+    b .Lcomisd_mem_done
+
+.Lcomisd_mem_eq:
+    // ZF=1, PF=0, CF=0
+    orr w10, w10, ZF_FLAG
+    b .Lcomisd_mem_done
+
+.Lcomisd_mem_lt:
+    // ZF=0, PF=0, CF=1
+    mov w11, 1
+    strb w11, [_cpu, CPU_cf]
+
+.Lcomisd_mem_done:
+    str w10, [_cpu, CPU_eflags]
+    gret 2
+    read_bullshit 64, comisd_xmm_mem

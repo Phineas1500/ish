@@ -47,6 +47,12 @@
     write_bullshit 64, call
 
 .gadget call_indir
+    // Debug: trace entry to call_indir
+    save_c
+    mov x0, _xtmp               // target address
+    mov x1, rsp                 // stack pointer
+    bl NAME(helper_debug_call_indir_entry)
+    restore_c
     // Save return address to stack
     sub _addr, rsp, 8
     write_prep 64, call_indir
@@ -71,6 +77,11 @@
     mov x5, rcx                 // rcx (va_list for vsnprintf)
     bl NAME(helper_debug_call)
     restore_c
+    // Debug: trace right after restore_c
+    save_c
+    mov x0, _xtmp               // target address
+    bl NAME(helper_debug_call_indir_after_restore)
+    restore_c
     ldr x8, [_ip, 16]           // Reload x8 (clobbered by call)
     // Save ip-to-arguments to return cache
     ubfx x12, x8, 4, 12
@@ -87,6 +98,12 @@
 1:
     // Jump to target (address in _xtmp)
     mov rip, _xtmp
+    // Debug: trace just before fiber_exit in call_indir
+    mov x9, _xtmp       // Save target (x0 is _xtmp)
+    save_c
+    mov x0, x9          // target address
+    bl NAME(helper_debug_call_indir_exit)
+    restore_c
     mvn _tmp, wzr    // return -1 (re-translate)
     b fiber_exit
     write_bullshit 64, call_indir

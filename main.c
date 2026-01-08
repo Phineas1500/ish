@@ -48,8 +48,38 @@ static void sigsegv_handler(int sig) {
     _exit(139);
 }
 
+// Handler for SIGALRM - prints CPU state when code appears stuck
+static void sigalrm_handler(int sig) {
+    (void)sig;
+    fprintf(stderr, "\n=== SIGALRM: Timeout - code may be stuck ===\n");
+    if (current) {
+        struct cpu_state *cpu = &current->cpu;
+#ifdef ISH_GUEST_64BIT
+        fprintf(stderr, "x86_64 CPU state at timeout:\n");
+        fprintf(stderr, "  RIP=0x%llx RSP=0x%llx RBP=0x%llx\n",
+                (unsigned long long)cpu->rip, (unsigned long long)cpu->rsp,
+                (unsigned long long)cpu->rbp);
+        fprintf(stderr, "  RAX=0x%llx RBX=0x%llx RCX=0x%llx RDX=0x%llx\n",
+                (unsigned long long)cpu->rax, (unsigned long long)cpu->rbx,
+                (unsigned long long)cpu->rcx, (unsigned long long)cpu->rdx);
+        fprintf(stderr, "  RSI=0x%llx RDI=0x%llx\n",
+                (unsigned long long)cpu->rsi, (unsigned long long)cpu->rdi);
+        fprintf(stderr, "  R8=0x%llx R9=0x%llx R10=0x%llx R11=0x%llx\n",
+                (unsigned long long)cpu->r8, (unsigned long long)cpu->r9,
+                (unsigned long long)cpu->r10, (unsigned long long)cpu->r11);
+        fprintf(stderr, "  R12=0x%llx R13=0x%llx R14=0x%llx R15=0x%llx\n",
+                (unsigned long long)cpu->r12, (unsigned long long)cpu->r13,
+                (unsigned long long)cpu->r14, (unsigned long long)cpu->r15);
+#endif
+    }
+    fprintf(stderr, "======================\n");
+    _exit(124); // Same as timeout exit code
+}
+
 int main(int argc, char *const argv[]) {
     signal(SIGSEGV, sigsegv_handler);
+    signal(SIGALRM, sigalrm_handler);
+    alarm(2); // Fire SIGALRM after 2 seconds to detect infinite loops
     char envp[100] = {0};
     if (getenv("TERM"))
         strcpy(envp, getenv("TERM") - strlen("TERM") - 1);
