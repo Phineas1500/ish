@@ -69,12 +69,6 @@ fd_t sys_openat(fd_t at_f, addr_t path_addr, dword_t flags, mode_t_ mode) {
     if (user_read_string(path_addr, path, sizeof(path)))
         return _EFAULT;
     STRACE("openat(%d, \"%s\", 0x%x, 0x%x)", at_f, path, flags, mode);
-    // Debug: trace file opens
-    static int open_count = 0;
-    open_count++;
-    if (open_count <= 20) {
-        fprintf(stderr, "OPENAT[%d]: path=\"%s\" flags=0x%x\n", open_count, path, flags);
-    }
 
     if (flags & O_CREAT_)
         apply_umask(&mode);

@@ -13,15 +13,17 @@ void helper_debug_print_rip_history(void);
 #include "kernel/task.h"
 
 static void sigsegv_handler(int sig) {
+    (void)sig;
     void *array[50];
     int size;
     fprintf(stderr, "\n=== SIGSEGV caught ===\n");
     size = backtrace(array, 50);
     fprintf(stderr, "Backtrace (%d frames):\n", size);
     backtrace_symbols_fd(array, size, 2);
-    // Print x86_64 register state
+    // Print CPU register state
     if (current) {
         struct cpu_state *cpu = &current->cpu;
+#ifdef ISH_GUEST_64BIT
         fprintf(stderr, "x86_64 CPU state at crash:\n");
         fprintf(stderr, "  RIP=0x%llx RSP=0x%llx RBP=0x%llx\n",
                 (unsigned long long)cpu->rip, (unsigned long long)cpu->rsp,
@@ -31,6 +33,15 @@ static void sigsegv_handler(int sig) {
                 (unsigned long long)cpu->rcx, (unsigned long long)cpu->rdx);
         fprintf(stderr, "  RSI=0x%llx RDI=0x%llx\n",
                 (unsigned long long)cpu->rsi, (unsigned long long)cpu->rdi);
+#else
+        fprintf(stderr, "x86 CPU state at crash:\n");
+        fprintf(stderr, "  EIP=0x%x ESP=0x%x EBP=0x%x\n",
+                cpu->eip, cpu->esp, cpu->ebp);
+        fprintf(stderr, "  EAX=0x%x EBX=0x%x ECX=0x%x EDX=0x%x\n",
+                cpu->eax, cpu->ebx, cpu->ecx, cpu->edx);
+        fprintf(stderr, "  ESI=0x%x EDI=0x%x\n",
+                cpu->esi, cpu->edi);
+#endif
     }
     helper_debug_print_rip_history();
     fprintf(stderr, "======================\n");

@@ -1666,6 +1666,7 @@ void helper_trace_rdi_7f(uint64_t value, uint64_t guest_rip) {
 // Forward declaration
 struct cpu_state;
 
+#ifdef ISH_GUEST_64BIT
 // Debug: trace stores of 0x7f... values (path corruption source)
 void helper_debug_store64_7f_value(uint64_t value, uint64_t guest_addr, uint64_t rip, struct cpu_state *cpu) {
     static int count = 0;
@@ -1679,6 +1680,7 @@ void helper_debug_store64_7f_value(uint64_t value, uint64_t guest_addr, uint64_t
                 (unsigned long long)cpu->r12, (unsigned long long)cpu->rdi);
     }
 }
+#endif
 
 // Debug: trace byte stores to 0x7f0000000xxx addresses (malloc'd heap)
 void helper_debug_store8_7f(uint8_t value, uint64_t guest_addr) {
@@ -1883,6 +1885,7 @@ void helper_debug_store64_entry_a_next(uint64_t value, uint64_t next_gadget) {
     }
 }
 
+#ifdef ISH_GUEST_64BIT
 // Bypass load64_r10 via C code
 static int g_load64_r10_count = 0;
 uint64_t helper_load64_r10_via_c(struct cpu_state *cpu) {
@@ -1971,6 +1974,7 @@ uint64_t helper_load_r10_simple(struct cpu_state *cpu) {
 uint64_t helper_load_r13_simple(struct cpu_state *cpu) {
     return cpu->r13;
 }
+#endif
 
 // Stub debug functions (kept for link compatibility)
 void helper_debug_r13_before_restore(void) {}
@@ -2084,6 +2088,7 @@ void helper_debug_cpu_ptr(void *cpu) {
     }
 }
 
+#ifdef ISH_GUEST_64BIT
 // Debug: trace entry to load64_r13
 static int r13_entry_count = 0;
 void helper_debug_load64_r13_entry(struct cpu_state *cpu) {
@@ -2112,6 +2117,7 @@ void helper_debug_load64_r13_step3(uint64_t value) {
         fflush(stderr);
     }
 }
+#endif
 
 // Debug: trace div64 entry
 // Note: div64_count defined earlier
