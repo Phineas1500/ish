@@ -489,9 +489,7 @@ void handle_interrupt(int interrupt) {
              syscall_num);
       cpu->rax = _ENOSYS;
     } else {
-      // Syscall traces disabled to reduce noise
-      (void)syscall_num;
-      (void)syscall_num;
+
       // Trace when entering code (brk syscall is called early) - DISABLED
       if (0 && syscall_num == 12) { // brk
         static int brk_count = 0;
