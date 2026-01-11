@@ -568,6 +568,59 @@ extern void gadget_addr_r13(void);
 extern void gadget_addr_r14(void);
 extern void gadget_addr_r15(void);
 
+// x87 FPU gadgets
+extern void gadget_fpu_fild16(void);
+extern void gadget_fpu_fild32(void);
+extern void gadget_fpu_fild64(void);
+extern void gadget_fpu_fistp16(void);
+extern void gadget_fpu_fistp32(void);
+extern void gadget_fpu_fistp64(void);
+extern void gadget_fpu_fld32(void);
+extern void gadget_fpu_fld64(void);
+extern void gadget_fpu_fld80(void);
+extern void gadget_fpu_fld_sti(void);
+extern void gadget_fpu_fstp32(void);
+extern void gadget_fpu_fstp64(void);
+extern void gadget_fpu_fstp80(void);
+extern void gadget_fpu_fstp_sti(void);
+extern void gadget_fpu_fadd(void);
+extern void gadget_fpu_faddp(void);
+extern void gadget_fpu_fadd_m32(void);
+extern void gadget_fpu_fadd_m64(void);
+extern void gadget_fpu_fsub(void);
+extern void gadget_fpu_fsubp(void);
+extern void gadget_fpu_fsubr(void);
+extern void gadget_fpu_fsubrp(void);
+extern void gadget_fpu_fsub_m32(void);
+extern void gadget_fpu_fsub_m64(void);
+extern void gadget_fpu_fmul(void);
+extern void gadget_fpu_fmulp(void);
+extern void gadget_fpu_fmul_m32(void);
+extern void gadget_fpu_fmul_m64(void);
+extern void gadget_fpu_fdiv(void);
+extern void gadget_fpu_fdivp(void);
+extern void gadget_fpu_fdiv_m32(void);
+extern void gadget_fpu_fdiv_m64(void);
+extern void gadget_fpu_fxch(void);
+extern void gadget_fpu_fprem(void);
+extern void gadget_fpu_fscale(void);
+extern void gadget_fpu_frndint(void);
+extern void gadget_fpu_fabs(void);
+extern void gadget_fpu_fchs(void);
+extern void gadget_fpu_fincstp(void);
+extern void gadget_fpu_fldz(void);
+extern void gadget_fpu_fld1(void);
+extern void gadget_fpu_fldpi(void);
+extern void gadget_fpu_fldl2e(void);
+extern void gadget_fpu_fldl2t(void);
+extern void gadget_fpu_fldlg2(void);
+extern void gadget_fpu_fldln2(void);
+extern void gadget_fpu_fldcw(void);
+extern void gadget_fpu_fnstcw(void);
+extern void gadget_fpu_fnstsw(void);
+extern void gadget_fpu_fucomip(void);
+extern void gadget_fpu_fucomi(void);
+
 // Address gadgets for r8-r15 (indexed by reg - arg64_r8)
 static gadget_t addr_r8_r15[] = {
     gadget_addr_r8,  gadget_addr_r9,  gadget_addr_r10, gadget_addr_r11,
@@ -5250,6 +5303,497 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       DEBUG_FPRINTF(stderr, "GEN: single SCASB at ip=0x%llx\n",
               (unsigned long long)state->orig_ip);
       GEN(gadget_single_scasb);
+    }
+    break;
+
+  // ======================================================================
+  // x87 FPU Instructions
+  // ======================================================================
+
+  case ZYDIS_MNEMONIC_FILD:
+    // FILD m16/m32/m64 - Load Integer to FPU stack
+    if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
+      if (!gen_addr(state, &inst.operands[0], &inst)) {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+      if (inst.operands[0].size == size64_16) {
+        GEN(gadget_fpu_fild16);
+      } else if (inst.operands[0].size == size64_32) {
+        GEN(gadget_fpu_fild32);
+      } else {
+        GEN(gadget_fpu_fild64);
+      }
+      GEN(state->orig_ip);
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FISTP:
+    // FISTP m16/m32/m64 - Store Integer and Pop
+    if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
+      if (!gen_addr(state, &inst.operands[0], &inst)) {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+      if (inst.operands[0].size == size64_16) {
+        GEN(gadget_fpu_fistp16);
+      } else if (inst.operands[0].size == size64_32) {
+        GEN(gadget_fpu_fistp32);
+      } else {
+        GEN(gadget_fpu_fistp64);
+      }
+      GEN(state->orig_ip);
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FLD:
+    // FLD m32/m64/m80 or ST(i)
+    if (inst.operand_count >= 1) {
+      if (inst.operands[0].type == arg64_mem || inst.operands[0].type == arg64_rip_rel) {
+        if (!gen_addr(state, &inst.operands[0], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        if (inst.operands[0].size == size64_32) {
+          GEN(gadget_fpu_fld32);
+        } else if (inst.operands[0].size == size64_64) {
+          GEN(gadget_fpu_fld64);
+        } else {
+          GEN(gadget_fpu_fld80);
+        }
+        GEN(state->orig_ip);
+      } else if (inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7) {
+        int i = inst.operands[0].type - arg64_st0;
+        GEN(gadget_fpu_fld_sti);
+        GEN(i);
+      } else {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FSTP:
+    // FSTP m32/m64/m80 or ST(i)
+    if (inst.operand_count >= 1) {
+      if (inst.operands[0].type == arg64_mem) {
+        if (!gen_addr(state, &inst.operands[0], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        if (inst.operands[0].size == size64_32) {
+          GEN(gadget_fpu_fstp32);
+        } else if (inst.operands[0].size == size64_64) {
+          GEN(gadget_fpu_fstp64);
+        } else {
+          GEN(gadget_fpu_fstp80);
+        }
+        GEN(state->orig_ip);
+      } else if (inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7) {
+        int i = inst.operands[0].type - arg64_st0;
+        GEN(gadget_fpu_fstp_sti);
+        GEN(i);
+      } else {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FADD:
+    if (inst.operand_count >= 2 &&
+        inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7 &&
+        inst.operands[1].type >= arg64_st0 && inst.operands[1].type <= arg64_st7) {
+      int i = inst.operands[1].type - arg64_st0;
+      GEN(gadget_fpu_fadd);
+      GEN(i);
+    } else if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
+      if (!gen_addr(state, &inst.operands[0], &inst)) {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+      if (inst.operands[0].size == size64_32) {
+        GEN(gadget_fpu_fadd_m32);
+      } else {
+        GEN(gadget_fpu_fadd_m64);
+      }
+      GEN(state->orig_ip);
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FADDP:
+    if (inst.operand_count >= 2 &&
+        inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7) {
+      int i = inst.operands[0].type - arg64_st0;
+      GEN(gadget_fpu_faddp);
+      GEN(i);
+    } else {
+      // FADDP with no operands defaults to ST(1)
+      GEN(gadget_fpu_faddp);
+      GEN(1);
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FSUB:
+    if (inst.operand_count >= 2 &&
+        inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7 &&
+        inst.operands[1].type >= arg64_st0 && inst.operands[1].type <= arg64_st7) {
+      int i = inst.operands[1].type - arg64_st0;
+      GEN(gadget_fpu_fsub);
+      GEN(i);
+    } else if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
+      if (!gen_addr(state, &inst.operands[0], &inst)) {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+      if (inst.operands[0].size == size64_32) {
+        GEN(gadget_fpu_fsub_m32);
+      } else {
+        GEN(gadget_fpu_fsub_m64);
+      }
+      GEN(state->orig_ip);
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FSUBP:
+    if (inst.operand_count >= 2 &&
+        inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7) {
+      int i = inst.operands[0].type - arg64_st0;
+      GEN(gadget_fpu_fsubp);
+      GEN(i);
+    } else {
+      GEN(gadget_fpu_fsubp);
+      GEN(1);
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FSUBR:
+    if (inst.operand_count >= 2 &&
+        inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7) {
+      int i = inst.operands[1].type - arg64_st0;
+      GEN(gadget_fpu_fsubr);
+      GEN(i);
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FSUBRP:
+    if (inst.operand_count >= 2 &&
+        inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7) {
+      int i = inst.operands[0].type - arg64_st0;
+      GEN(gadget_fpu_fsubrp);
+      GEN(i);
+    } else {
+      GEN(gadget_fpu_fsubrp);
+      GEN(1);
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FMUL:
+    if (inst.operand_count >= 2 &&
+        inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7 &&
+        inst.operands[1].type >= arg64_st0 && inst.operands[1].type <= arg64_st7) {
+      int i = inst.operands[1].type - arg64_st0;
+      GEN(gadget_fpu_fmul);
+      GEN(i);
+    } else if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
+      if (!gen_addr(state, &inst.operands[0], &inst)) {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+      if (inst.operands[0].size == size64_32) {
+        GEN(gadget_fpu_fmul_m32);
+      } else {
+        GEN(gadget_fpu_fmul_m64);
+      }
+      GEN(state->orig_ip);
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FMULP:
+    if (inst.operand_count >= 2 &&
+        inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7) {
+      int i = inst.operands[0].type - arg64_st0;
+      GEN(gadget_fpu_fmulp);
+      GEN(i);
+    } else {
+      GEN(gadget_fpu_fmulp);
+      GEN(1);
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FDIV:
+    if (inst.operand_count >= 2 &&
+        inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7 &&
+        inst.operands[1].type >= arg64_st0 && inst.operands[1].type <= arg64_st7) {
+      int i = inst.operands[1].type - arg64_st0;
+      GEN(gadget_fpu_fdiv);
+      GEN(i);
+    } else if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
+      if (!gen_addr(state, &inst.operands[0], &inst)) {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+      if (inst.operands[0].size == size64_32) {
+        GEN(gadget_fpu_fdiv_m32);
+      } else {
+        GEN(gadget_fpu_fdiv_m64);
+      }
+      GEN(state->orig_ip);
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FDIVP:
+    if (inst.operand_count >= 2 &&
+        inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7) {
+      int i = inst.operands[0].type - arg64_st0;
+      GEN(gadget_fpu_fdivp);
+      GEN(i);
+    } else {
+      GEN(gadget_fpu_fdivp);
+      GEN(1);
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FXCH:
+    if (inst.operand_count >= 1 &&
+        inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7) {
+      int i = inst.operands[0].type - arg64_st0;
+      GEN(gadget_fpu_fxch);
+      GEN(i);
+    } else {
+      // FXCH with no operands defaults to ST(1)
+      GEN(gadget_fpu_fxch);
+      GEN(1);
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FPREM:
+    GEN(gadget_fpu_fprem);
+    break;
+
+  case ZYDIS_MNEMONIC_FSCALE:
+    GEN(gadget_fpu_fscale);
+    break;
+
+  case ZYDIS_MNEMONIC_FRNDINT:
+    GEN(gadget_fpu_frndint);
+    break;
+
+  case ZYDIS_MNEMONIC_FABS:
+    GEN(gadget_fpu_fabs);
+    break;
+
+  case ZYDIS_MNEMONIC_FCHS:
+    GEN(gadget_fpu_fchs);
+    break;
+
+  case ZYDIS_MNEMONIC_FINCSTP:
+    GEN(gadget_fpu_fincstp);
+    break;
+
+  case ZYDIS_MNEMONIC_FLDZ:
+    GEN(gadget_fpu_fldz);
+    break;
+
+  case ZYDIS_MNEMONIC_FLD1:
+    GEN(gadget_fpu_fld1);
+    break;
+
+  case ZYDIS_MNEMONIC_FLDPI:
+    GEN(gadget_fpu_fldpi);
+    break;
+
+  case ZYDIS_MNEMONIC_FLDL2E:
+    GEN(gadget_fpu_fldl2e);
+    break;
+
+  case ZYDIS_MNEMONIC_FLDL2T:
+    GEN(gadget_fpu_fldl2t);
+    break;
+
+  case ZYDIS_MNEMONIC_FLDLG2:
+    GEN(gadget_fpu_fldlg2);
+    break;
+
+  case ZYDIS_MNEMONIC_FLDLN2:
+    GEN(gadget_fpu_fldln2);
+    break;
+
+  case ZYDIS_MNEMONIC_FLDCW:
+    if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
+      if (!gen_addr(state, &inst.operands[0], &inst)) {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+      GEN(gadget_fpu_fldcw);
+      GEN(state->orig_ip);
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FNSTCW:
+    if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
+      if (!gen_addr(state, &inst.operands[0], &inst)) {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+      GEN(gadget_fpu_fnstcw);
+      GEN(state->orig_ip);
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FNSTSW:
+    // FNSTSW AX
+    GEN(gadget_fpu_fnstsw);
+    break;
+
+  case ZYDIS_MNEMONIC_FUCOMIP:
+    if (inst.operand_count >= 2 &&
+        inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7 &&
+        inst.operands[1].type >= arg64_st0 && inst.operands[1].type <= arg64_st7) {
+      int i = inst.operands[1].type - arg64_st0;
+      GEN(gadget_fpu_fucomip);
+      GEN(i);
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FUCOMI:
+    if (inst.operand_count >= 2 &&
+        inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7 &&
+        inst.operands[1].type >= arg64_st0 && inst.operands[1].type <= arg64_st7) {
+      int i = inst.operands[1].type - arg64_st0;
+      GEN(gadget_fpu_fucomi);
+      GEN(i);
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_FCOMIP:
+    // FCOMIP is same as FUCOMIP for our purposes (we don't handle FP exceptions differently)
+    if (inst.operand_count >= 2 &&
+        inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7 &&
+        inst.operands[1].type >= arg64_st0 && inst.operands[1].type <= arg64_st7) {
+      int i = inst.operands[1].type - arg64_st0;
+      GEN(gadget_fpu_fucomip);
+      GEN(i);
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
     }
     break;
 

@@ -135,6 +135,16 @@ enum arg64 zydis_reg_to_arg64(ZydisRegister reg) {
         case ZYDIS_REGISTER_XMM14: return arg64_xmm14;
         case ZYDIS_REGISTER_XMM15: return arg64_xmm15;
 
+        // x87 FPU stack registers
+        case ZYDIS_REGISTER_ST0: return arg64_st0;
+        case ZYDIS_REGISTER_ST1: return arg64_st1;
+        case ZYDIS_REGISTER_ST2: return arg64_st2;
+        case ZYDIS_REGISTER_ST3: return arg64_st3;
+        case ZYDIS_REGISTER_ST4: return arg64_st4;
+        case ZYDIS_REGISTER_ST5: return arg64_st5;
+        case ZYDIS_REGISTER_ST6: return arg64_st6;
+        case ZYDIS_REGISTER_ST7: return arg64_st7;
+
         default:
             return arg64_invalid;
     }

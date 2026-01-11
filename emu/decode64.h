@@ -23,6 +23,9 @@ enum arg64 {
     arg64_xmm4,  arg64_xmm5,  arg64_xmm6,  arg64_xmm7,
     arg64_xmm8,  arg64_xmm9,  arg64_xmm10, arg64_xmm11,
     arg64_xmm12, arg64_xmm13, arg64_xmm14, arg64_xmm15,
+    // x87 FPU stack registers
+    arg64_st0, arg64_st1, arg64_st2, arg64_st3,
+    arg64_st4, arg64_st5, arg64_st6, arg64_st7,
     // Other operand types
     arg64_imm,      // Immediate value
     arg64_mem,      // Memory operand

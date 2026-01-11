@@ -3401,3 +3401,482 @@ NAME(imul32_r8_r15_gadgets):
     str w10, [_cpu, CPU_eflags]
     gret 2
     read_bullshit 64, comisd_xmm_mem
+
+// ============================================================================
+// x87 FPU Gadgets
+// These call C helper functions for FPU operations
+// ============================================================================
+
+// FILD - Load Integer to FPU stack
+// [_ip] = orig_ip for segfault handler
+.gadget fpu_fild16
+    read_prep 16, fpu_fild16
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fild16)
+    restore_c
+    gret 1
+    read_bullshit 16, fpu_fild16
+
+.gadget fpu_fild32
+    read_prep 32, fpu_fild32
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fild32)
+    restore_c
+    gret 1
+    read_bullshit 32, fpu_fild32
+
+.gadget fpu_fild64
+    read_prep 64, fpu_fild64
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fild64)
+    restore_c
+    gret 1
+    read_bullshit 64, fpu_fild64
+
+// FISTP - Store Integer and Pop
+.gadget fpu_fistp16
+    write_prep 16, fpu_fistp16
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fistp16)
+    restore_c
+    write_done 16, fpu_fistp16
+    gret 1
+    write_bullshit 16, fpu_fistp16
+
+.gadget fpu_fistp32
+    write_prep 32, fpu_fistp32
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fistp32)
+    restore_c
+    write_done 32, fpu_fistp32
+    gret 1
+    write_bullshit 32, fpu_fistp32
+
+.gadget fpu_fistp64
+    write_prep 64, fpu_fistp64
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fistp64)
+    restore_c
+    write_done 64, fpu_fistp64
+    gret 1
+    write_bullshit 64, fpu_fistp64
+
+// FLD - Load Float to FPU stack
+.gadget fpu_fld32
+    read_prep 32, fpu_fld32
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fld32)
+    restore_c
+    gret 1
+    read_bullshit 32, fpu_fld32
+
+.gadget fpu_fld64
+    read_prep 64, fpu_fld64
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fld64)
+    restore_c
+    gret 1
+    read_bullshit 64, fpu_fld64
+
+.gadget fpu_fld80
+    read_prep 128, fpu_fld80
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fld80)
+    restore_c
+    gret 1
+    read_bullshit 128, fpu_fld80
+
+// FLD ST(i) - Load from FPU register
+// [_ip] = i (FPU stack index)
+.gadget fpu_fld_sti
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fld_sti)
+    restore_c
+    gret 1
+
+// FSTP - Store Float and Pop
+.gadget fpu_fstp32
+    write_prep 32, fpu_fstp32
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fstp32)
+    restore_c
+    write_done 32, fpu_fstp32
+    gret 1
+    write_bullshit 32, fpu_fstp32
+
+.gadget fpu_fstp64
+    write_prep 64, fpu_fstp64
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fstp64)
+    restore_c
+    write_done 64, fpu_fstp64
+    gret 1
+    write_bullshit 64, fpu_fstp64
+
+.gadget fpu_fstp80
+    write_prep 128, fpu_fstp80
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fstp80)
+    restore_c
+    write_done 128, fpu_fstp80
+    gret 1
+    write_bullshit 128, fpu_fstp80
+
+// FSTP ST(i) - Store to FPU register and pop
+// [_ip] = i (FPU stack index)
+.gadget fpu_fstp_sti
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fstp_sti)
+    restore_c
+    gret 1
+
+// FADD operations
+// [_ip] = i (FPU stack index)
+.gadget fpu_fadd
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fadd)
+    restore_c
+    gret 1
+
+.gadget fpu_faddp
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_faddp)
+    restore_c
+    gret 1
+
+.gadget fpu_fadd_m32
+    read_prep 32, fpu_fadd_m32
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fadd_m32)
+    restore_c
+    gret 1
+    read_bullshit 32, fpu_fadd_m32
+
+.gadget fpu_fadd_m64
+    read_prep 64, fpu_fadd_m64
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fadd_m64)
+    restore_c
+    gret 1
+    read_bullshit 64, fpu_fadd_m64
+
+// FSUB operations
+.gadget fpu_fsub
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fsub)
+    restore_c
+    gret 1
+
+.gadget fpu_fsubp
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fsubp)
+    restore_c
+    gret 1
+
+.gadget fpu_fsubr
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fsubr)
+    restore_c
+    gret 1
+
+.gadget fpu_fsubrp
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fsubrp)
+    restore_c
+    gret 1
+
+.gadget fpu_fsub_m32
+    read_prep 32, fpu_fsub_m32
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fsub_m32)
+    restore_c
+    gret 1
+    read_bullshit 32, fpu_fsub_m32
+
+.gadget fpu_fsub_m64
+    read_prep 64, fpu_fsub_m64
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fsub_m64)
+    restore_c
+    gret 1
+    read_bullshit 64, fpu_fsub_m64
+
+// FMUL operations
+.gadget fpu_fmul
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fmul)
+    restore_c
+    gret 1
+
+.gadget fpu_fmulp
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fmulp)
+    restore_c
+    gret 1
+
+.gadget fpu_fmul_m32
+    read_prep 32, fpu_fmul_m32
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fmul_m32)
+    restore_c
+    gret 1
+    read_bullshit 32, fpu_fmul_m32
+
+.gadget fpu_fmul_m64
+    read_prep 64, fpu_fmul_m64
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fmul_m64)
+    restore_c
+    gret 1
+    read_bullshit 64, fpu_fmul_m64
+
+// FDIV operations
+.gadget fpu_fdiv
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fdiv)
+    restore_c
+    gret 1
+
+.gadget fpu_fdivp
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fdivp)
+    restore_c
+    gret 1
+
+.gadget fpu_fdiv_m32
+    read_prep 32, fpu_fdiv_m32
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fdiv_m32)
+    restore_c
+    gret 1
+    read_bullshit 32, fpu_fdiv_m32
+
+.gadget fpu_fdiv_m64
+    read_prep 64, fpu_fdiv_m64
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fdiv_m64)
+    restore_c
+    gret 1
+    read_bullshit 64, fpu_fdiv_m64
+
+// FXCH - Exchange ST(0) and ST(i)
+.gadget fpu_fxch
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fxch)
+    restore_c
+    gret 1
+
+// FPREM - Partial Remainder
+.gadget fpu_fprem
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_fpu_fprem)
+    restore_c
+    gret
+
+// FSCALE - Scale by Power of 2
+.gadget fpu_fscale
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_fpu_fscale)
+    restore_c
+    gret
+
+// FRNDINT - Round to Integer
+.gadget fpu_frndint
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_fpu_frndint)
+    restore_c
+    gret
+
+// FABS - Absolute Value
+.gadget fpu_fabs
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_fpu_fabs)
+    restore_c
+    gret
+
+// FCHS - Change Sign
+.gadget fpu_fchs
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_fpu_fchs)
+    restore_c
+    gret
+
+// FINCSTP - Increment Stack Pointer
+.gadget fpu_fincstp
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_fpu_fincstp)
+    restore_c
+    gret
+
+// Load Constants
+.gadget fpu_fldz
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_fpu_fldz)
+    restore_c
+    gret
+
+.gadget fpu_fld1
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_fpu_fld1)
+    restore_c
+    gret
+
+.gadget fpu_fldpi
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_fpu_fldpi)
+    restore_c
+    gret
+
+.gadget fpu_fldl2e
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_fpu_fldl2e)
+    restore_c
+    gret
+
+.gadget fpu_fldl2t
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_fpu_fldl2t)
+    restore_c
+    gret
+
+.gadget fpu_fldlg2
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_fpu_fldlg2)
+    restore_c
+    gret
+
+.gadget fpu_fldln2
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_fpu_fldln2)
+    restore_c
+    gret
+
+// FLDCW - Load Control Word
+.gadget fpu_fldcw
+    read_prep 16, fpu_fldcw
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fldcw)
+    restore_c
+    gret 1
+    read_bullshit 16, fpu_fldcw
+
+// FNSTCW - Store Control Word
+.gadget fpu_fnstcw
+    write_prep 16, fpu_fnstcw
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fnstcw)
+    restore_c
+    write_done 16, fpu_fnstcw
+    gret 1
+    write_bullshit 16, fpu_fnstcw
+
+// FNSTSW - Store Status Word to AX
+.gadget fpu_fnstsw
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_fpu_fnstsw)
+    restore_c
+    gret
+
+// FUCOMIP - Unordered Compare, set EFLAGS, pop
+// [_ip] = i (FPU stack index)
+.gadget fpu_fucomip
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fucomip)
+    restore_c
+    gret 1
+
+// FUCOMI - Unordered Compare, set EFLAGS (no pop)
+// [_ip] = i (FPU stack index)
+.gadget fpu_fucomi
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fucomi)
+    restore_c
+    gret 1

@@ -2395,3 +2395,368 @@ void helper_enable_exec_trace(void) {
     fflush(stderr);
     trace_enabled = 1;
 }
+
+// ============================================================================
+// x87 FPU Helper Functions
+// ============================================================================
+
+#include "emu/float80.h"
+
+// FILD - Load Integer to FPU stack
+void helper_fpu_fild16(struct cpu_state *cpu, int16_t *addr) {
+    float80 f = f80_from_int(*addr);
+    cpu->top = (cpu->top - 1) & 7;
+    cpu->fp[cpu->top] = f;
+}
+
+void helper_fpu_fild32(struct cpu_state *cpu, int32_t *addr) {
+    float80 f = f80_from_int(*addr);
+    cpu->top = (cpu->top - 1) & 7;
+    cpu->fp[cpu->top] = f;
+}
+
+void helper_fpu_fild64(struct cpu_state *cpu, int64_t *addr) {
+    float80 f = f80_from_int(*addr);
+    cpu->top = (cpu->top - 1) & 7;
+    cpu->fp[cpu->top] = f;
+}
+
+// FISTP - Store Integer and Pop
+void helper_fpu_fistp16(struct cpu_state *cpu, int16_t *addr) {
+    *addr = (int16_t)f80_to_int(cpu->fp[cpu->top]);
+    cpu->top = (cpu->top + 1) & 7;
+}
+
+void helper_fpu_fistp32(struct cpu_state *cpu, int32_t *addr) {
+    *addr = (int32_t)f80_to_int(cpu->fp[cpu->top]);
+    cpu->top = (cpu->top + 1) & 7;
+}
+
+void helper_fpu_fistp64(struct cpu_state *cpu, int64_t *addr) {
+    *addr = f80_to_int(cpu->fp[cpu->top]);
+    cpu->top = (cpu->top + 1) & 7;
+}
+
+// FLD - Load Float to FPU stack
+void helper_fpu_fld32(struct cpu_state *cpu, float *addr) {
+    float80 f = f80_from_double((double)*addr);
+    cpu->top = (cpu->top - 1) & 7;
+    cpu->fp[cpu->top] = f;
+}
+
+void helper_fpu_fld64(struct cpu_state *cpu, double *addr) {
+    float80 f = f80_from_double(*addr);
+    cpu->top = (cpu->top - 1) & 7;
+    cpu->fp[cpu->top] = f;
+}
+
+void helper_fpu_fld80(struct cpu_state *cpu, float80 *addr) {
+    cpu->top = (cpu->top - 1) & 7;
+    cpu->fp[cpu->top] = *addr;
+}
+
+void helper_fpu_fld_sti(struct cpu_state *cpu, int i) {
+    int src_idx = (cpu->top + i) & 7;
+    float80 val = cpu->fp[src_idx];
+    cpu->top = (cpu->top - 1) & 7;
+    cpu->fp[cpu->top] = val;
+}
+
+// FSTP - Store Float and Pop
+void helper_fpu_fstp32(struct cpu_state *cpu, float *addr) {
+    *addr = (float)f80_to_double(cpu->fp[cpu->top]);
+    cpu->top = (cpu->top + 1) & 7;
+}
+
+void helper_fpu_fstp64(struct cpu_state *cpu, double *addr) {
+    *addr = f80_to_double(cpu->fp[cpu->top]);
+    cpu->top = (cpu->top + 1) & 7;
+}
+
+void helper_fpu_fstp80(struct cpu_state *cpu, float80 *addr) {
+    *addr = cpu->fp[cpu->top];
+    cpu->top = (cpu->top + 1) & 7;
+}
+
+void helper_fpu_fstp_sti(struct cpu_state *cpu, int i) {
+    int dst_idx = (cpu->top + i) & 7;
+    cpu->fp[dst_idx] = cpu->fp[cpu->top];
+    cpu->top = (cpu->top + 1) & 7;
+}
+
+// FADD - Addition
+void helper_fpu_fadd(struct cpu_state *cpu, int i) {
+    int idx = (cpu->top + i) & 7;
+    cpu->fp[cpu->top] = f80_add(cpu->fp[cpu->top], cpu->fp[idx]);
+}
+
+void helper_fpu_faddp(struct cpu_state *cpu, int i) {
+    int idx = (cpu->top + i) & 7;
+    cpu->fp[idx] = f80_add(cpu->fp[idx], cpu->fp[cpu->top]);
+    cpu->top = (cpu->top + 1) & 7;
+}
+
+void helper_fpu_fadd_m32(struct cpu_state *cpu, float *addr) {
+    float80 val = f80_from_double((double)*addr);
+    cpu->fp[cpu->top] = f80_add(cpu->fp[cpu->top], val);
+}
+
+void helper_fpu_fadd_m64(struct cpu_state *cpu, double *addr) {
+    float80 val = f80_from_double(*addr);
+    cpu->fp[cpu->top] = f80_add(cpu->fp[cpu->top], val);
+}
+
+// FSUB - Subtraction
+void helper_fpu_fsub(struct cpu_state *cpu, int i) {
+    int idx = (cpu->top + i) & 7;
+    cpu->fp[cpu->top] = f80_sub(cpu->fp[cpu->top], cpu->fp[idx]);
+}
+
+void helper_fpu_fsubp(struct cpu_state *cpu, int i) {
+    int idx = (cpu->top + i) & 7;
+    cpu->fp[idx] = f80_sub(cpu->fp[idx], cpu->fp[cpu->top]);
+    cpu->top = (cpu->top + 1) & 7;
+}
+
+void helper_fpu_fsubr(struct cpu_state *cpu, int i) {
+    int idx = (cpu->top + i) & 7;
+    cpu->fp[cpu->top] = f80_sub(cpu->fp[idx], cpu->fp[cpu->top]);
+}
+
+void helper_fpu_fsubrp(struct cpu_state *cpu, int i) {
+    int idx = (cpu->top + i) & 7;
+    cpu->fp[idx] = f80_sub(cpu->fp[cpu->top], cpu->fp[idx]);
+    cpu->top = (cpu->top + 1) & 7;
+}
+
+void helper_fpu_fsub_m32(struct cpu_state *cpu, float *addr) {
+    float80 val = f80_from_double((double)*addr);
+    cpu->fp[cpu->top] = f80_sub(cpu->fp[cpu->top], val);
+}
+
+void helper_fpu_fsub_m64(struct cpu_state *cpu, double *addr) {
+    float80 val = f80_from_double(*addr);
+    cpu->fp[cpu->top] = f80_sub(cpu->fp[cpu->top], val);
+}
+
+// FMUL - Multiplication
+void helper_fpu_fmul(struct cpu_state *cpu, int i) {
+    int idx = (cpu->top + i) & 7;
+    cpu->fp[cpu->top] = f80_mul(cpu->fp[cpu->top], cpu->fp[idx]);
+}
+
+void helper_fpu_fmulp(struct cpu_state *cpu, int i) {
+    int idx = (cpu->top + i) & 7;
+    cpu->fp[idx] = f80_mul(cpu->fp[idx], cpu->fp[cpu->top]);
+    cpu->top = (cpu->top + 1) & 7;
+}
+
+void helper_fpu_fmul_m32(struct cpu_state *cpu, float *addr) {
+    float80 val = f80_from_double((double)*addr);
+    cpu->fp[cpu->top] = f80_mul(cpu->fp[cpu->top], val);
+}
+
+void helper_fpu_fmul_m64(struct cpu_state *cpu, double *addr) {
+    float80 val = f80_from_double(*addr);
+    cpu->fp[cpu->top] = f80_mul(cpu->fp[cpu->top], val);
+}
+
+// FDIV - Division
+void helper_fpu_fdiv(struct cpu_state *cpu, int i) {
+    int idx = (cpu->top + i) & 7;
+    cpu->fp[cpu->top] = f80_div(cpu->fp[cpu->top], cpu->fp[idx]);
+}
+
+void helper_fpu_fdivp(struct cpu_state *cpu, int i) {
+    int idx = (cpu->top + i) & 7;
+    cpu->fp[idx] = f80_div(cpu->fp[idx], cpu->fp[cpu->top]);
+    cpu->top = (cpu->top + 1) & 7;
+}
+
+void helper_fpu_fdiv_m32(struct cpu_state *cpu, float *addr) {
+    float80 val = f80_from_double((double)*addr);
+    cpu->fp[cpu->top] = f80_div(cpu->fp[cpu->top], val);
+}
+
+void helper_fpu_fdiv_m64(struct cpu_state *cpu, double *addr) {
+    float80 val = f80_from_double(*addr);
+    cpu->fp[cpu->top] = f80_div(cpu->fp[cpu->top], val);
+}
+
+// FXCH - Exchange ST(0) and ST(i)
+void helper_fpu_fxch(struct cpu_state *cpu, int i) {
+    int idx = (cpu->top + i) & 7;
+    float80 tmp = cpu->fp[cpu->top];
+    cpu->fp[cpu->top] = cpu->fp[idx];
+    cpu->fp[idx] = tmp;
+}
+
+// FPREM - Partial Remainder
+void helper_fpu_fprem(struct cpu_state *cpu) {
+    int st1_idx = (cpu->top + 1) & 7;
+    cpu->fp[cpu->top] = f80_mod(cpu->fp[cpu->top], cpu->fp[st1_idx]);
+    cpu->c2 = 0;  // Reduction complete
+}
+
+// FSCALE - Scale by Power of 2
+void helper_fpu_fscale(struct cpu_state *cpu) {
+    int st1_idx = (cpu->top + 1) & 7;
+    int scale = (int)f80_to_int(f80_round(cpu->fp[st1_idx]));
+    cpu->fp[cpu->top] = f80_scale(cpu->fp[cpu->top], scale);
+}
+
+// FRNDINT - Round to Integer
+void helper_fpu_frndint(struct cpu_state *cpu) {
+    cpu->fp[cpu->top] = f80_round(cpu->fp[cpu->top]);
+}
+
+// FABS - Absolute Value
+void helper_fpu_fabs(struct cpu_state *cpu) {
+    cpu->fp[cpu->top] = f80_abs(cpu->fp[cpu->top]);
+}
+
+// FCHS - Change Sign
+void helper_fpu_fchs(struct cpu_state *cpu) {
+    cpu->fp[cpu->top] = f80_neg(cpu->fp[cpu->top]);
+}
+
+// FINCSTP - Increment Stack Pointer
+void helper_fpu_fincstp(struct cpu_state *cpu) {
+    cpu->top = (cpu->top + 1) & 7;
+}
+
+// Load Constants
+void helper_fpu_fldz(struct cpu_state *cpu) {
+    cpu->top = (cpu->top - 1) & 7;
+    cpu->fp[cpu->top] = f80_from_double(0.0);
+}
+
+void helper_fpu_fld1(struct cpu_state *cpu) {
+    cpu->top = (cpu->top - 1) & 7;
+    cpu->fp[cpu->top] = f80_from_double(1.0);
+}
+
+void helper_fpu_fldpi(struct cpu_state *cpu) {
+    cpu->top = (cpu->top - 1) & 7;
+    cpu->fp[cpu->top] = f80_from_double(3.14159265358979323846);
+}
+
+void helper_fpu_fldl2e(struct cpu_state *cpu) {
+    cpu->top = (cpu->top - 1) & 7;
+    cpu->fp[cpu->top] = f80_from_double(1.4426950408889634);  // log2(e)
+}
+
+void helper_fpu_fldl2t(struct cpu_state *cpu) {
+    cpu->top = (cpu->top - 1) & 7;
+    cpu->fp[cpu->top] = f80_from_double(3.3219280948873626);  // log2(10)
+}
+
+void helper_fpu_fldlg2(struct cpu_state *cpu) {
+    cpu->top = (cpu->top - 1) & 7;
+    cpu->fp[cpu->top] = f80_from_double(0.3010299956639812);  // log10(2)
+}
+
+void helper_fpu_fldln2(struct cpu_state *cpu) {
+    cpu->top = (cpu->top - 1) & 7;
+    cpu->fp[cpu->top] = f80_from_double(0.6931471805599453);  // ln(2)
+}
+
+// FLDCW/FNSTCW - Load/Store Control Word
+void helper_fpu_fldcw(struct cpu_state *cpu, uint16_t *addr) {
+    cpu->fcw = *addr;
+    // Update rounding mode based on RC field (bits 10-11)
+    f80_rounding_mode = (cpu->fcw >> 10) & 3;
+}
+
+void helper_fpu_fnstcw(struct cpu_state *cpu, uint16_t *addr) {
+    *addr = cpu->fcw;
+}
+
+// FNSTSW - Store Status Word to AX
+void helper_fpu_fnstsw(struct cpu_state *cpu) {
+    // fsw is stored with top in bits 11-13
+    // The bitfield structure already handles this
+    // Result goes to AX register (low 16 bits of EAX/RAX)
+#ifdef ISH_GUEST_64BIT
+    cpu->rax = (cpu->rax & 0xFFFFFFFFFFFF0000ULL) | cpu->fsw;
+#else
+    cpu->eax = (cpu->eax & 0xFFFF0000) | cpu->fsw;
+#endif
+}
+
+// FUCOMIP - Unordered Compare, set EFLAGS, pop
+void helper_fpu_fucomip(struct cpu_state *cpu, int i) {
+    int idx = (cpu->top + i) & 7;
+    float80 st0 = cpu->fp[cpu->top];
+    float80 sti = cpu->fp[idx];
+
+    // Set EFLAGS based on comparison
+    // ZF=1, PF=1, CF=1 if unordered (NaN)
+    // ZF=1, PF=0, CF=0 if equal
+    // ZF=0, PF=0, CF=0 if st0 > sti
+    // ZF=0, PF=0, CF=1 if st0 < sti
+    if (f80_uncomparable(st0, sti)) {
+        cpu->zf_res = 0;  // Will be set by flags_res
+        cpu->cf = 1;
+        cpu->of = 0;
+        // Set ZF and PF manually via eflags
+        cpu->eflags |= (1 << 6);  // ZF
+        cpu->eflags |= (1 << 2);  // PF
+        cpu->flags_res &= ~(ZF_RES | PF_RES);  // Clear res bits
+    } else if (f80_eq(st0, sti)) {
+        cpu->cf = 0;
+        cpu->of = 0;
+        cpu->eflags |= (1 << 6);   // ZF = 1
+        cpu->eflags &= ~(1 << 2);  // PF = 0
+        cpu->flags_res &= ~(ZF_RES | PF_RES);
+    } else if (f80_lt(st0, sti)) {
+        cpu->cf = 1;
+        cpu->of = 0;
+        cpu->eflags &= ~(1 << 6);  // ZF = 0
+        cpu->eflags &= ~(1 << 2);  // PF = 0
+        cpu->flags_res &= ~(ZF_RES | PF_RES);
+    } else {
+        // st0 > sti
+        cpu->cf = 0;
+        cpu->of = 0;
+        cpu->eflags &= ~(1 << 6);  // ZF = 0
+        cpu->eflags &= ~(1 << 2);  // PF = 0
+        cpu->flags_res &= ~(ZF_RES | PF_RES);
+    }
+
+    // Pop
+    cpu->top = (cpu->top + 1) & 7;
+}
+
+// FUCOMI - Unordered Compare, set EFLAGS (no pop)
+void helper_fpu_fucomi(struct cpu_state *cpu, int i) {
+    int idx = (cpu->top + i) & 7;
+    float80 st0 = cpu->fp[cpu->top];
+    float80 sti = cpu->fp[idx];
+
+    if (f80_uncomparable(st0, sti)) {
+        cpu->cf = 1;
+        cpu->of = 0;
+        cpu->eflags |= (1 << 6);  // ZF
+        cpu->eflags |= (1 << 2);  // PF
+        cpu->flags_res &= ~(ZF_RES | PF_RES);
+    } else if (f80_eq(st0, sti)) {
+        cpu->cf = 0;
+        cpu->of = 0;
+        cpu->eflags |= (1 << 6);   // ZF = 1
+        cpu->eflags &= ~(1 << 2);  // PF = 0
+        cpu->flags_res &= ~(ZF_RES | PF_RES);
+    } else if (f80_lt(st0, sti)) {
+        cpu->cf = 1;
+        cpu->of = 0;
+        cpu->eflags &= ~(1 << 6);  // ZF = 0
+        cpu->eflags &= ~(1 << 2);  // PF = 0
+        cpu->flags_res &= ~(ZF_RES | PF_RES);
+    } else {
+        cpu->cf = 0;
+        cpu->of = 0;
+        cpu->eflags &= ~(1 << 6);  // ZF = 0
+        cpu->eflags &= ~(1 << 2);  // PF = 0
+        cpu->flags_res &= ~(ZF_RES | PF_RES);
+    }
+}
