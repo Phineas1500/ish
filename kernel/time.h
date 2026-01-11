@@ -12,6 +12,17 @@ dword_t sys_clock_gettime(dword_t clock, addr_t tp);
 dword_t sys_clock_settime(dword_t clock, addr_t tp);
 dword_t sys_clock_getres(dword_t clock, addr_t res_addr);
 
+// x86_64 uses 64-bit time_t and long, i386 uses 32-bit
+#ifdef ISH_GUEST_64BIT
+struct timeval_ {
+    sqword_t sec;
+    sqword_t usec;
+};
+struct timespec_ {
+    sqword_t sec;
+    sqword_t nsec;
+};
+#else
 struct timeval_ {
     dword_t sec;
     dword_t usec;
@@ -20,6 +31,7 @@ struct timespec_ {
     dword_t sec;
     dword_t nsec;
 };
+#endif
 struct timezone_ {
     dword_t minuteswest;
     dword_t dsttime;

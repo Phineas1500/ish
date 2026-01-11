@@ -138,8 +138,15 @@ typedef sdword_t pid_t_;
 typedef dword_t uid_t_;
 typedef word_t mode_t_;
 typedef sqword_t off_t_;
+
+// time_t and clock_t are 64-bit on x86_64, 32-bit on i386
+#ifdef ISH_GUEST_64BIT
+typedef sqword_t time_t_;
+typedef sqword_t clock_t_;
+#else
 typedef dword_t time_t_;
 typedef dword_t clock_t_;
+#endif
 
 #define uint(size) glue3(uint,size,_t)
 #define sint(size) glue3(int,size,_t)
