@@ -42,6 +42,7 @@ enum size64 {
     size64_16,
     size64_32,
     size64_64,
+    size64_80,   // x87 extended precision (tbyte)
     size64_128,  // XMM
     size64_256,  // YMM (if we ever support AVX)
     size64_count,

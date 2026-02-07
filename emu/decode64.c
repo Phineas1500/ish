@@ -157,6 +157,7 @@ enum size64 decode64_op_size(const ZydisDecodedOperand *op) {
         case 16:  return size64_16;
         case 32:  return size64_32;
         case 64:  return size64_64;
+        case 80:  return size64_80;
         case 128: return size64_128;
         case 256: return size64_256;
         default:  return size64_64;  // Default to 64-bit

@@ -282,18 +282,36 @@
         tbz w9, 0, \target
     3:
     .else N .ifc \cond,sxo
+        // SF != OF: must check SF_RES to get SF from correct source
+        ldr w9, [_cpu, CPU_flags_res]
+        tbnz w9, 2, 4f                     // bit 2 = SF_RES -> compute from res
+        // SF from eflags bit 7
+        ldr w9, [_cpu, CPU_eflags]
+        ubfx w9, w9, 7, 1                  // extract SF bit
+        b 5f
+    4:  // SF from CPU_res
         ldr x9, [_cpu, CPU_res]
         cmp x9, 0
-        cset w9, lt
-        ldrb w10, [_cpu, CPU_of]
+        cset w9, lt                         // SF = (res < 0)
+    5:  ldrb w10, [_cpu, CPU_of]
         cmp w9, w10
         b.ne \target
     .else N .ifc \cond,sxoz
+        // SF != OF || ZF=1: check both with proper SF_RES/ZF_RES dispatch
+        // First check ZF
+        check_res_or_flag 1, 6, \target, 3f
         ldr x9, [_cpu, CPU_res]
+        cbz x9, \target
+    3:  // ZF=0, now check SF != OF
+        ldr w9, [_cpu, CPU_flags_res]
+        tbnz w9, 2, 4f                     // bit 2 = SF_RES -> compute from res
+        ldr w9, [_cpu, CPU_eflags]
+        ubfx w9, w9, 7, 1
+        b 5f
+    4:  ldr x9, [_cpu, CPU_res]
         cmp x9, 0
-        b.eq \target
         cset w9, lt
-        ldrb w10, [_cpu, CPU_of]
+    5:  ldrb w10, [_cpu, CPU_of]
         cmp w9, w10
         b.ne \target
     .endif N .endif N .endif N .endif N .endif N .endif N .endif N .endif

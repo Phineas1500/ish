@@ -541,12 +541,14 @@ void helper_debug_call(uint64_t target, uint64_t rdi, uint64_t rsi, uint64_t ret
                     (unsigned long long)rdi, str);
         }
         // Trace the duration parser at 0x5555555e6127 (file addr 0x92127)
-        // rdi = buffer to store result, rsi = format/string to parse
+        // rdi = result buffer, rsi = string to parse
         if (real_target == 0x5555555e6127) {
-            char str[64] = {0};
-            read_guest_string_safe(rsi, str, sizeof(str));
-            fprintf(stderr, "BB_DURATION_PARSE: buf=0x%llx str=0x%llx=\"%s\" rdx=0x%llx\n",
-                    (unsigned long long)rdi, (unsigned long long)rsi, str, (unsigned long long)rdx);
+            char str_rdi[64] = {0};
+            char str_rsi[64] = {0};
+            read_guest_string_safe(rdi, str_rdi, sizeof(str_rdi));
+            read_guest_string_safe(rsi, str_rsi, sizeof(str_rsi));
+            fprintf(stderr, "BB_DURATION_PARSE: rdi=0x%llx=\"%s\" rsi=0x%llx=\"%s\" rdx=0x%llx\n",
+                    (unsigned long long)rdi, str_rdi, (unsigned long long)rsi, str_rsi, (unsigned long long)rdx);
         }
         // Trace function at 0x5555555f1338 (file addr 0x9d338)
         if (real_target == 0x5555555f1338) {
@@ -1180,14 +1182,63 @@ void helper_debug_byte_load_full(uint64_t value, uint64_t host_addr, uint64_t gu
 
 // Debug: trace CMP32 x8 - called to trace comparisons
 // At getopt32: mem_value = stack[-0x568], reg_value = r12d
-void helper_debug_cmp32_x8(uint32_t mem_value, uint32_t reg_value) {
+static int cmp32_x8_count = 0;
+void helper_debug_cmp32_x8(uint32_t mem_value, uint32_t reg_value, uint64_t rip) {
+    cmp32_x8_count++;
+    // Trace ALL cmp32_x8 calls for first 200
+    if (cmp32_x8_count <= 200) {
+        fprintf(stderr, "CMP32_X8[%d]: op0=%u (0x%x) op1=%u (0x%x) rip=0x%llx -> ZF=%d\n",
+                cmp32_x8_count, mem_value, mem_value, reg_value, reg_value,
+                (unsigned long long)rip, mem_value == reg_value ? 1 : 0);
+    }
+}
+
+void helper_trace_load64_r15(uint64_t value, uint64_t rip) {
+    (void)value; (void)rip;
+}
+
+// Breadcrumb tracer: activated after RP check fires
+static int breadcrumb_armed = 0;
+void helper_breadcrumb(uint64_t guest_ip) {
+    if (!breadcrumb_armed) return;
     static int count = 0;
     count++;
-    // Always print for now to debug the issue
-    DEBUG_FPRINTF(stderr, "CMP32_X8[%d]: _tmp=%d (0x%x) w8=%d (0x%x) result=%d\n",
-            count, (int32_t)mem_value, mem_value, (int32_t)reg_value, reg_value,
-            (int32_t)(mem_value - reg_value));
+    if (count <= 500) {
+        fprintf(stderr, "BC[%d]: 0x%llx\n", count, (unsigned long long)guest_ip);
+    }
 }
+
+void helper_arm_breadcrumb(void) {
+    breadcrumb_armed = 1;
+}
+
+// Trace x[a] value at the threshold comparison point (bc87)
+void helper_trace_xa(uint64_t xa_value, uint64_t ebx_value) {
+    static int count = 0;
+    count++;
+    if (count <= 2000) {
+        fprintf(stderr, "XA[%d]: x[%llu] = %llu (0x%llx)\n",
+                count, (unsigned long long)ebx_value,
+                (unsigned long long)xa_value, (unsigned long long)xa_value);
+    }
+}
+
+// Trace rp value at the outer loop check (bcc7: cmpl $0x1b, %r10d)
+#ifdef ISH_GUEST_64BIT
+void helper_trace_rp(struct cpu_state *cpu) {
+    static int count = 0;
+    count++;
+    int32_t r10d = (int32_t)(uint32_t)cpu->r10;
+    int32_t r12d = (int32_t)(uint32_t)cpu->r12;
+    if (count <= 2000) {
+        fprintf(stderr, "RP[%d]: r10d(rp)=%d r12d(e2)=%d\n",
+                count, r10d, r12d);
+    }
+    if (count == 1) {
+        helper_arm_breadcrumb();
+    }
+}
+#endif
 
 void helper_debug_cmp32_reg_entry(uint64_t reg_index, uint32_t tmp_value) {
     (void)reg_index; (void)tmp_value;
@@ -1306,15 +1357,8 @@ void helper_debug_store64_r11(uint64_t value, uint64_t guest_rip) {
 
 static int g_store_r13_count = 0;
 void helper_debug_store64_r13(uint64_t value, uint64_t guest_rip) {
-    g_store_r13_count++;
-    // Trace key stores - look for 0x8000000 or 0 in busybox
-    if (guest_rip >= 0x555555550000 && guest_rip <= 0x555555700000) {
-        if (value == 0 || value == 0x8000000) {
-            DEBUG_FPRINTF(stderr, "STORE_R13[%d]: value=0x%llx @ rip=0x%llx\n",
-                    g_store_r13_count, (unsigned long long)value,
-                    (unsigned long long)guest_rip);
-        }
-    }
+    (void)value; (void)guest_rip;
+    // Disabled verbose tracing
 }
 
 void helper_debug_load64_r13(uint64_t value) {
@@ -2402,23 +2446,73 @@ void helper_enable_exec_trace(void) {
 
 #include "emu/float80.h"
 
+// Global FPU push counter to track all operations that push to the stack
+static int fpu_push_count = 0;
+#define FPU_PUSH_TRACE(name, val_str) do { \
+    fpu_push_count++; \
+    if (fpu_push_count <= 30) { \
+        fprintf(stderr, "FPU_PUSH[%d]: %s %s old_top=%d new_top=%d\n", \
+                fpu_push_count, name, val_str, old_top, cpu->top); \
+    } \
+} while(0)
+
 // FILD - Load Integer to FPU stack
 void helper_fpu_fild16(struct cpu_state *cpu, int16_t *addr) {
+    int old_top = cpu->top;
     float80 f = f80_from_int(*addr);
     cpu->top = (cpu->top - 1) & 7;
     cpu->fp[cpu->top] = f;
+    char buf[32]; snprintf(buf, sizeof(buf), "val=%d", (int)*addr);
+    FPU_PUSH_TRACE("FILD16", buf);
 }
 
+static int fild32_count = 0;
 void helper_fpu_fild32(struct cpu_state *cpu, int32_t *addr) {
-    float80 f = f80_from_int(*addr);
+    fild32_count++;
+    int old_top = cpu->top;
+    int32_t val = *addr;
+    float80 f = f80_from_int(val);
     cpu->top = (cpu->top - 1) & 7;
     cpu->fp[cpu->top] = f;
+    char buf[32]; snprintf(buf, sizeof(buf), "val=%d RIP=0x%llx", val, (unsigned long long)CPU_IP(cpu));
+    FPU_PUSH_TRACE("FILD32", buf);
 }
 
+static int fild64_count = 0;
 void helper_fpu_fild64(struct cpu_state *cpu, int64_t *addr) {
-    float80 f = f80_from_int(*addr);
+    fild64_count++;
+    int old_top = cpu->top;
+    int64_t val = *addr;
+    float80 f = f80_from_int(val);
     cpu->top = (cpu->top - 1) & 7;
     cpu->fp[cpu->top] = f;
+    char buf[64]; snprintf(buf, sizeof(buf), "val=%lld RIP=0x%llx", (long long)val, (unsigned long long)CPU_IP(cpu));
+    FPU_PUSH_TRACE("FILD64", buf);
+}
+
+// FIST - Store Integer (without pop)
+static int fist16_count = 0;
+void helper_fpu_fist16(struct cpu_state *cpu, int16_t *addr) {
+    fist16_count++;
+    int16_t val = (int16_t)f80_to_int(cpu->fp[cpu->top]);
+    *addr = val;
+    // Note: FIST does NOT pop, so we don't change cpu->top
+    if (fist16_count <= 20) {
+        fprintf(stderr, "FIST16[%d]: ST(%d) = %d -> mem (no pop)\n",
+                fist16_count, cpu->top, val);
+    }
+}
+
+static int fist32_count = 0;
+void helper_fpu_fist32(struct cpu_state *cpu, int32_t *addr) {
+    fist32_count++;
+    int32_t val = (int32_t)f80_to_int(cpu->fp[cpu->top]);
+    *addr = val;
+    // Note: FIST does NOT pop, so we don't change cpu->top
+    if (fist32_count <= 20) {
+        fprintf(stderr, "FIST32[%d]: ST(%d) = %d -> mem (no pop)\n",
+                fist32_count, cpu->top, val);
+    }
 }
 
 // FISTP - Store Integer and Pop
@@ -2427,39 +2521,79 @@ void helper_fpu_fistp16(struct cpu_state *cpu, int16_t *addr) {
     cpu->top = (cpu->top + 1) & 7;
 }
 
+static int fistp32_count = 0;
 void helper_fpu_fistp32(struct cpu_state *cpu, int32_t *addr) {
-    *addr = (int32_t)f80_to_int(cpu->fp[cpu->top]);
+    fistp32_count++;
+    int32_t val = (int32_t)f80_to_int(cpu->fp[cpu->top]);
+    *addr = val;
     cpu->top = (cpu->top + 1) & 7;
+    if (fistp32_count <= 20) {
+        fprintf(stderr, "FISTP32[%d]: ST(%d) = %d -> mem, new top=%d\n",
+                fistp32_count, cpu->top-1, val, cpu->top);
+    }
 }
 
+static int fistp64_count = 0;
 void helper_fpu_fistp64(struct cpu_state *cpu, int64_t *addr) {
-    *addr = f80_to_int(cpu->fp[cpu->top]);
+    fistp64_count++;
+    int64_t val = f80_to_int(cpu->fp[cpu->top]);
+    *addr = val;
     cpu->top = (cpu->top + 1) & 7;
+    if (fistp64_count <= 20) {
+        fprintf(stderr, "FISTP64[%d]: ST(%d) = %lld -> mem, new top=%d\n",
+                fistp64_count, cpu->top-1, (long long)val, cpu->top);
+    }
 }
 
 // FLD - Load Float to FPU stack
 void helper_fpu_fld32(struct cpu_state *cpu, float *addr) {
+    int old_top = cpu->top;
     float80 f = f80_from_double((double)*addr);
     cpu->top = (cpu->top - 1) & 7;
     cpu->fp[cpu->top] = f;
+    char buf[64]; snprintf(buf, sizeof(buf), "val=%g RIP=0x%llx", (double)*addr, (unsigned long long)CPU_IP(cpu));
+    FPU_PUSH_TRACE("FLD32", buf);
 }
 
+static int fld64_count = 0;
 void helper_fpu_fld64(struct cpu_state *cpu, double *addr) {
-    float80 f = f80_from_double(*addr);
+    fld64_count++;
+    int old_top = cpu->top;
+    double val = *addr;
+    float80 f = f80_from_double(val);
     cpu->top = (cpu->top - 1) & 7;
     cpu->fp[cpu->top] = f;
+    char buf[64]; snprintf(buf, sizeof(buf), "val=%g RIP=0x%llx", val, (unsigned long long)CPU_IP(cpu));
+    FPU_PUSH_TRACE("FLD64", buf);
 }
 
+static int fld80_count = 0;
 void helper_fpu_fld80(struct cpu_state *cpu, float80 *addr) {
+    fld80_count++;
+    int old_top = cpu->top;
     cpu->top = (cpu->top - 1) & 7;
     cpu->fp[cpu->top] = *addr;
+    double approx = f80_to_double(*addr);
+    uint8_t *bytes = (uint8_t *)addr;
+    if (fld80_count <= 30) {
+        fprintf(stderr, "FLD80[%d]: val=%g bytes=%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x old_top=%d new_top=%d\n",
+                fld80_count, approx,
+                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4],
+                bytes[5], bytes[6], bytes[7], bytes[8], bytes[9],
+                old_top, cpu->top);
+    }
+    char buf[64]; snprintf(buf, sizeof(buf), "val=%g RIP=0x%llx", approx, (unsigned long long)CPU_IP(cpu));
+    FPU_PUSH_TRACE("FLD80", buf);
 }
 
 void helper_fpu_fld_sti(struct cpu_state *cpu, int i) {
+    int old_top = cpu->top;
     int src_idx = (cpu->top + i) & 7;
     float80 val = cpu->fp[src_idx];
     cpu->top = (cpu->top - 1) & 7;
     cpu->fp[cpu->top] = val;
+    char buf[32]; snprintf(buf, sizeof(buf), "ST(%d) RIP=0x%llx", i, (unsigned long long)CPU_IP(cpu));
+    FPU_PUSH_TRACE("FLD_STI", buf);
 }
 
 // FSTP - Store Float and Pop
@@ -2468,13 +2602,30 @@ void helper_fpu_fstp32(struct cpu_state *cpu, float *addr) {
     cpu->top = (cpu->top + 1) & 7;
 }
 
+static int fstp64_count = 0;
 void helper_fpu_fstp64(struct cpu_state *cpu, double *addr) {
-    *addr = f80_to_double(cpu->fp[cpu->top]);
+    fstp64_count++;
+    double val = f80_to_double(cpu->fp[cpu->top]);
+    *addr = val;
+    if (fstp64_count <= 30) {
+        fprintf(stderr, "FSTP64[%d]: RIP=0x%llx ST(%d) = %g -> addr=%p\n",
+                fstp64_count, (unsigned long long)CPU_IP(cpu), cpu->top, val, (void*)addr);
+    }
     cpu->top = (cpu->top + 1) & 7;
 }
 
+static int fstp80_count = 0;
 void helper_fpu_fstp80(struct cpu_state *cpu, float80 *addr) {
+    fstp80_count++;
     *addr = cpu->fp[cpu->top];
+    if (fstp80_count <= 30) {
+        double approx = f80_to_double(cpu->fp[cpu->top]);
+        uint8_t *bytes = (uint8_t *)addr;
+        fprintf(stderr, "FSTP80[%d]: ST(%d) ~= %g -> addr=%p bytes=%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x\n",
+                fstp80_count, cpu->top, approx, (void*)addr,
+                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4],
+                bytes[5], bytes[6], bytes[7], bytes[8], bytes[9]);
+    }
     cpu->top = (cpu->top + 1) & 7;
 }
 
@@ -2485,15 +2636,49 @@ void helper_fpu_fstp_sti(struct cpu_state *cpu, int i) {
 }
 
 // FADD - Addition
+static int fadd_count = 0;
 void helper_fpu_fadd(struct cpu_state *cpu, int i) {
+    fadd_count++;
     int idx = (cpu->top + i) & 7;
+    double st0_before = f80_to_double(cpu->fp[cpu->top]);
+    double sti_before = f80_to_double(cpu->fp[idx]);
     cpu->fp[cpu->top] = f80_add(cpu->fp[cpu->top], cpu->fp[idx]);
+    double result = f80_to_double(cpu->fp[cpu->top]);
+    if (fadd_count <= 50) {
+        fprintf(stderr, "FADD[%d]: ST(0) += ST(%d) | %.6g + %.6g = %.6g top=%d\n",
+                fadd_count, i, st0_before, sti_before, result, cpu->top);
+    }
 }
 
-void helper_fpu_faddp(struct cpu_state *cpu, int i) {
+// FADD ST(i), ST(0) - result stored in ST(i)
+static int fadd_sti_count = 0;
+void helper_fpu_fadd_sti(struct cpu_state *cpu, int i) {
+    fadd_sti_count++;
     int idx = (cpu->top + i) & 7;
+    double sti_before = f80_to_double(cpu->fp[idx]);
+    double st0_val = f80_to_double(cpu->fp[cpu->top]);
     cpu->fp[idx] = f80_add(cpu->fp[idx], cpu->fp[cpu->top]);
+    double result = f80_to_double(cpu->fp[idx]);
+    if (fadd_sti_count <= 50) {
+        fprintf(stderr, "FADD_STI[%d]: ST(%d) += ST(0) | %.6g + %.6g = %.6g\n",
+                fadd_sti_count, i, sti_before, st0_val, result);
+    }
+}
+
+static int faddp_count = 0;
+void helper_fpu_faddp(struct cpu_state *cpu, int i) {
+    faddp_count++;
+    int old_top = cpu->top;
+    int idx = (cpu->top + i) & 7;
+    double st0_val = f80_to_double(cpu->fp[cpu->top]);
+    double sti_val = f80_to_double(cpu->fp[idx]);
+    cpu->fp[idx] = f80_add(cpu->fp[idx], cpu->fp[cpu->top]);
+    double result_val = f80_to_double(cpu->fp[idx]);
     cpu->top = (cpu->top + 1) & 7;
+    if (faddp_count <= 20) {
+        fprintf(stderr, "FADDP[%d]: ST(%d) += ST(0) | old_top=%d new_top=%d | %.6g + %.6g = %.6g\n",
+                faddp_count, i, old_top, cpu->top, sti_val, st0_val, result_val);
+    }
 }
 
 void helper_fpu_fadd_m32(struct cpu_state *cpu, float *addr) {
@@ -2507,25 +2692,91 @@ void helper_fpu_fadd_m64(struct cpu_state *cpu, double *addr) {
 }
 
 // FSUB - Subtraction
+static int fsub_count = 0;
 void helper_fpu_fsub(struct cpu_state *cpu, int i) {
+    fsub_count++;
     int idx = (cpu->top + i) & 7;
+    double st0_before = f80_to_double(cpu->fp[cpu->top]);
+    double sti_before = f80_to_double(cpu->fp[idx]);
     cpu->fp[cpu->top] = f80_sub(cpu->fp[cpu->top], cpu->fp[idx]);
+    double result = f80_to_double(cpu->fp[cpu->top]);
+    if (fsub_count <= 50) {
+        fprintf(stderr, "FSUB[%d]: ST(0) -= ST(%d) | %.6g - %.6g = %.6g\n",
+                fsub_count, i, st0_before, sti_before, result);
+    }
 }
 
-void helper_fpu_fsubp(struct cpu_state *cpu, int i) {
+// FSUB ST(i), ST(0) - result stored in ST(i): ST(i) = ST(i) - ST(0)
+static int fsub_sti_count = 0;
+void helper_fpu_fsub_sti(struct cpu_state *cpu, int i) {
+    fsub_sti_count++;
     int idx = (cpu->top + i) & 7;
+    double sti_before = f80_to_double(cpu->fp[idx]);
+    double st0_val = f80_to_double(cpu->fp[cpu->top]);
     cpu->fp[idx] = f80_sub(cpu->fp[idx], cpu->fp[cpu->top]);
+    double result = f80_to_double(cpu->fp[idx]);
+    if (fsub_sti_count <= 50) {
+        fprintf(stderr, "FSUB_STI[%d]: ST(%d) -= ST(0) | %.6g - %.6g = %.6g\n",
+                fsub_sti_count, i, sti_before, st0_val, result);
+    }
+}
+
+// FSUBR ST(i), ST(0) - reverse subtract, result in ST(i): ST(i) = ST(0) - ST(i)
+static int fsubr_sti_count = 0;
+void helper_fpu_fsubr_sti(struct cpu_state *cpu, int i) {
+    fsubr_sti_count++;
+    int idx = (cpu->top + i) & 7;
+    double sti_before = f80_to_double(cpu->fp[idx]);
+    double st0_val = f80_to_double(cpu->fp[cpu->top]);
+    cpu->fp[idx] = f80_sub(cpu->fp[cpu->top], cpu->fp[idx]);
+    double result = f80_to_double(cpu->fp[idx]);
+    if (fsubr_sti_count <= 50) {
+        fprintf(stderr, "FSUBR_STI[%d]: ST(%d) = ST(0) - ST(%d) | %.6g - %.6g = %.6g\n",
+                fsubr_sti_count, i, i, st0_val, sti_before, result);
+    }
+}
+
+static int fsubp_count = 0;
+void helper_fpu_fsubp(struct cpu_state *cpu, int i) {
+    fsubp_count++;
+    int idx = (cpu->top + i) & 7;
+    double sti_before = f80_to_double(cpu->fp[idx]);
+    double st0_before = f80_to_double(cpu->fp[cpu->top]);
+    cpu->fp[idx] = f80_sub(cpu->fp[idx], cpu->fp[cpu->top]);
+    double result = f80_to_double(cpu->fp[idx]);
+    if (fsubp_count <= 50) {
+        fprintf(stderr, "FSUBP[%d]: ST(%d) -= ST(0) | %.6g - %.6g = %.6g top=%d->%d\n",
+                fsubp_count, i, sti_before, st0_before, result, cpu->top, (cpu->top+1)&7);
+    }
     cpu->top = (cpu->top + 1) & 7;
 }
 
+static int fsubr_count = 0;
 void helper_fpu_fsubr(struct cpu_state *cpu, int i) {
+    fsubr_count++;
     int idx = (cpu->top + i) & 7;
+    double st0_before = f80_to_double(cpu->fp[cpu->top]);
+    double sti_before = f80_to_double(cpu->fp[idx]);
     cpu->fp[cpu->top] = f80_sub(cpu->fp[idx], cpu->fp[cpu->top]);
+    double result = f80_to_double(cpu->fp[cpu->top]);
+    if (fsubr_count <= 50) {
+        fprintf(stderr, "FSUBR[%d]: ST(0) = ST(%d) - ST(0) | %.6g - %.6g = %.6g\n",
+                fsubr_count, i, sti_before, st0_before, result);
+    }
 }
 
+static int fsubrp_count = 0;
 void helper_fpu_fsubrp(struct cpu_state *cpu, int i) {
+    fsubrp_count++;
     int idx = (cpu->top + i) & 7;
+    double st0_before = f80_to_double(cpu->fp[cpu->top]);
+    double sti_before = f80_to_double(cpu->fp[idx]);
     cpu->fp[idx] = f80_sub(cpu->fp[cpu->top], cpu->fp[idx]);
+    double result = f80_to_double(cpu->fp[idx]);
+    if (fsubrp_count <= 50) {
+        fprintf(stderr, "FSUBRP[%d]: ST(%d) = ST(0) - ST(%d) | %.6g - %.6g = %.6g top=%d->%d\n",
+                fsubrp_count, i, i, st0_before, sti_before, result, cpu->top, (cpu->top+1)&7);
+    }
     cpu->top = (cpu->top + 1) & 7;
 }
 
@@ -2540,20 +2791,62 @@ void helper_fpu_fsub_m64(struct cpu_state *cpu, double *addr) {
 }
 
 // FMUL - Multiplication
+static int fmul_count = 0;
 void helper_fpu_fmul(struct cpu_state *cpu, int i) {
+    fmul_count++;
     int idx = (cpu->top + i) & 7;
+    double st0_before = f80_to_double(cpu->fp[cpu->top]);
+    double sti_before = f80_to_double(cpu->fp[idx]);
     cpu->fp[cpu->top] = f80_mul(cpu->fp[cpu->top], cpu->fp[idx]);
+    double result = f80_to_double(cpu->fp[cpu->top]);
+    if (fmul_count <= 50) {
+        fprintf(stderr, "FMUL[%d]: ST(0) *= ST(%d) | %.6g * %.6g = %.6g\n",
+                fmul_count, i, st0_before, sti_before, result);
+    }
 }
 
-void helper_fpu_fmulp(struct cpu_state *cpu, int i) {
+// FMUL ST(i), ST(0) - result stored in ST(i): ST(i) = ST(i) * ST(0)
+static int fmul_sti_count = 0;
+void helper_fpu_fmul_sti(struct cpu_state *cpu, int i) {
+    fmul_sti_count++;
     int idx = (cpu->top + i) & 7;
+    double sti_before = f80_to_double(cpu->fp[idx]);
+    double st0_val = f80_to_double(cpu->fp[cpu->top]);
     cpu->fp[idx] = f80_mul(cpu->fp[idx], cpu->fp[cpu->top]);
-    cpu->top = (cpu->top + 1) & 7;
+    double result = f80_to_double(cpu->fp[idx]);
+    if (fmul_sti_count <= 50) {
+        fprintf(stderr, "FMUL_STI[%d]: ST(%d) *= ST(0) | %.6g * %.6g = %.6g\n",
+                fmul_sti_count, i, sti_before, st0_val, result);
+    }
 }
 
+static int fmulp_count = 0;
+void helper_fpu_fmulp(struct cpu_state *cpu, int i) {
+    fmulp_count++;
+    int idx = (cpu->top + i) & 7;
+    double sti_before = f80_to_double(cpu->fp[idx]);
+    double st0_before = f80_to_double(cpu->fp[cpu->top]);
+    cpu->fp[idx] = f80_mul(cpu->fp[idx], cpu->fp[cpu->top]);
+    double result = f80_to_double(cpu->fp[idx]);
+    cpu->top = (cpu->top + 1) & 7;
+    if (fmulp_count <= 50) {
+        fprintf(stderr, "FMULP[%d]: ST(%d) *= ST(0) | %.6g * %.6g = %.6g top->%d\n",
+                fmulp_count, i, sti_before, st0_before, result, cpu->top);
+    }
+}
+
+static int fmul_m32_count = 0;
 void helper_fpu_fmul_m32(struct cpu_state *cpu, float *addr) {
-    float80 val = f80_from_double((double)*addr);
+    fmul_m32_count++;
+    double st0_before = f80_to_double(cpu->fp[cpu->top]);
+    double mem_val = (double)*addr;
+    float80 val = f80_from_double(mem_val);
     cpu->fp[cpu->top] = f80_mul(cpu->fp[cpu->top], val);
+    double result = f80_to_double(cpu->fp[cpu->top]);
+    if (fmul_m32_count <= 50) {
+        fprintf(stderr, "FMUL_M32[%d]: ST(0) *= mem | %.6g * %.6g = %.6g\n",
+                fmul_m32_count, st0_before, mem_val, result);
+    }
 }
 
 void helper_fpu_fmul_m64(struct cpu_state *cpu, double *addr) {
@@ -2565,6 +2858,12 @@ void helper_fpu_fmul_m64(struct cpu_state *cpu, double *addr) {
 void helper_fpu_fdiv(struct cpu_state *cpu, int i) {
     int idx = (cpu->top + i) & 7;
     cpu->fp[cpu->top] = f80_div(cpu->fp[cpu->top], cpu->fp[idx]);
+}
+
+// FDIV ST(i), ST(0) - result stored in ST(i): ST(i) = ST(i) / ST(0)
+void helper_fpu_fdiv_sti(struct cpu_state *cpu, int i) {
+    int idx = (cpu->top + i) & 7;
+    cpu->fp[idx] = f80_div(cpu->fp[idx], cpu->fp[cpu->top]);
 }
 
 void helper_fpu_fdivp(struct cpu_state *cpu, int i) {
@@ -2592,17 +2891,35 @@ void helper_fpu_fxch(struct cpu_state *cpu, int i) {
 }
 
 // FPREM - Partial Remainder
+static int fprem_count = 0;
 void helper_fpu_fprem(struct cpu_state *cpu) {
+    fprem_count++;
     int st1_idx = (cpu->top + 1) & 7;
+    double st0_before = f80_to_double(cpu->fp[cpu->top]);
+    double st1_val = f80_to_double(cpu->fp[st1_idx]);
     cpu->fp[cpu->top] = f80_mod(cpu->fp[cpu->top], cpu->fp[st1_idx]);
+    double result = f80_to_double(cpu->fp[cpu->top]);
+    if (fprem_count <= 50) {
+        fprintf(stderr, "FPREM[%d]: ST(0) %% ST(1) | %.6g %% %.6g = %.6g\n",
+                fprem_count, st0_before, st1_val, result);
+    }
     cpu->c2 = 0;  // Reduction complete
 }
 
 // FSCALE - Scale by Power of 2
+static int fscale_count = 0;
 void helper_fpu_fscale(struct cpu_state *cpu) {
+    fscale_count++;
     int st1_idx = (cpu->top + 1) & 7;
+    double st0_before = f80_to_double(cpu->fp[cpu->top]);
+    double st1_val = f80_to_double(cpu->fp[st1_idx]);
     int scale = (int)f80_to_int(f80_round(cpu->fp[st1_idx]));
     cpu->fp[cpu->top] = f80_scale(cpu->fp[cpu->top], scale);
+    double result = f80_to_double(cpu->fp[cpu->top]);
+    if (fscale_count <= 50) {
+        fprintf(stderr, "FSCALE[%d]: ST(0) * 2^ST(1) | %.6g * 2^%.6g(=%d) = %.6g\n",
+                fscale_count, st0_before, st1_val, scale, result);
+    }
 }
 
 // FRNDINT - Round to Integer
@@ -2627,38 +2944,53 @@ void helper_fpu_fincstp(struct cpu_state *cpu) {
 
 // Load Constants
 void helper_fpu_fldz(struct cpu_state *cpu) {
+    int old_top = cpu->top;
     cpu->top = (cpu->top - 1) & 7;
     cpu->fp[cpu->top] = f80_from_double(0.0);
+    char buf[64]; snprintf(buf, sizeof(buf), "0.0 RIP=0x%llx", (unsigned long long)CPU_IP(cpu));
+    FPU_PUSH_TRACE("FLDZ", buf);
 }
 
 void helper_fpu_fld1(struct cpu_state *cpu) {
+    int old_top = cpu->top;
     cpu->top = (cpu->top - 1) & 7;
     cpu->fp[cpu->top] = f80_from_double(1.0);
+    FPU_PUSH_TRACE("FLD1", "1.0");
 }
 
 void helper_fpu_fldpi(struct cpu_state *cpu) {
+    int old_top = cpu->top;
     cpu->top = (cpu->top - 1) & 7;
     cpu->fp[cpu->top] = f80_from_double(3.14159265358979323846);
+    FPU_PUSH_TRACE("FLDPI", "pi");
 }
 
 void helper_fpu_fldl2e(struct cpu_state *cpu) {
+    int old_top = cpu->top;
     cpu->top = (cpu->top - 1) & 7;
     cpu->fp[cpu->top] = f80_from_double(1.4426950408889634);  // log2(e)
+    FPU_PUSH_TRACE("FLDL2E", "log2(e)");
 }
 
 void helper_fpu_fldl2t(struct cpu_state *cpu) {
+    int old_top = cpu->top;
     cpu->top = (cpu->top - 1) & 7;
     cpu->fp[cpu->top] = f80_from_double(3.3219280948873626);  // log2(10)
+    FPU_PUSH_TRACE("FLDL2T", "log2(10)");
 }
 
 void helper_fpu_fldlg2(struct cpu_state *cpu) {
+    int old_top = cpu->top;
     cpu->top = (cpu->top - 1) & 7;
     cpu->fp[cpu->top] = f80_from_double(0.3010299956639812);  // log10(2)
+    FPU_PUSH_TRACE("FLDLG2", "log10(2)");
 }
 
 void helper_fpu_fldln2(struct cpu_state *cpu) {
+    int old_top = cpu->top;
     cpu->top = (cpu->top - 1) & 7;
     cpu->fp[cpu->top] = f80_from_double(0.6931471805599453);  // ln(2)
+    FPU_PUSH_TRACE("FLDLN2", "ln(2)");
 }
 
 // FLDCW/FNSTCW - Load/Store Control Word
@@ -2690,38 +3022,35 @@ void helper_fpu_fucomip(struct cpu_state *cpu, int i) {
     float80 st0 = cpu->fp[cpu->top];
     float80 sti = cpu->fp[idx];
 
+    // All cases: OF=0, SF=0 (x87 comparisons always clear these)
+    cpu->of = 0;
+    cpu->eflags &= ~(SF_FLAG);  // SF = 0
+
+    // Force JIT to read ZF, PF, SF from eflags (not from stale cpu->res)
+    cpu->flags_res &= ~(ZF_RES | PF_RES | SF_RES);
+
     // Set EFLAGS based on comparison
     // ZF=1, PF=1, CF=1 if unordered (NaN)
     // ZF=1, PF=0, CF=0 if equal
     // ZF=0, PF=0, CF=0 if st0 > sti
     // ZF=0, PF=0, CF=1 if st0 < sti
     if (f80_uncomparable(st0, sti)) {
-        cpu->zf_res = 0;  // Will be set by flags_res
         cpu->cf = 1;
-        cpu->of = 0;
-        // Set ZF and PF manually via eflags
-        cpu->eflags |= (1 << 6);  // ZF
-        cpu->eflags |= (1 << 2);  // PF
-        cpu->flags_res &= ~(ZF_RES | PF_RES);  // Clear res bits
+        cpu->eflags |= ZF_FLAG;   // ZF = 1
+        cpu->eflags |= PF_FLAG;   // PF = 1
     } else if (f80_eq(st0, sti)) {
         cpu->cf = 0;
-        cpu->of = 0;
-        cpu->eflags |= (1 << 6);   // ZF = 1
-        cpu->eflags &= ~(1 << 2);  // PF = 0
-        cpu->flags_res &= ~(ZF_RES | PF_RES);
+        cpu->eflags |= ZF_FLAG;   // ZF = 1
+        cpu->eflags &= ~PF_FLAG;  // PF = 0
     } else if (f80_lt(st0, sti)) {
         cpu->cf = 1;
-        cpu->of = 0;
-        cpu->eflags &= ~(1 << 6);  // ZF = 0
-        cpu->eflags &= ~(1 << 2);  // PF = 0
-        cpu->flags_res &= ~(ZF_RES | PF_RES);
+        cpu->eflags &= ~ZF_FLAG;  // ZF = 0
+        cpu->eflags &= ~PF_FLAG;  // PF = 0
     } else {
         // st0 > sti
         cpu->cf = 0;
-        cpu->of = 0;
-        cpu->eflags &= ~(1 << 6);  // ZF = 0
-        cpu->eflags &= ~(1 << 2);  // PF = 0
-        cpu->flags_res &= ~(ZF_RES | PF_RES);
+        cpu->eflags &= ~ZF_FLAG;  // ZF = 0
+        cpu->eflags &= ~PF_FLAG;  // PF = 0
     }
 
     // Pop
@@ -2734,29 +3063,47 @@ void helper_fpu_fucomi(struct cpu_state *cpu, int i) {
     float80 st0 = cpu->fp[cpu->top];
     float80 sti = cpu->fp[idx];
 
+    // All cases: OF=0, SF=0 (x87 comparisons always clear these)
+    cpu->of = 0;
+    cpu->eflags &= ~(SF_FLAG);
+
+    // Force JIT to read ZF, PF, SF from eflags (not from stale cpu->res)
+    cpu->flags_res &= ~(ZF_RES | PF_RES | SF_RES);
+
     if (f80_uncomparable(st0, sti)) {
         cpu->cf = 1;
-        cpu->of = 0;
-        cpu->eflags |= (1 << 6);  // ZF
-        cpu->eflags |= (1 << 2);  // PF
-        cpu->flags_res &= ~(ZF_RES | PF_RES);
+        cpu->eflags |= ZF_FLAG;
+        cpu->eflags |= PF_FLAG;
     } else if (f80_eq(st0, sti)) {
         cpu->cf = 0;
-        cpu->of = 0;
-        cpu->eflags |= (1 << 6);   // ZF = 1
-        cpu->eflags &= ~(1 << 2);  // PF = 0
-        cpu->flags_res &= ~(ZF_RES | PF_RES);
+        cpu->eflags |= ZF_FLAG;
+        cpu->eflags &= ~PF_FLAG;
     } else if (f80_lt(st0, sti)) {
         cpu->cf = 1;
-        cpu->of = 0;
-        cpu->eflags &= ~(1 << 6);  // ZF = 0
-        cpu->eflags &= ~(1 << 2);  // PF = 0
-        cpu->flags_res &= ~(ZF_RES | PF_RES);
+        cpu->eflags &= ~ZF_FLAG;
+        cpu->eflags &= ~PF_FLAG;
     } else {
         cpu->cf = 0;
-        cpu->of = 0;
-        cpu->eflags &= ~(1 << 6);  // ZF = 0
-        cpu->eflags &= ~(1 << 2);  // PF = 0
-        cpu->flags_res &= ~(ZF_RES | PF_RES);
+        cpu->eflags &= ~ZF_FLAG;
+        cpu->eflags &= ~PF_FLAG;
     }
 }
+
+#ifdef ISH_GUEST_64BIT
+// Debug: trace XMM register values at specific code points
+void helper_trace_xmm(struct cpu_state *cpu, uint64_t ip) {
+    // Read xmm0 and xmm1 as doubles from cpu_state
+    double xmm0_val, xmm1_val;
+    memcpy(&xmm0_val, &cpu->xmm[0], sizeof(double));
+    memcpy(&xmm1_val, &cpu->xmm[1], sizeof(double));
+    uint64_t xmm0_bits, xmm1_bits;
+    memcpy(&xmm0_bits, &cpu->xmm[0], sizeof(uint64_t));
+    memcpy(&xmm1_bits, &cpu->xmm[1], sizeof(uint64_t));
+    fprintf(stderr, "XMM_TRACE[ip=0x%llx]: xmm0=%g (0x%llx) xmm1=%g (0x%llx) rax=0x%llx\n",
+            (unsigned long long)ip,
+            xmm0_val, (unsigned long long)xmm0_bits,
+            xmm1_val, (unsigned long long)xmm1_bits,
+            (unsigned long long)cpu->rax);
+    fflush(stderr);
+}
+#endif

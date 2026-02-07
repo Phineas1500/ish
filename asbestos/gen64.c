@@ -572,9 +572,15 @@ extern void gadget_addr_r15(void);
 extern void gadget_fpu_fild16(void);
 extern void gadget_fpu_fild32(void);
 extern void gadget_fpu_fild64(void);
+extern void gadget_fpu_fist16(void);
+extern void gadget_fpu_fist32(void);
 extern void gadget_fpu_fistp16(void);
 extern void gadget_fpu_fistp32(void);
 extern void gadget_fpu_fistp64(void);
+extern void gadget_dec64(void);
+extern void gadget_dec32(void);
+extern void gadget_inc64(void);
+extern void gadget_inc32(void);
 extern void gadget_fpu_fld32(void);
 extern void gadget_fpu_fld64(void);
 extern void gadget_fpu_fld80(void);
@@ -584,20 +590,29 @@ extern void gadget_fpu_fstp64(void);
 extern void gadget_fpu_fstp80(void);
 extern void gadget_fpu_fstp_sti(void);
 extern void gadget_fpu_fadd(void);
+extern void gadget_fpu_fadd_sti(void);
 extern void gadget_fpu_faddp(void);
+extern void gadget_breadcrumb(void);
+extern void gadget_trace_xa(void);
+extern void gadget_trace_rp(void);
+extern void gadget_trace_xmm(void);
 extern void gadget_fpu_fadd_m32(void);
 extern void gadget_fpu_fadd_m64(void);
 extern void gadget_fpu_fsub(void);
+extern void gadget_fpu_fsub_sti(void);
 extern void gadget_fpu_fsubp(void);
 extern void gadget_fpu_fsubr(void);
+extern void gadget_fpu_fsubr_sti(void);
 extern void gadget_fpu_fsubrp(void);
 extern void gadget_fpu_fsub_m32(void);
 extern void gadget_fpu_fsub_m64(void);
 extern void gadget_fpu_fmul(void);
+extern void gadget_fpu_fmul_sti(void);
 extern void gadget_fpu_fmulp(void);
 extern void gadget_fpu_fmul_m32(void);
 extern void gadget_fpu_fmul_m64(void);
 extern void gadget_fpu_fdiv(void);
+extern void gadget_fpu_fdiv_sti(void);
 extern void gadget_fpu_fdivp(void);
 extern void gadget_fpu_fdiv_m32(void);
 extern void gadget_fpu_fdiv_m64(void);
@@ -1169,25 +1184,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
   // Advance IP past this instruction
   state->ip += len;
 
-  // Special tracing for the stuck area (0x55555555b950 - 0x55555555bb00)
-  // Also trace duration parsing at 0x55555555c744 and strtod at 0x7efffffb83bd
-  // strtod offset = 0x583bd in musl
-  if ((state->orig_ip >= 0x55555555b950 && state->orig_ip <= 0x55555555bc00) ||
-      (state->orig_ip >= 0x55555555c740 && state->orig_ip <= 0x55555555c900) ||
-      (state->orig_ip >= 0x7efffffb83b0 && state->orig_ip <= 0x7efffffb8500)) {
-    fprintf(stderr, "TRANSLATE[0x%llx]: mnemonic=%d len=%d bytes:",
-            (unsigned long long)state->orig_ip, inst.mnemonic, len);
-    for (int i = 0; i < len && i < 10; i++) {
-      fprintf(stderr, " %02x", code[i]);
-    }
-    fprintf(stderr, "\n");
-    fflush(stderr);
-  }
-
-// Debug trace disabled
-
-// CMOV trace disabled
-
+  // Trace XMM values at key addresses in timespec conversion
 // Mark fake_ip for jump patching
 #define fake_ip (state->ip | (1ul << 63))
 
@@ -4319,18 +4316,16 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_INC:
-    // INC - increment by 1 (note: INC doesn't modify CF, but we'll use ADD for
-    // simplicity)
+    // INC - increment by 1 (INC doesn't modify CF, unlike ADD!)
     if (is_gpr(inst.operands[0].type)) {
       gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
       if (load)
         GEN(load);
       if (inst.operands[0].size == size64_32) {
-        GEN(gadget_add32_imm);
+        GEN(gadget_inc32);
       } else {
-        GEN(gadget_add64_imm);
+        GEN(gadget_inc64);
       }
-      GEN(1);
       gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
       if (store)
         GEN(store);
@@ -4349,11 +4344,10 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       }
       GEN(state->orig_ip);
       if (inst.operands[0].size == size64_32) {
-        GEN(gadget_add32_imm);
+        GEN(gadget_inc32);
       } else {
-        GEN(gadget_add64_imm);
+        GEN(gadget_inc64);
       }
-      GEN(1);
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -4377,18 +4371,16 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_DEC:
-    // DEC - decrement by 1 (note: DEC doesn't modify CF, but we'll use SUB for
-    // simplicity)
+    // DEC - decrement by 1 (DEC doesn't modify CF, unlike SUB!)
     if (is_gpr(inst.operands[0].type)) {
       gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
       if (load)
         GEN(load);
       if (inst.operands[0].size == size64_32) {
-        GEN(gadget_sub32_imm);
+        GEN(gadget_dec32);
       } else {
-        GEN(gadget_sub64_imm);
+        GEN(gadget_dec64);
       }
-      GEN(1);
       gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
       if (store)
         GEN(store);
@@ -4407,11 +4399,10 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       }
       GEN(state->orig_ip);
       if (inst.operands[0].size == size64_32) {
-        GEN(gadget_sub32_imm);
+        GEN(gadget_dec32);
       } else {
-        GEN(gadget_sub64_imm);
+        GEN(gadget_dec64);
       }
-      GEN(1);
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -5312,7 +5303,9 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
   case ZYDIS_MNEMONIC_FILD:
     // FILD m16/m32/m64 - Load Integer to FPU stack
-    if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
+    fprintf(stderr, "GEN_FILD: ip=0x%llx size=%d\n",
+            (unsigned long long)state->orig_ip, inst.operands[0].size);
+    if (inst.operand_count >= 1 && is_mem(inst.operands[0].type)) {
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -5337,9 +5330,44 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     }
     break;
 
+  case ZYDIS_MNEMONIC_FIST:
+    // FIST m16/m32 - Store Integer without Pop
+    // Note: FIST doesn't support m64, only m16 and m32
+    fprintf(stderr, "GEN: FIST at ip=0x%llx size=%d\n",
+            (unsigned long long)state->orig_ip, inst.operands[0].size);
+    if (inst.operand_count >= 1 && is_mem(inst.operands[0].type)) {
+      if (!gen_addr(state, &inst.operands[0], &inst)) {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+      if (inst.operands[0].size == size64_16) {
+        GEN(gadget_fpu_fist16);
+      } else if (inst.operands[0].size == size64_32) {
+        GEN(gadget_fpu_fist32);
+      } else {
+        // FIST m64 is not a valid instruction, fall through to undefined
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+      GEN(state->orig_ip);
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
   case ZYDIS_MNEMONIC_FISTP:
     // FISTP m16/m32/m64 - Store Integer and Pop
-    if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
+    if (inst.operand_count >= 1 && is_mem(inst.operands[0].type)) {
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -5406,7 +5434,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
   case ZYDIS_MNEMONIC_FSTP:
     // FSTP m32/m64/m80 or ST(i)
     if (inst.operand_count >= 1) {
-      if (inst.operands[0].type == arg64_mem) {
+      if (is_mem(inst.operands[0].type)) {
         if (!gen_addr(state, &inst.operands[0], &inst)) {
           g(interrupt);
           GEN(INT_UNDEFINED);
@@ -5446,10 +5474,20 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     if (inst.operand_count >= 2 &&
         inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7 &&
         inst.operands[1].type >= arg64_st0 && inst.operands[1].type <= arg64_st7) {
-      int i = inst.operands[1].type - arg64_st0;
-      GEN(gadget_fpu_fadd);
-      GEN(i);
-    } else if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
+      // FADD can be: FADD ST(0), ST(i) or FADD ST(i), ST(0)
+      // operands[0] = destination, operands[1] = source
+      int dst = inst.operands[0].type - arg64_st0;
+      int src = inst.operands[1].type - arg64_st0;
+      if (dst == 0) {
+        // FADD ST(0), ST(i) - result in ST(0)
+        GEN(gadget_fpu_fadd);
+        GEN(src);
+      } else {
+        // FADD ST(i), ST(0) - result in ST(i)
+        GEN(gadget_fpu_fadd_sti);
+        GEN(dst);
+      }
+    } else if (inst.operand_count >= 1 && is_mem(inst.operands[0].type)) {
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -5473,6 +5511,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_FADDP:
+    fprintf(stderr, "GEN_FADDP: ip=0x%llx\n", (unsigned long long)state->orig_ip);
     if (inst.operand_count >= 2 &&
         inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7) {
       int i = inst.operands[0].type - arg64_st0;
@@ -5489,10 +5528,18 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     if (inst.operand_count >= 2 &&
         inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7 &&
         inst.operands[1].type >= arg64_st0 && inst.operands[1].type <= arg64_st7) {
-      int i = inst.operands[1].type - arg64_st0;
-      GEN(gadget_fpu_fsub);
-      GEN(i);
-    } else if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
+      int dst = inst.operands[0].type - arg64_st0;
+      int src = inst.operands[1].type - arg64_st0;
+      if (dst == 0) {
+        // FSUB ST(0), ST(i) - result in ST(0): ST(0) = ST(0) - ST(i)
+        GEN(gadget_fpu_fsub);
+        GEN(src);
+      } else {
+        // FSUB ST(i), ST(0) - result in ST(i): ST(i) = ST(i) - ST(0)
+        GEN(gadget_fpu_fsub_sti);
+        GEN(dst);
+      }
+    } else if (inst.operand_count >= 1 && is_mem(inst.operands[0].type)) {
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -5529,10 +5576,19 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
   case ZYDIS_MNEMONIC_FSUBR:
     if (inst.operand_count >= 2 &&
-        inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7) {
-      int i = inst.operands[1].type - arg64_st0;
-      GEN(gadget_fpu_fsubr);
-      GEN(i);
+        inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7 &&
+        inst.operands[1].type >= arg64_st0 && inst.operands[1].type <= arg64_st7) {
+      int dst = inst.operands[0].type - arg64_st0;
+      int src = inst.operands[1].type - arg64_st0;
+      if (dst == 0) {
+        // FSUBR ST(0), ST(i) - result in ST(0): ST(0) = ST(i) - ST(0)
+        GEN(gadget_fpu_fsubr);
+        GEN(src);
+      } else {
+        // FSUBR ST(i), ST(0) - result in ST(i): ST(i) = ST(0) - ST(i)
+        GEN(gadget_fpu_fsubr_sti);
+        GEN(dst);
+      }
     } else {
       g(interrupt);
       GEN(INT_UNDEFINED);
@@ -5558,10 +5614,18 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     if (inst.operand_count >= 2 &&
         inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7 &&
         inst.operands[1].type >= arg64_st0 && inst.operands[1].type <= arg64_st7) {
-      int i = inst.operands[1].type - arg64_st0;
-      GEN(gadget_fpu_fmul);
-      GEN(i);
-    } else if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
+      int dst = inst.operands[0].type - arg64_st0;
+      int src = inst.operands[1].type - arg64_st0;
+      if (dst == 0) {
+        // FMUL ST(0), ST(i) - result in ST(0)
+        GEN(gadget_fpu_fmul);
+        GEN(src);
+      } else {
+        // FMUL ST(i), ST(0) - result in ST(i)
+        GEN(gadget_fpu_fmul_sti);
+        GEN(dst);
+      }
+    } else if (inst.operand_count >= 1 && is_mem(inst.operands[0].type)) {
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -5600,10 +5664,18 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     if (inst.operand_count >= 2 &&
         inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7 &&
         inst.operands[1].type >= arg64_st0 && inst.operands[1].type <= arg64_st7) {
-      int i = inst.operands[1].type - arg64_st0;
-      GEN(gadget_fpu_fdiv);
-      GEN(i);
-    } else if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
+      int dst = inst.operands[0].type - arg64_st0;
+      int src = inst.operands[1].type - arg64_st0;
+      if (dst == 0) {
+        // FDIV ST(0), ST(i) - result in ST(0)
+        GEN(gadget_fpu_fdiv);
+        GEN(src);
+      } else {
+        // FDIV ST(i), ST(0) - result in ST(i)
+        GEN(gadget_fpu_fdiv_sti);
+        GEN(dst);
+      }
+    } else if (inst.operand_count >= 1 && is_mem(inst.operands[0].type)) {
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -5656,6 +5728,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_FSCALE:
+    fprintf(stderr, "GEN_FSCALE: ip=0x%llx\n", (unsigned long long)state->orig_ip);
     GEN(gadget_fpu_fscale);
     break;
 
@@ -5676,6 +5749,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_FLDZ:
+    fprintf(stderr, "GEN_FLDZ: ip=0x%llx\n", (unsigned long long)state->orig_ip);
     GEN(gadget_fpu_fldz);
     break;
 
@@ -5704,7 +5778,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_FLDCW:
-    if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
+    if (inst.operand_count >= 1 && is_mem(inst.operands[0].type)) {
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -5724,7 +5798,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_FNSTCW:
-    if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
+    if (inst.operand_count >= 1 && is_mem(inst.operands[0].type)) {
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);

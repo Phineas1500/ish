@@ -899,6 +899,66 @@
     setf_zsp w
     gret 1
 
+// DEC gadgets - decrement by 1, preserving CF
+// DEC affects OF, ZF, SF, PF, AF but NOT CF!
+.gadget dec64
+    // Save CF before operation
+    ldrb w8, [_cpu, CPU_cf]
+    // Do the subtraction
+    subs _xtmp, _xtmp, 1
+    // Set OF (but not CF)
+    cset w10, vs
+    strb w10, [_cpu, CPU_of]
+    // Restore CF
+    strb w8, [_cpu, CPU_cf]
+    // Set ZF, SF, PF
+    setf_zsp
+    gret
+
+.gadget dec32
+    // Save CF before operation
+    ldrb w8, [_cpu, CPU_cf]
+    // Do the subtraction
+    subs _tmp, _tmp, 1
+    // Set OF (but not CF)
+    cset w10, vs
+    strb w10, [_cpu, CPU_of]
+    // Restore CF
+    strb w8, [_cpu, CPU_cf]
+    // Set ZF, SF, PF
+    setf_zsp w
+    gret
+
+// INC gadgets - increment by 1, preserving CF
+// INC affects OF, ZF, SF, PF, AF but NOT CF!
+.gadget inc64
+    // Save CF before operation
+    ldrb w8, [_cpu, CPU_cf]
+    // Do the addition
+    adds _xtmp, _xtmp, 1
+    // Set OF (but not CF)
+    cset w10, vs
+    strb w10, [_cpu, CPU_of]
+    // Restore CF
+    strb w8, [_cpu, CPU_cf]
+    // Set ZF, SF, PF
+    setf_zsp
+    gret
+
+.gadget inc32
+    // Save CF before operation
+    ldrb w8, [_cpu, CPU_cf]
+    // Do the addition
+    adds _tmp, _tmp, 1
+    // Set OF (but not CF)
+    cset w10, vs
+    strb w10, [_cpu, CPU_of]
+    // Restore CF
+    strb w8, [_cpu, CPU_cf]
+    // Set ZF, SF, PF
+    setf_zsp w
+    gret
+
 .gadget sub64_mem
     read_prep 64, sub64_mem
     ldr x8, [_addr]
@@ -1462,10 +1522,13 @@ NAME(xor32_r8_r15_gadgets):
     gret
 
 .gadget cmp32_x8
-    // Debug: trace comparison values
+    // Debug: trace comparison values with RIP
+    // Load RIP BEFORE save_c because save_c uses _cpu
+    ldr x10, [_cpu, CPU_rip]
     save_c
     uxtw x0, _tmp        // mem value (first arg)
     uxtw x1, w8          // reg value (second arg)
+    mov x2, x10          // guest RIP
     bl NAME(helper_debug_cmp32_x8)
     restore_c
     // Actual comparison
@@ -3440,6 +3503,30 @@ NAME(imul32_r8_r15_gadgets):
     read_bullshit 64, fpu_fild64
 
 // FISTP - Store Integer and Pop
+// FIST - Store Integer (without pop)
+.gadget fpu_fist16
+    write_prep 16, fpu_fist16
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fist16)
+    restore_c
+    write_done 16, fpu_fist16
+    gret 1
+    write_bullshit 16, fpu_fist16
+
+.gadget fpu_fist32
+    write_prep 32, fpu_fist32
+    save_c
+    mov x0, _cpu
+    mov x1, _addr
+    bl NAME(helper_fpu_fist32)
+    restore_c
+    write_done 32, fpu_fist32
+    gret 1
+    write_bullshit 32, fpu_fist32
+
+// FISTP - Store Integer and Pop
 .gadget fpu_fistp16
     write_prep 16, fpu_fistp16
     save_c
@@ -3568,6 +3655,56 @@ NAME(imul32_r8_r15_gadgets):
     restore_c
     gret 1
 
+// FADD ST(i), ST(0) - result in ST(i)
+.gadget fpu_fadd_sti
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fadd_sti)
+    restore_c
+    gret 1
+
+.gadget breadcrumb
+    save_c
+    ldr x0, [_ip]
+    bl NAME(helper_breadcrumb)
+    restore_c
+    gret 1
+
+// Trace XMM register values - save XMM regs to cpu_state first, then call helper
+// [_ip] = orig_ip marker
+.gadget trace_xmm
+    // First, save the x20-x27 (rax-rdi) to cpu_state so helper can read current state
+    str x20, [_cpu, CPU_rax]
+    str x21, [_cpu, CPU_rbx]
+    str x22, [_cpu, CPU_rcx]
+    str x23, [_cpu, CPU_rdx]
+    str x24, [_cpu, CPU_rsi]
+    str x25, [_cpu, CPU_rdi]
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_trace_xmm)
+    restore_c
+    gret 1
+
+// Trace rp (r10d) and e2 (r12d) at outer loop check
+.gadget trace_rp
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_trace_rp)
+    restore_c
+    gret
+
+// Trace _xtmp value and ebx (rbx=x21) for x[a] debugging
+.gadget trace_xa
+    save_c
+    mov x0, _xtmp           // x[a] value (just loaded from memory)
+    uxtw x1, x21            // ebx = x21 = rbx (the index used to load x[a])
+    bl NAME(helper_trace_xa)
+    restore_c
+    gret
+
 .gadget fpu_faddp
     save_c
     mov x0, _cpu
@@ -3605,6 +3742,15 @@ NAME(imul32_r8_r15_gadgets):
     restore_c
     gret 1
 
+// FSUB ST(i), ST(0) - result in ST(i): ST(i) = ST(i) - ST(0)
+.gadget fpu_fsub_sti
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fsub_sti)
+    restore_c
+    gret 1
+
 .gadget fpu_fsubp
     save_c
     mov x0, _cpu
@@ -3618,6 +3764,15 @@ NAME(imul32_r8_r15_gadgets):
     mov x0, _cpu
     ldr x1, [_ip]
     bl NAME(helper_fpu_fsubr)
+    restore_c
+    gret 1
+
+// FSUBR ST(i), ST(0) - result in ST(i): ST(i) = ST(0) - ST(i)
+.gadget fpu_fsubr_sti
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fsubr_sti)
     restore_c
     gret 1
 
@@ -3658,6 +3813,15 @@ NAME(imul32_r8_r15_gadgets):
     restore_c
     gret 1
 
+// FMUL ST(i), ST(0) - result in ST(i): ST(i) = ST(i) * ST(0)
+.gadget fpu_fmul_sti
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fmul_sti)
+    restore_c
+    gret 1
+
 .gadget fpu_fmulp
     save_c
     mov x0, _cpu
@@ -3692,6 +3856,15 @@ NAME(imul32_r8_r15_gadgets):
     mov x0, _cpu
     ldr x1, [_ip]
     bl NAME(helper_fpu_fdiv)
+    restore_c
+    gret 1
+
+// FDIV ST(i), ST(0) - result in ST(i): ST(i) = ST(i) / ST(0)
+.gadget fpu_fdiv_sti
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    bl NAME(helper_fpu_fdiv_sti)
     restore_c
     gret 1
 
