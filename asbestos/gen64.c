@@ -421,6 +421,9 @@ extern void gadget_subsd_xmm_mem(void);  // subsd xmm, m64
 // SSE MULSD - Multiply Scalar Double
 extern void gadget_mulsd_xmm_xmm(void);  // mulsd xmm, xmm
 extern void gadget_mulsd_xmm_mem(void);  // mulsd xmm, m64
+// SSE DIVSD - Divide Scalar Double
+extern void gadget_divsd_xmm_xmm(void);  // divsd xmm, xmm
+extern void gadget_divsd_xmm_mem(void);  // divsd xmm, m64
 // SSE COMISD - Compare Scalar Double (sets EFLAGS)
 extern void gadget_comisd_xmm_xmm(void); // comisd xmm, xmm
 extern void gadget_comisd_xmm_mem(void); // comisd xmm, m64
@@ -1221,12 +1224,13 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_HLT:
-    // HLT is used as a trap/crash instruction in musl libc
-    // Generate a GPF interrupt
+    // HLT is used as a trap/crash instruction in musl libc (a]__crash)
+    // Generate a GPF interrupt with segfault_addr=0 (unmapped) so the
+    // GPF handler delivers SIGSEGV instead of retrying the instruction
     g(interrupt);
     GEN(INT_GPF);
     GEN(state->orig_ip);
-    GEN(state->orig_ip);
+    GEN(0);  // segfault_addr = 0 forces SIGSEGV delivery
     end_block = true;
     break;
 
@@ -1741,7 +1745,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     } else if (inst.operand_count >= 2 && is_mem(inst.operands[0].type) &&
                is_gpr(inst.operands[1].type)) {
       // ADD [mem], reg
-      bool is64 = (inst.operands[0].size == size64_64);
+      int add_mem_sz = inst.operands[0].size;
       if (inst.operands[1].type >= arg64_rax &&
           inst.operands[1].type <= arg64_rdi) {
         // ADD [mem], rax-rdi
@@ -1753,20 +1757,24 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(state->orig_ip);
           return 0;
         }
-        // 2. Load from memory
-        if (is64) {
-          GEN(load64_gadgets[9]); // load64_mem
+        // 2. Load from memory (size-appropriate)
+        if (add_mem_sz == size64_64) {
+          GEN(load64_gadgets[9]);
+        } else if (add_mem_sz == size64_32) {
+          GEN(load32_gadgets[9]);
+        } else if (add_mem_sz == size64_16) {
+          GEN(gadget_load16_mem);
         } else {
-          GEN(load32_gadgets[9]); // load32_mem
+          GEN(gadget_load8_mem);
         }
         GEN(state->orig_ip);
         // 3. Add source register
-        if (is64) {
+        if (add_mem_sz == size64_64) {
           GEN(add64_gadgets[inst.operands[1].type - arg64_rax]);
         } else {
           GEN(add32_gadgets[inst.operands[1].type - arg64_rax]);
         }
-        // 4. Recalculate address and store
+        // 4. Recalculate address and store (size-appropriate)
         if (!gen_addr(state, &inst.operands[0], &inst)) {
           g(interrupt);
           GEN(INT_UNDEFINED);
@@ -1774,10 +1782,14 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(state->orig_ip);
           return 0;
         }
-        if (is64) {
-          GEN(store64_gadgets[9]); // store64_mem
+        if (add_mem_sz == size64_64) {
+          GEN(store64_gadgets[9]);
+        } else if (add_mem_sz == size64_32) {
+          GEN(store32_gadgets[9]);
+        } else if (add_mem_sz == size64_16) {
+          GEN(gadget_store16_mem);
         } else {
-          GEN(store32_gadgets[9]); // store32_mem
+          GEN(gadget_store8_mem);
         }
         GEN(state->orig_ip);
       } else if (inst.operands[1].type >= arg64_r8 &&
@@ -1796,20 +1808,24 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(state->orig_ip);
           return 0;
         }
-        // 2. Load from memory
-        if (is64) {
-          GEN(load64_gadgets[9]); // load64_mem
+        // 2. Load from memory (size-appropriate)
+        if (add_mem_sz == size64_64) {
+          GEN(load64_gadgets[9]);
+        } else if (add_mem_sz == size64_32) {
+          GEN(load32_gadgets[9]);
+        } else if (add_mem_sz == size64_16) {
+          GEN(gadget_load16_mem);
         } else {
-          GEN(load32_gadgets[9]); // load32_mem
+          GEN(gadget_load8_mem);
         }
         GEN(state->orig_ip);
         // 3. Add x8 (source): _xtmp = _xtmp + x8 = mem + src
-        if (is64) {
+        if (add_mem_sz == size64_64) {
           GEN(gadget_add64_x8);
         } else {
           GEN(gadget_add32_x8);
         }
-        // 4. Recalculate address and store
+        // 4. Recalculate address and store (size-appropriate)
         if (!gen_addr(state, &inst.operands[0], &inst)) {
           g(interrupt);
           GEN(INT_UNDEFINED);
@@ -1817,10 +1833,14 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(state->orig_ip);
           return 0;
         }
-        if (is64) {
-          GEN(store64_gadgets[9]); // store64_mem
+        if (add_mem_sz == size64_64) {
+          GEN(store64_gadgets[9]);
+        } else if (add_mem_sz == size64_32) {
+          GEN(store32_gadgets[9]);
+        } else if (add_mem_sz == size64_16) {
+          GEN(gadget_store16_mem);
         } else {
-          GEN(store32_gadgets[9]); // store32_mem
+          GEN(gadget_store8_mem);
         }
         GEN(state->orig_ip);
       } else {
@@ -1833,7 +1853,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     } else if (inst.operand_count >= 2 && is_mem(inst.operands[0].type) &&
                inst.operands[1].type == arg64_imm) {
       // ADD [mem], imm (including RIP-relative) - read-modify-write
-      bool is64 = (inst.operands[0].size == size64_64);
+      int add_imm_sz = inst.operands[0].size;
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -1843,23 +1863,31 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       }
       // Save address, load, add, restore address, store
       GEN(gadget_save_addr);
-      if (is64) {
-        GEN(load64_gadgets[9]); // load64_mem
+      if (add_imm_sz == size64_64) {
+        GEN(load64_gadgets[9]);
+      } else if (add_imm_sz == size64_32) {
+        GEN(load32_gadgets[9]);
+      } else if (add_imm_sz == size64_16) {
+        GEN(gadget_load16_mem);
       } else {
-        GEN(load32_gadgets[9]); // load32_mem
+        GEN(gadget_load8_mem);
       }
       GEN(state->orig_ip);
-      if (is64) {
+      if (add_imm_sz == size64_64) {
         GEN(gadget_add64_imm);
       } else {
         GEN(gadget_add32_imm);
       }
       GEN(inst.operands[1].imm);
       GEN(gadget_restore_addr);
-      if (is64) {
-        GEN(store64_gadgets[9]); // store64_mem
+      if (add_imm_sz == size64_64) {
+        GEN(store64_gadgets[9]);
+      } else if (add_imm_sz == size64_32) {
+        GEN(store32_gadgets[9]);
+      } else if (add_imm_sz == size64_16) {
+        GEN(gadget_store16_mem);
       } else {
-        GEN(store32_gadgets[9]); // store32_mem
+        GEN(gadget_store8_mem);
       }
       GEN(state->orig_ip);
     } else {
@@ -2064,7 +2092,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     } else if (inst.operand_count >= 2 && is_mem(inst.operands[0].type) &&
                inst.operands[1].type == arg64_imm) {
       // SUB [mem], imm - read-modify-write
-      bool is64 = (inst.operands[0].size == size64_64);
+      int sub_imm_sz = inst.operands[0].size;
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -2074,30 +2102,38 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       }
       // Save address, load, subtract, restore address, store
       GEN(gadget_save_addr);
-      if (is64) {
-        GEN(load64_gadgets[9]); // load64_mem
+      if (sub_imm_sz == size64_64) {
+        GEN(load64_gadgets[9]);
+      } else if (sub_imm_sz == size64_32) {
+        GEN(load32_gadgets[9]);
+      } else if (sub_imm_sz == size64_16) {
+        GEN(gadget_load16_mem);
       } else {
-        GEN(load32_gadgets[9]); // load32_mem
+        GEN(gadget_load8_mem);
       }
       GEN(state->orig_ip);
-      if (is64) {
+      if (sub_imm_sz == size64_64) {
         GEN(gadget_sub64_imm);
       } else {
         GEN(gadget_sub32_imm);
       }
       GEN(inst.operands[1].imm);
       GEN(gadget_restore_addr);
-      if (is64) {
-        GEN(store64_gadgets[9]); // store64_mem
+      if (sub_imm_sz == size64_64) {
+        GEN(store64_gadgets[9]);
+      } else if (sub_imm_sz == size64_32) {
+        GEN(store32_gadgets[9]);
+      } else if (sub_imm_sz == size64_16) {
+        GEN(gadget_store16_mem);
       } else {
-        GEN(store32_gadgets[9]); // store32_mem
+        GEN(gadget_store8_mem);
       }
       GEN(state->orig_ip);
     } else if (inst.operand_count >= 2 && is_mem(inst.operands[0].type) &&
                inst.operands[1].type >= arg64_rax &&
                inst.operands[1].type <= arg64_rdi) {
       // SUB [mem], reg (rax-rdi source)
-      bool is64 = (inst.operands[0].size == size64_64);
+      int sub_reg_sz = inst.operands[0].size;
       // 1. Calculate address
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
@@ -2106,20 +2142,24 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(state->orig_ip);
         return 0;
       }
-      // 2. Load from memory
-      if (is64) {
-        GEN(load64_gadgets[9]); // load64_mem
+      // 2. Load from memory (size-appropriate)
+      if (sub_reg_sz == size64_64) {
+        GEN(load64_gadgets[9]);
+      } else if (sub_reg_sz == size64_32) {
+        GEN(load32_gadgets[9]);
+      } else if (sub_reg_sz == size64_16) {
+        GEN(gadget_load16_mem);
       } else {
-        GEN(load32_gadgets[9]); // load32_mem
+        GEN(gadget_load8_mem);
       }
       GEN(state->orig_ip);
       // 3. Subtract source register
-      if (is64) {
+      if (sub_reg_sz == size64_64) {
         GEN(sub64_gadgets[inst.operands[1].type - arg64_rax]);
       } else {
         GEN(sub32_gadgets[inst.operands[1].type - arg64_rax]);
       }
-      // 4. Recalculate address and store
+      // 4. Recalculate address and store (size-appropriate)
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -2127,10 +2167,14 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(state->orig_ip);
         return 0;
       }
-      if (is64) {
-        GEN(store64_gadgets[9]); // store64_mem
+      if (sub_reg_sz == size64_64) {
+        GEN(store64_gadgets[9]);
+      } else if (sub_reg_sz == size64_32) {
+        GEN(store32_gadgets[9]);
+      } else if (sub_reg_sz == size64_16) {
+        GEN(gadget_store16_mem);
       } else {
-        GEN(store32_gadgets[9]); // store32_mem
+        GEN(gadget_store8_mem);
       }
       GEN(state->orig_ip);
     } else {
@@ -2699,17 +2743,21 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(state->orig_ip);
         return 0;
       }
-      bool is64 = (inst.operands[0].size == size64_64);
+      int and_mem_size = inst.operands[0].size;
       // Save address, load, modify, restore address, store
       GEN(gadget_save_addr); // Save guest address
-      if (is64) {
+      if (and_mem_size == size64_64) {
         GEN(load64_gadgets[9]); // load64_mem
-      } else {
+      } else if (and_mem_size == size64_32) {
         GEN(load32_gadgets[9]); // load32_mem
+      } else if (and_mem_size == size64_16) {
+        GEN(gadget_load16_mem);
+      } else {
+        GEN(gadget_load8_mem);
       }
       GEN(state->orig_ip);
       // AND with immediate
-      if (is64) {
+      if (and_mem_size == size64_64) {
         GEN(gadget_and64_imm);
       } else {
         GEN(gadget_and32_imm);
@@ -2717,10 +2765,14 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       GEN(inst.operands[1].imm);
       // Restore address and store
       GEN(gadget_restore_addr);
-      if (is64) {
+      if (and_mem_size == size64_64) {
         GEN(store64_gadgets[9]); // store64_mem
-      } else {
+      } else if (and_mem_size == size64_32) {
         GEN(store32_gadgets[9]); // store32_mem
+      } else if (and_mem_size == size64_16) {
+        GEN(gadget_store16_mem);
+      } else {
+        GEN(gadget_store8_mem);
       }
       GEN(state->orig_ip);
     } else if (is_mem(inst.operands[0].type) && is_gpr(inst.operands[1].type)) {
@@ -2893,13 +2945,17 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             GEN(state->orig_ip);
             return 0;
           }
-          bool is64 = (inst.operands[0].size == size64_64);
+          int or_mem_size = inst.operands[0].size;
           // Save address, load, modify, restore address, store
           GEN(gadget_save_addr); // Save guest address
-          if (is64) {
+          if (or_mem_size == size64_64) {
             GEN(load64_gadgets[9]); // load64_mem
-          } else {
+          } else if (or_mem_size == size64_32) {
             GEN(load32_gadgets[9]); // load32_mem
+          } else if (or_mem_size == size64_16) {
+            GEN(gadget_load16_mem);
+          } else {
+            GEN(gadget_load8_mem);
           }
           GEN(state->orig_ip);
           // OR with immediate
@@ -2907,10 +2963,14 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(inst.operands[1].imm);
           // Restore address and store
           GEN(gadget_restore_addr);
-          if (is64) {
+          if (or_mem_size == size64_64) {
             GEN(store64_gadgets[9]); // store64_mem
-          } else {
+          } else if (or_mem_size == size64_32) {
             GEN(store32_gadgets[9]); // store32_mem
+          } else if (or_mem_size == size64_16) {
+            GEN(gadget_store16_mem);
+          } else {
+            GEN(gadget_store8_mem);
           }
           GEN(state->orig_ip);
         } else {
@@ -5084,6 +5144,39 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         fprintf(stderr, "GEN: MULSD xmm%d, mem at ip=0x%llx\n",
                 dst_xmm, (unsigned long long)state->orig_ip);
         GEN(gadget_mulsd_xmm_mem);
+        GEN(dst_xmm);
+        GEN(state->orig_ip);
+      }
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_DIVSD:
+    // DIVSD xmm, xmm/m64 - Divide Scalar Double-Precision Floating-Point
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      if (is_xmm(inst.operands[1].type)) {
+        // xmm, xmm
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        GEN(load64_gadgets[8]); /* load64_imm: Load source XMM index */
+        GEN(src_xmm);
+        GEN(gadget_divsd_xmm_xmm);
+        GEN(dst_xmm);
+      } else {
+        // xmm, m64
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        GEN(gadget_divsd_xmm_mem);
         GEN(dst_xmm);
         GEN(state->orig_ip);
       }

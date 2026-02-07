@@ -3423,6 +3423,50 @@ sse_xmm_xmm_op psubd
     gret 2
     read_bullshit 64, mulsd_xmm_mem
 
+// DIVSD xmm, xmm - Divide scalar double
+// _xtmp = source XMM index, [_ip] = destination XMM index
+.gadget divsd_xmm_xmm
+    // Load source XMM low 64 bits
+    lsl x8, _xtmp, 4           // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[src]
+    ldr d0, [x8]               // Load src double
+
+    // Load destination XMM low 64 bits
+    ldr x9, [_ip]              // Destination XMM index
+    lsl x9, x9, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[dst]
+    ldr d1, [x9]               // Load dst double
+
+    // Divide
+    fdiv d1, d1, d0            // dst = dst / src
+
+    // Store result
+    str d1, [x9]               // Store to dst low 64 bits
+    gret 1
+
+// DIVSD xmm, m64 - Divide scalar double from memory
+// _addr = memory address (GUEST), [_ip] = destination XMM index, [_ip+8] = orig_ip
+.gadget divsd_xmm_mem
+    read_prep 64, divsd_xmm_mem
+    ldr d0, [_addr]            // Load double from memory
+
+    // Load destination XMM low 64 bits
+    ldr x9, [_ip]              // Destination XMM index
+    lsl x9, x9, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[dst]
+    ldr d1, [x9]               // Load dst double
+
+    // Divide
+    fdiv d1, d1, d0            // dst = dst / src
+
+    // Store result
+    str d1, [x9]               // Store to dst low 64 bits
+    gret 2
+    read_bullshit 64, divsd_xmm_mem
+
 // ============================================================
 // COMISD/UCOMISD - Compare Scalar Double (sets x86 EFLAGS)
 // Result in ZF, PF, CF:

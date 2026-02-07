@@ -185,13 +185,18 @@ void helper_debug_lea(uint64_t result, uint64_t x8_value, uint64_t ip) {
 }
 
 // Debug: trace FS segment override
-void helper_debug_seg_fs(uint64_t addr_before, uint64_t fs_base, void *cpu) {
+// Write to stderr immediately (no buffering issues)
+void helper_debug_seg_fs(uint64_t addr_before, uint64_t fs_base, uint64_t rip) {
     static int count = 0;
-    if (count < 10) {
-        count++;
-        DEBUG_FPRINTF(stderr, "DEBUG_SEG_FS[%d]: addr=0x%llx fs_base=0x%llx result=0x%llx cpu=%p\n",
-                count, (unsigned long long)addr_before, (unsigned long long)fs_base,
-                (unsigned long long)(addr_before + fs_base), cpu);
+    count++;
+    // Only trace fs:[0x28] accesses (canary)
+    if (addr_before == 0x28 || count <= 20) {
+        char buf[200];
+        int len = snprintf(buf, sizeof(buf),
+            "SEG_FS[%d]: addr=0x%llx fs=0x%llx -> 0x%llx rip=0x%llx\n",
+            count, (unsigned long long)addr_before, (unsigned long long)fs_base,
+            (unsigned long long)(addr_before + fs_base), (unsigned long long)rip);
+        write(2, buf, len);
     }
 }
 
