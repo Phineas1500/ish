@@ -204,6 +204,14 @@ dword_t sys_clone(dword_t flags, addr_t stack, addr_t ptid, addr_t tls, addr_t c
     return pid;
 }
 
+#ifdef ISH_GUEST_64BIT
+// x86_64 clone: args are (flags, stack, ptid, ctid, tls)
+// x86 clone:    args are (flags, stack, ptid, tls, ctid)
+dword_t sys_clone_64(dword_t flags, addr_t stack, addr_t ptid, addr_t ctid, addr_t tls) {
+    return sys_clone(flags, stack, ptid, tls, ctid);
+}
+#endif
+
 dword_t sys_fork() {
     return sys_clone(SIGCHLD_, 0, 0, 0, 0);
 }
