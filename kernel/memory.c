@@ -367,6 +367,32 @@ int pt_set_flags(struct mem *mem, page_t start, pages_t pages, int flags) {
 
 int pt_copy_on_write(struct mem *src, struct mem *dst, page_t start,
                      page_t pages) {
+#ifdef ISH_GUEST_64BIT
+  // 64-bit: iterate hash table buckets directly instead of scanning
+  // 68 billion pages one at a time (which would be an infinite loop)
+  for (size_t i = 0; i < MEM_HASH_SIZE; i++) {
+    struct pt_hash_entry *entry = src->hash_table[i];
+    while (entry != NULL) {
+      struct pt_hash_entry *next = entry->next;
+      page_t page = entry->page;
+      if (entry->entry.data != NULL && page >= start && page < start + pages) {
+        if (pt_unmap_always(dst, page, 1) < 0)
+          return -1;
+        if (!(entry->entry.flags & P_SHARED))
+          entry->entry.flags |= P_COW;
+        entry->entry.data->refcount++;
+        struct pt_entry *dst_entry = mem_pt_new(dst, page);
+        dst_entry->data = entry->entry.data;
+        dst_entry->offset = entry->entry.offset;
+        dst_entry->flags = entry->entry.flags;
+      }
+      entry = next;
+    }
+  }
+  mem_changed(src);
+  mem_changed(dst);
+  return 0;
+#else
   for (page_t page = start; page < start + pages; mem_next_page(src, &page)) {
     struct pt_entry *entry = mem_pt(src, page);
     if (entry == NULL)
@@ -384,6 +410,7 @@ int pt_copy_on_write(struct mem *src, struct mem *dst, page_t start,
   mem_changed(src);
   mem_changed(dst);
   return 0;
+#endif
 }
 
 static void mem_changed(struct mem *mem) { mem->mmu.changes++; }
@@ -432,10 +459,19 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
     // page does not exist
     // look to see if the next VM region is willing to grow down
     page_t p = page + 1;
+#ifdef ISH_GUEST_64BIT
+    // Limit search range to avoid scanning billions of unmapped pages
+    page_t search_limit = page + 0x100; // search at most 256 pages (1MB)
+    while (p < MEM_PAGES && p < search_limit && mem_pt(mem, p) == NULL)
+      p++;
+    if (p >= MEM_PAGES || p >= search_limit)
+      return NULL;
+#else
     while (p < MEM_PAGES && mem_pt(mem, p) == NULL)
       p++;
     if (p >= MEM_PAGES)
       return NULL;
+#endif
     if (!(mem_pt(mem, p)->flags & P_GROWSDOWN))
       return NULL;
     // Debug: trace growsdown allocations
