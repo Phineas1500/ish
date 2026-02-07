@@ -3090,6 +3090,85 @@ void helper_fpu_fucomi(struct cpu_state *cpu, int i) {
 }
 
 #ifdef ISH_GUEST_64BIT
+
+// PUNPCKLDQ xmm, xmm - Unpack and interleave low doublewords
+// dst[31:0] = dst[31:0], dst[63:32] = src[31:0]
+// dst[95:64] = dst[63:32], dst[127:96] = src[63:32]
+void helper_punpckldq(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint32_t dst[4], src[4];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    uint32_t result[4];
+    result[0] = dst[0];  // dst[31:0]
+    result[1] = src[0];  // src[31:0]
+    result[2] = dst[1];  // dst[63:32]
+    result[3] = src[1];  // src[63:32]
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// PCMPEQD xmm, xmm - Compare packed doublewords for equality
+// For each 32-bit element: if equal, set all bits to 1; else set all bits to 0
+void helper_pcmpeqd(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint32_t dst[4], src[4], result[4];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 4; i++)
+        result[i] = (dst[i] == src[i]) ? 0xFFFFFFFF : 0;
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// PAND xmm, xmm - Bitwise AND of packed 128-bit values
+void helper_pand(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint64_t dst[2], src[2];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    dst[0] &= src[0];
+    dst[1] &= src[1];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+// PADDD xmm, xmm - Add packed 32-bit integers
+void helper_paddd(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint32_t dst[4], src[4];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 4; i++)
+        dst[i] += src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+// PSUBD xmm, xmm - Subtract packed 32-bit integers
+void helper_psubd(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint32_t dst[4], src[4];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 4; i++)
+        dst[i] -= src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+// PSHUFD xmm, xmm/m128, imm8 - Shuffle packed doublewords
+void helper_pshufd(struct cpu_state *cpu, int dst_idx, int src_idx, uint8_t imm) {
+    uint32_t src[4], result[4];
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    result[0] = src[(imm >> 0) & 3];
+    result[1] = src[(imm >> 2) & 3];
+    result[2] = src[(imm >> 4) & 3];
+    result[3] = src[(imm >> 6) & 3];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// PMOVMSKB r, xmm - Move byte mask (extract MSB of each byte into integer)
+int helper_pmovmskb(struct cpu_state *cpu, int src_idx) {
+    uint8_t src[16];
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    int mask = 0;
+    for (int i = 0; i < 16; i++)
+        if (src[i] & 0x80)
+            mask |= (1 << i);
+    return mask;
+}
+
 // Debug: trace XMM register values at specific code points
 void helper_trace_xmm(struct cpu_state *cpu, uint64_t ip) {
     // Read xmm0 and xmm1 as doubles from cpu_state

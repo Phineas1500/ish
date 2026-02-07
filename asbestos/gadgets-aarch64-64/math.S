@@ -3045,6 +3045,116 @@ NAME(imul32_r8_r15_gadgets):
     write_bullshit 64, movsd_mem_xmm
 
 // ============================================================
+// MOVD - Move Doubleword (32-bit) between GPR/memory and XMM
+// ============================================================
+
+// MOVD xmm, r/m32 - Move 32-bit value into low XMM, zero upper 96 bits
+// _xtmp = source 32-bit value (zero-extended in _xtmp), [_ip] = dest XMM index
+.gadget movd_xmm_reg
+    // Store 32-bit value to XMM low, zero rest
+    ldr x8, [_ip]              // XMM register index
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[dst]
+    uxtw _xtmp, _tmp           // Zero-extend 32-bit to 64-bit
+    str _xtmp, [x8]            // Store to low 64 bits (upper 32 of this qword are 0)
+    str xzr, [x8, 8]           // Zero high 64 bits
+    gret 1
+
+// MOVD xmm, m32 - Load 32-bit from memory into low XMM, zero upper 96 bits
+// _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
+.gadget movd_xmm_mem
+    read_prep 32, movd_xmm_mem
+    ldr w9, [_addr]            // Load 32 bits from memory
+
+    // Store to XMM register
+    ldr x8, [_ip]              // XMM register index
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[n]
+    // Zero-extend 32-bit to 64-bit and store
+    uxtw x9, w9
+    str x9, [x8]               // Store to low 64 bits
+    str xzr, [x8, 8]           // Zero high 64 bits
+    gret 2
+    read_bullshit 32, movd_xmm_mem
+
+// MOVD r/m32, xmm - Move low 32 bits of XMM to GPR (zero-extended to 64-bit)
+// [_ip] = source XMM index, result in _xtmp
+.gadget movd_reg_xmm
+    ldr x8, [_ip]              // XMM register index
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[n]
+    ldr w0, [x8]               // Load low 32 bits from XMM
+    uxtw _xtmp, w0             // Zero-extend to 64-bit
+    gret 1
+
+// MOVD m32, xmm - Store low 32 bits of XMM to memory
+// _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
+.gadget movd_mem_xmm
+    // Load XMM low 32 bits
+    ldr x8, [_ip]              // XMM register index
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[n]
+    ldr w0, [x8]               // Load low 32 bits
+
+    // Store to memory
+    mov _xtmp, x0              // Move to _xtmp for write_prep
+    write_prep 32, movd_mem_xmm
+    str _tmp, [_addr]          // Store 32 bits to memory
+    write_done 32, movd_mem_xmm
+    gret 2
+    write_bullshit 32, movd_mem_xmm
+
+// ============================================================
+// Packed SSE2 integer operations (via C helpers)
+// All use: [_ip] = dst XMM index, [_ip+8] = src XMM index
+// ============================================================
+
+// Helper macro for XMM-XMM operations that take (cpu, dst_idx, src_idx)
+.macro sse_xmm_xmm_op name
+.gadget \name
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    ldr x2, [_ip, 8]           // src XMM index
+    bl NAME(helper_\name)
+    restore_c
+    gret 2
+.endm
+
+sse_xmm_xmm_op punpckldq
+sse_xmm_xmm_op pcmpeqd
+sse_xmm_xmm_op pand
+sse_xmm_xmm_op paddd
+sse_xmm_xmm_op psubd
+
+// PSHUFD xmm, xmm, imm8 - Shuffle packed doublewords
+// [_ip] = dst XMM index, [_ip+8] = src XMM index, [_ip+16] = imm8
+.gadget pshufd
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    ldr x2, [_ip, 8]           // src XMM index
+    ldr x3, [_ip, 16]          // imm8
+    bl NAME(helper_pshufd)
+    restore_c
+    gret 3
+
+// PMOVMSKB r, xmm - Move byte mask to GPR
+// [_ip] = src XMM index, result in _xtmp
+.gadget pmovmskb
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // src XMM index
+    bl NAME(helper_pmovmskb)
+    mov _xtmp, x0              // Result mask in _xtmp
+    restore_c
+    gret 1
+
+// ============================================================
 // CVTSI2SD - Convert Signed Integer to Scalar Double
 // ============================================================
 
