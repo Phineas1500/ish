@@ -155,6 +155,70 @@ static addr_t sigreturn_trampoline(const char *name) {
     return current->mm->vdso + sigreturn_addr;
 }
 
+#ifdef ISH_GUEST_64BIT
+static void setup_sigcontext_64(struct sigcontext_64_ *sc, struct cpu_state *cpu) {
+    sc->r8 = cpu->r8;
+    sc->r9 = cpu->r9;
+    sc->r10 = cpu->r10;
+    sc->r11 = cpu->r11;
+    sc->r12 = cpu->r12;
+    sc->r13 = cpu->r13;
+    sc->r14 = cpu->r14;
+    sc->r15 = cpu->r15;
+    sc->di = cpu->rdi;
+    sc->si = cpu->rsi;
+    sc->bp = cpu->rbp;
+    sc->bx = cpu->rbx;
+    sc->dx = cpu->rdx;
+    sc->ax = cpu->rax;
+    sc->cx = cpu->rcx;
+    sc->sp = cpu->rsp;
+    sc->ip = cpu->rip;
+    collapse_flags(cpu);
+    sc->flags = cpu->eflags;
+    sc->trapno = cpu->trapno;
+    sc->oldmask = current->blocked;
+    if (cpu->trapno == INT_GPF)
+        sc->cr2 = cpu->segfault_addr;
+    sc->fpstate = 0;
+    memset(sc->reserved1, 0, sizeof(sc->reserved1));
+}
+
+static void restore_sigcontext_64(struct sigcontext_64_ *sc, struct cpu_state *cpu) {
+    cpu->r8 = sc->r8;
+    cpu->r9 = sc->r9;
+    cpu->r10 = sc->r10;
+    cpu->r11 = sc->r11;
+    cpu->r12 = sc->r12;
+    cpu->r13 = sc->r13;
+    cpu->r14 = sc->r14;
+    cpu->r15 = sc->r15;
+    cpu->rdi = sc->di;
+    cpu->rsi = sc->si;
+    cpu->rbp = sc->bp;
+    cpu->rbx = sc->bx;
+    cpu->rdx = sc->dx;
+    cpu->rax = sc->ax;
+    cpu->rcx = sc->cx;
+    cpu->rsp = sc->sp;
+    cpu->rip = sc->ip;
+    collapse_flags(cpu);
+#define USE_FLAGS_64 0b1010000110111010101
+    cpu->eflags = (sc->flags & USE_FLAGS_64) | (cpu->eflags & ~USE_FLAGS_64);
+}
+
+static void altstack_to_user_64(struct sighand *sighand, struct stack_t_64_ *user_stack) {
+    user_stack->stack = sighand->altstack;
+    user_stack->size = sighand->altstack_size;
+    user_stack->flags = 0;
+    user_stack->__pad = 0;
+    if (sighand->altstack == 0)
+        user_stack->flags |= SS_DISABLE_;
+    if (is_on_altstack(CPU_SP(&current->cpu), sighand))
+        user_stack->flags |= SS_ONSTACK_;
+}
+#endif
+
 static void setup_sigcontext(struct sigcontext_ *sc, struct cpu_state *cpu) {
     sc->ax = cpu->eax;
     sc->bx = cpu->ebx;
@@ -236,6 +300,60 @@ static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
     }
 
     struct sigaction_ *action = &sighand->action[info->sig];
+
+#ifdef ISH_GUEST_64BIT
+    // x86_64 signal delivery - always uses rt_sigframe
+    struct rt_sigframe_64_ frame = {};
+
+    // Set up sigcontext
+    setup_sigcontext_64(&frame.uc.mcontext, &current->cpu);
+    frame.uc.sigmask = current->blocked;
+    frame.uc.flags = 0;
+    frame.uc.link = 0;
+    altstack_to_user_64(sighand, &frame.uc.stack);
+    frame.info = *info;
+
+    // Set up restorer as pretcode (return address)
+    if (action->flags & SA_RESTORER_) {
+        frame.pretcode = action->restorer;
+    } else {
+        // Embed x86_64 rt_sigreturn trampoline: mov $15, %rax; syscall
+        // This is a fallback - musl always sets SA_RESTORER
+        printk("WARNING: signal %d without SA_RESTORER in 64-bit mode\n", info->sig);
+        frame.pretcode = 0;
+    }
+
+    // Calculate frame location on stack
+    addr_t sp = CPU_SP(&current->cpu);
+    if (sighand->altstack && !is_on_altstack(sp, sighand)) {
+        sp = sighand->altstack + sighand->altstack_size;
+    }
+    sp -= 128;  // Skip x86_64 red zone
+    sp -= sizeof(frame);
+    sp = (sp & ~(addr_t)0xf) - 8;  // x86_64 alignment: (sp & ~15) - 8
+
+    // Set up registers for signal handler (x86_64 calling convention)
+    current->cpu.rip = action->handler;
+    current->cpu.rdi = info->sig;        // signal number in RDI
+    current->cpu.rsi = sp + offsetof(struct rt_sigframe_64_, info);
+    current->cpu.rdx = sp + offsetof(struct rt_sigframe_64_, uc);
+    current->cpu.rax = 0;                // prevent syscall restart
+    current->cpu.rsp = sp;
+
+    // Update the mask
+    if (!(action->flags & SA_NODEFER_))
+        sigset_add(&current->blocked, info->sig);
+    current->blocked |= action->mask;
+
+    // Install frame on guest stack
+    if (user_write(sp, &frame, sizeof(frame))) {
+        printk("failed to install 64-bit frame for %d at %#llx\n", info->sig, (unsigned long long)sp);
+        deliver_signal(current, SIGSEGV_, SIGINFO_NIL);
+    }
+
+    if (action->flags & SA_RESETHAND_)
+        *action = (struct sigaction_) {.handler = SIG_DFL_};
+#else
     bool need_siginfo = action->flags & SA_SIGINFO_;
 
     // setup the frame
@@ -295,6 +413,7 @@ static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
 
     if (action->flags & SA_RESETHAND_)
         *action = (struct sigaction_) {.handler = SIG_DFL_};
+#endif
 }
 
 void signal_delivery_stop(int sig, struct siginfo_ *info) {
@@ -399,6 +518,27 @@ static void restore_sigcontext(struct sigcontext_ *context, struct cpu_state *cp
 
 dword_t sys_rt_sigreturn() {
     struct cpu_state *cpu = &current->cpu;
+#ifdef ISH_GUEST_64BIT
+    // x86_64: after handler's ret popped pretcode, RSP = &frame + 8
+    // So frame starts at RSP - 8
+    struct rt_sigframe_64_ frame;
+    addr_t frame_addr = CPU_SP(cpu) - 8;
+    if (user_get(frame_addr, frame)) {
+        deliver_signal(current, SIGSEGV_, SIGINFO_NIL);
+        return _EFAULT;
+    }
+    restore_sigcontext_64(&frame.uc.mcontext, cpu);
+
+    lock(&current->sighand->lock);
+    if (!is_on_altstack(CPU_SP(cpu), current->sighand) &&
+            frame.uc.stack.size >= MINSIGSTKSZ_) {
+        current->sighand->altstack = frame.uc.stack.stack;
+        current->sighand->altstack_size = frame.uc.stack.size;
+    }
+    sigmask_set(frame.uc.sigmask);
+    unlock(&current->sighand->lock);
+    return cpu->rax;
+#else
     struct rt_sigframe_ frame;
     // esp points past the first field of the frame
     if (user_get(cpu->esp - offsetof(struct rt_sigframe_, sig), frame)) {
@@ -417,6 +557,7 @@ dword_t sys_rt_sigreturn() {
     sigmask_set(frame.uc.sigmask);
     unlock(&current->sighand->lock);
     return cpu->eax;
+#endif
 }
 
 dword_t sys_sigreturn() {
@@ -578,7 +719,7 @@ static void altstack_to_user(struct sighand *sighand, struct stack_t_ *user_stac
     user_stack->flags = 0;
     if (sighand->altstack == 0)
         user_stack->flags |= SS_DISABLE_;
-    if (is_on_altstack(current->cpu.esp, sighand))
+    if (is_on_altstack(CPU_SP(&current->cpu), sighand))
         user_stack->flags |= SS_ONSTACK_;
 }
 
@@ -595,7 +736,7 @@ dword_t sys_sigaltstack(addr_t ss_addr, addr_t old_ss_addr) {
         }
     }
     if (ss_addr != 0) {
-        if (is_on_altstack(current->cpu.esp, sighand)) {
+        if (is_on_altstack(CPU_SP(&current->cpu), sighand)) {
             unlock(&sighand->lock);
             return _EPERM;
         }

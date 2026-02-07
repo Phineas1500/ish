@@ -18,7 +18,7 @@ typedef qword_t sigset_t_;
 
 struct sigaction_ {
     addr_t handler;
-    dword_t flags;
+    ureg_t flags;       // unsigned long: 8 bytes on x86_64, 4 bytes on i386
     addr_t restorer;
     sigset_t_ mask;
 } __attribute__((packed));
@@ -295,5 +295,68 @@ struct rt_sigframe_ {
 // everything align.
 extern int xsave_extra;
 extern int fxsave_extra;
+
+#ifdef ISH_GUEST_64BIT
+#define SA_RESTORER_ 0x04000000
+
+// x86_64 sigcontext - must match Linux kernel layout exactly
+struct sigcontext_64_ {
+    qword_t r8;
+    qword_t r9;
+    qword_t r10;
+    qword_t r11;
+    qword_t r12;
+    qword_t r13;
+    qword_t r14;
+    qword_t r15;
+    qword_t di;
+    qword_t si;
+    qword_t bp;
+    qword_t bx;
+    qword_t dx;
+    qword_t ax;
+    qword_t cx;
+    qword_t sp;
+    qword_t ip;
+    qword_t flags;
+    word_t cs;
+    word_t gs;
+    word_t fs;
+    word_t ss;
+    qword_t err;
+    qword_t trapno;
+    qword_t oldmask;
+    qword_t cr2;
+    qword_t fpstate;
+    qword_t reserved1[8];
+};
+
+// x86_64 stack_t for signal frames
+struct stack_t_64_ {
+    qword_t stack;     // ss_sp
+    int32_t flags;     // ss_flags
+    int32_t __pad;     // alignment padding
+    qword_t size;      // ss_size
+};
+
+// x86_64 ucontext
+struct ucontext_64_ {
+    qword_t flags;
+    qword_t link;
+    struct stack_t_64_ stack;
+    struct sigcontext_64_ mcontext;
+    sigset_t_ sigmask;
+};
+
+// x86_64 rt_sigframe - always used (no old-style sigframe on x86_64)
+struct rt_sigframe_64_ {
+    qword_t pretcode;  // return address (restorer)
+    struct ucontext_64_ uc;
+    union {
+        struct siginfo_ info;
+        char __info_pad[128];
+    };
+};
+#endif
 
 #endif
