@@ -3882,12 +3882,12 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         gadget_t load = get_load64_reg_gadget(inst.operands[1].type);
         if (load)
           GEN(load);
-        // Apply appropriate mask
+        // Apply appropriate mask (flag-preserving - MOVZX doesn't modify flags)
         if (inst.operands[1].size == size64_8) {
-          GEN(gadget_and64_imm);
+          GEN(gadget_lea_and64_imm);
           GEN(0xFF);
         } else if (inst.operands[1].size == size64_16) {
-          GEN(gadget_and64_imm);
+          GEN(gadget_lea_and64_imm);
           GEN(0xFFFF);
         }
       } else {
