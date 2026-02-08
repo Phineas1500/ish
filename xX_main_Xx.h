@@ -22,9 +22,7 @@ static void exit_handler(struct task *task, int code) {
   if (code & 0xff) {
     raise(code & 0xff);
   }
-  // Use kill(SIGKILL) because _exit() and quick_exit() were observed to hang
-  // when called from the exit_handler in this context.
-  kill(getpid(), SIGKILL);
+  _exit(code >> 8);
 }
 
 // this function parses command line arguments and initializes global
