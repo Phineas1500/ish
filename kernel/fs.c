@@ -350,20 +350,11 @@ error:
 
 dword_t sys_writev(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count) {
     STRACE("writev(%d, %#x, %d)", fd_no, iovec_addr, iovec_count);
-    fprintf(stderr, "WRITEV: fd=%d iovec_addr=0x%llx count=%d\n",
-            fd_no, (unsigned long long)iovec_addr, iovec_count);
 
     struct iovec_ *iovec = read_iovec(iovec_addr, iovec_count);
-    if (IS_ERR(iovec)) {
-        fprintf(stderr, "WRITEV: read_iovec failed: %ld\n", PTR_ERR(iovec));
+    if (IS_ERR(iovec))
         return PTR_ERR(iovec);
-    }
     size_t io_size = iovec_size(iovec, iovec_count);
-    fprintf(stderr, "WRITEV: io_size=%zu\n", io_size);
-    for (unsigned i = 0; i < iovec_count; i++) {
-        fprintf(stderr, "WRITEV: iovec[%u] base=0x%llx len=%llu\n",
-                i, (unsigned long long)iovec[i].base, (unsigned long long)iovec[i].len);
-    }
     char *buf = malloc(io_size);
     if (buf == NULL) {
         free(iovec);
@@ -374,7 +365,6 @@ dword_t sys_writev(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count) {
     size_t offset = 0;
     for (unsigned i = 0; i < iovec_count; i++) {
         if (user_read(iovec[i].base, buf + offset, iovec[i].len)) {
-            fprintf(stderr, "WRITEV: user_read failed for iovec[%u]\n", i);
             res = _EFAULT;
             goto error;
         }
@@ -384,9 +374,7 @@ dword_t sys_writev(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count) {
         STRACE(" {\"%.*s\", %u}", print_size, buf + offset, iovec[i].len);
         offset += iovec[i].len;
     }
-    fprintf(stderr, "WRITEV: calling sys_write_buf fd=%d size=%zu\n", fd_no, io_size);
     res = sys_write_buf(fd_no, buf, io_size);
-    fprintf(stderr, "WRITEV: sys_write_buf returned %zd\n", res);
 
 error:
     free(buf);

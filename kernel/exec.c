@@ -494,23 +494,13 @@ static int elf_exec64(struct fd *fd, const char *file, struct exec_args argv,
 
   // argv pointers (64-bit)
   size_t argc = argv.count;
-  DEBUG_FPRINTF(stderr, "ELF64: writing %zu argv pointers:\n", argc);
-  // UNCONDITIONAL argv dump for debugging sleep issue
-  fprintf(stderr, "EXEC: argc=%zu argv=[", argv.count);
   while (argc-- > 0) {
     uint64_t ptr = argv_addr;
-    // Debug: dump the string at this pointer
-    char argstr[128] = {0};
-    user_read(argv_addr, argstr, sizeof(argstr) - 1);
-    fprintf(stderr, "\"%s\"%s", argstr, argc > 0 ? ", " : "");
-    DEBUG_FPRINTF(stderr, "  argv[%zu] -> 0x%llx = \"%s\"\n",
-                  argv.count - argc - 1, (unsigned long long)ptr, argstr);
     if (user_put(p, ptr))
       return _EFAULT;
     argv_addr += user_strlen(argv_addr) + 1;
     p += sizeof(uint64_t);
   }
-  fprintf(stderr, "]\n");
   // null terminator for argv
   uint64_t null_ptr = 0;
   if (user_put(p, null_ptr))

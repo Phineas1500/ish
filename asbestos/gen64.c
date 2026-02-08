@@ -12,17 +12,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-// Debug output guard: define DEBUG_64BIT_VERBOSE=1 to enable verbose debug
-// output
-#ifndef DEBUG_64BIT_VERBOSE
-#define DEBUG_64BIT_VERBOSE 0
-#endif
-
-#if DEBUG_64BIT_VERBOSE
-#define DEBUG_FPRINTF(...) fprintf(__VA_ARGS__)
-#else
-#define DEBUG_FPRINTF(...) ((void)0)
-#endif
 
 // Gadget function type
 typedef void (*gadget_t)(void);
@@ -103,12 +92,6 @@ extern void gadget_push(void);
 extern void gadget_pop(void);
 extern void gadget_seg_fs(void);
 extern void gadget_seg_gs(void);
-// Debug gadgets (keep for future debugging if needed)
-// extern void gadget_debug_store(void);
-// extern void gadget_debug_load(void);
-// extern void gadget_debug_add_r9(void);
-// extern void gadget_debug_rdx(void);
-// extern void gadget_debug_save_x8(void);
 
 // Add gadgets for add/sub/xor
 extern void gadget_add64_a(void);
@@ -497,18 +480,15 @@ extern void gadget_cmov_cz(void);
 extern void gadget_cmov_s(void);
 extern void gadget_cmov_p(void);
 extern void gadget_cmov_sxo(void);
-extern void gadget_debug_cmov_sxo(void); // Debug wrapper for CMOVL
 extern void gadget_cmov_sxoz(void);
 // Conditional move gadgets (condition true = keep dest)
 extern void gadget_cmovn_o(void);
 extern void gadget_cmovn_c(void);
 extern void gadget_cmovn_z(void);
-extern void gadget_debug_cmovn_z(void);
 extern void gadget_cmovn_cz(void);
 extern void gadget_cmovn_s(void);
 extern void gadget_cmovn_p(void);
 extern void gadget_cmovn_sxo(void);
-extern void gadget_debug_cmovn_sxo(void); // Debug wrapper for CMOVGE
 extern void gadget_cmovn_sxoz(void);
 // SETcc gadgets (condition true = set byte to 1)
 extern void gadget_set_o(void);
@@ -532,9 +512,6 @@ extern void gadget_setn_sxoz(void);
 extern void gadget_save_xtmp_to_x8(void);
 extern void gadget_restore_xtmp_from_x8(void);
 extern void gadget_swap_xtmp_x8(void);
-// Debug gadgets
-extern void gadget_debug_lea(void);
-extern void gadget_debug_cmp(void);
 
 // r8-r15 load/store gadgets (these are in memory, not ARM64 registers)
 extern void gadget_load64_r8(void);
@@ -1017,15 +994,6 @@ static bool gen_mov(struct gen_state *state, struct decoded_inst64 *inst) {
     gadget_t store_gadget = get_store64_reg_gadget(dst->type);
     if (!store_gadget)
       return false;
-    // Debug: trace MOV to r11 or r12
-    if (dst->type == arg64_r11) {
-      DEBUG_FPRINTF(stderr, "GEN_MOV_R11: ip=0x%llx src=%d size=%d\n",
-              (unsigned long long)state->orig_ip, src->type, size_bits);
-    }
-    if (dst->type == arg64_r12) {
-      DEBUG_FPRINTF(stderr, "GEN: MOV r12, reg at ip=0x%llx\n",
-              (unsigned long long)state->orig_ip);
-    }
     GEN(store_gadget);
 
     return true;
@@ -1033,23 +1001,6 @@ static bool gen_mov(struct gen_state *state, struct decoded_inst64 *inst) {
 
   // MOV reg, imm (any GPR including r8-r15)
   if (is_gpr(dst->type) && src->type == arg64_imm) {
-    // Debug: trace MOV to r8-r15 with imm
-    if (dst->type >= arg64_r8 && dst->type <= arg64_r15) {
-      DEBUG_FPRINTF(stderr,
-              "GEN_MOV_R8_R15_IMM: ip=0x%llx dst=%d (r%d) size=%d imm=0x%llx\n",
-              (unsigned long long)state->orig_ip, dst->type,
-              8 + (dst->type - arg64_r8), size_bits,
-              (unsigned long long)src->imm);
-    }
-    // Debug: trace MOV rdx, imm with suspicious value
-    if (dst->type == arg64_rdx &&
-        (src->imm == 0xffffffffffffff80 || src->imm == 0xffffff80 ||
-         src->imm == 0x80)) {
-      DEBUG_FPRINTF(stderr,
-              "GEN_MOV_RDX_IMM: ip=0x%llx size=%d imm=0x%llx (signed=%lld)\n",
-              (unsigned long long)state->orig_ip, size_bits,
-              (unsigned long long)src->imm, (long long)src->imm);
-    }
     if (size_bits == 64) {
       GEN(load64_gadgets[8]); // load64_imm
     } else {
@@ -1123,12 +1074,6 @@ static bool gen_mov(struct gen_state *state, struct decoded_inst64 *inst) {
 
   // MOV [mem], imm
   if (is_mem(dst->type) && src->type == arg64_imm) {
-    // Debug: trace mov [mem], imm with value 8 (likely gp_offset setup)
-    if (src->imm == 8 && size_bits == 32) {
-      DEBUG_FPRINTF(stderr,
-              "GEN: MOV [mem], imm8 at ip=0x%llx (likely va_start gp_offset)\n",
-              (unsigned long long)state->orig_ip);
-    }
     // Load immediate
     if (size_bits == 64) {
       GEN(load64_gadgets[8]); // load64_imm
@@ -1188,11 +1133,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
   int len = decode64_inst(code, 15, state->ip, &inst);
   if (len == 0) {
     // Decode failed - undefined instruction
-    DEBUG_FPRINTF(stderr,
-            "DECODE FAILED at ip=0x%llx bytes: %02x %02x %02x %02x %02x %02x "
-            "%02x %02x\n",
-            (unsigned long long)state->orig_ip, code[0], code[1], code[2],
-            code[3], code[4], code[5], code[6], code[7]);
     g(interrupt);
     GEN(INT_UNDEFINED);
     GEN(state->orig_ip);
@@ -1240,10 +1180,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
   case ZYDIS_MNEMONIC_MOV:
     if (!gen_mov(state, &inst)) {
       // Fallback to interrupt for unimplemented
-      DEBUG_FPRINTF(stderr,
-              "GEN_MOV_FAILED: ip=0x%llx op0.type=%d op1.type=%d size=%d\n",
-              (unsigned long long)state->orig_ip, inst.operands[0].type,
-              inst.operands[1].type, inst.operands[0].size);
       g(interrupt);
       GEN(INT_UNDEFINED);
       GEN(state->orig_ip);
@@ -1403,8 +1339,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_SYSCALL:
-    DEBUG_FPRINTF(stderr, "GEN: syscall at ip=0x%llx\n",
-            (unsigned long long)state->orig_ip);
     g(syscall);
     GEN(state->ip); // Return address (next instruction after SYSCALL)
     end_block = true;
@@ -1698,12 +1632,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       } else if (inst.operands[1].type >= arg64_r8 &&
                  inst.operands[1].type <= arg64_r15) {
         // ADD reg, r8-r15 (need to load r8-r15 from memory first)
-        // Debug: trace ADD r14, r11 at printf_core accumulation
-        if (inst.operands[0].type == arg64_r14 &&
-            inst.operands[1].type == arg64_r11) {
-          DEBUG_FPRINTF(stderr, "GEN_ADD_R14_R11: ip=0x%llx size=%d\n",
-                  (unsigned long long)state->orig_ip, is64 ? 64 : 32);
-        }
         // Save _xtmp (dst) to x8
         GEN(gadget_save_xtmp_to_x8);
         // Load r8-r15 into _xtmp
@@ -2436,8 +2364,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       // Now use size-appropriate compare
       switch (inst.operands[0].size) {
       case size64_8:
-        // DEBUG: trace all CMP [mem], reg byte-sized
-        GEN(gadget_debug_cmp);
+
         GEN(gadget_cmp8_x8);
         break;
       case size64_16:
@@ -2536,11 +2463,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           }
         } else {
           // r8-r15: load to x8, use size-appropriate test gadget
-          DEBUG_FPRINTF(stderr,
-                  "GEN: TEST r8-r15 at ip=0x%llx op0=%d op1=%d reg_idx=%d "
-                  "size=%d\n",
-                  (unsigned long long)state->orig_ip, inst.operands[0].type,
-                  inst.operands[1].type, reg_idx, inst.operands[0].size);
           gadget_t load2 = get_load64_reg_gadget(inst.operands[1].type);
           if (load2) {
             GEN(gadget_save_xtmp_to_x8);
@@ -2683,16 +2605,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     // AND instruction
     if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
       // AND reg, ...
-      // Debug: trace 8/16-bit AND to see if they're causing issues
-      if (inst.operands[0].size == size64_8 ||
-          inst.operands[0].size == size64_16) {
-        DEBUG_FPRINTF(stderr, "GEN: AND%d at ip=0x%llx op0=%d imm=0x%llx\n",
-                inst.operands[0].size == size64_8 ? 8 : 16,
-                (unsigned long long)state->orig_ip, inst.operands[0].type,
-                (unsigned long long)(inst.operands[1].type == arg64_imm
-                                         ? inst.operands[1].imm
-                                         : 0));
-      }
       gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
       if (load)
         GEN(load);
@@ -3350,16 +3262,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         int64_t effective_addr = state->ip + inst.operands[1].mem.disp;
         // Debug: trace RIP-relative LEA around the problem area
         // 0x648d2 offset = 0x7efffff5e000 + 0x648d2 = 0x7effffc48d2
-        if (state->orig_ip >= 0x7effffc48d0 &&
-            state->orig_ip <= 0x7effffc48e0) {
-          DEBUG_FPRINTF(stderr,
-                  "LEA RIP-rel[string]: ip=0x%llx next_ip=0x%llx disp=0x%llx "
-                  "eff=0x%llx dst=%d\n",
-                  (unsigned long long)state->orig_ip,
-                  (unsigned long long)state->ip,
-                  (long long)inst.operands[1].mem.disp,
-                  (unsigned long long)effective_addr, inst.operands[0].type);
-        }
         GEN(load64_gadgets[8]); // load64_imm
         GEN(effective_addr);
         gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
@@ -3879,11 +3781,11 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         cmov_gadget = gadget_cmovn_p;
         break;
       case ZYDIS_MNEMONIC_CMOVL:
-        cmov_gadget = gadget_debug_cmov_sxo;
-        break; // Use debug wrapper
+        cmov_gadget = gadget_cmov_sxo;
+        break;
       case ZYDIS_MNEMONIC_CMOVNL:
-        cmov_gadget = gadget_debug_cmovn_sxo;
-        break; // Use debug wrapper
+        cmov_gadget = gadget_cmovn_sxo;
+        break;
       case ZYDIS_MNEMONIC_CMOVLE:
         cmov_gadget = gadget_cmov_sxoz;
         break;
@@ -4910,18 +4812,9 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
   case ZYDIS_MNEMONIC_MOVDQA:
   case ZYDIS_MNEMONIC_MOVDQU:
     // MOVAPS/MOVUPS/MOVDQA/MOVDQU - Move 128 bits (aligned/unaligned)
-    DEBUG_FPRINTF(stderr,
-            "GEN: MOVDQU/MOVAPS at ip=0x%llx operands=%d op0=%d op1=%d "
-            "is_xmm(%d,%d) is_mem(%d,%d)\n",
-            (unsigned long long)state->orig_ip, inst.operand_count,
-            inst.operands[0].type, inst.operands[1].type,
-            is_xmm(inst.operands[0].type), is_xmm(inst.operands[1].type),
-            is_mem(inst.operands[0].type), is_mem(inst.operands[1].type));
-    fflush(stderr);
     if (inst.operand_count >= 2) {
       if (is_xmm(inst.operands[0].type) && is_xmm(inst.operands[1].type)) {
         // xmm, xmm: Copy between XMM registers
-        DEBUG_FPRINTF(stderr, "  -> xmm, xmm form\n");
         GEN(load64_gadgets[8]); // load64_imm: Load source XMM index
         GEN(get_xmm_index(inst.operands[1].type));
         GEN(gadget_movaps_xmm_xmm);
@@ -4929,7 +4822,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       } else if (is_xmm(inst.operands[0].type) &&
                  is_mem(inst.operands[1].type)) {
         // xmm, [mem]: Load from memory to XMM
-        DEBUG_FPRINTF(stderr, "  -> xmm, [mem] form\n");
         if (!gen_addr(state, &inst.operands[1], &inst)) {
           g(interrupt);
           GEN(INT_UNDEFINED);
@@ -5026,9 +4918,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         if (load) {
           GEN(load);
         }
-        fprintf(stderr, "GEN: CVTSI2SD xmm%d, reg (%s) at ip=0x%llx\n",
-                dst_xmm, is_64bit ? "64-bit" : "32-bit",
-                (unsigned long long)state->orig_ip);
         if (is_64bit) {
           GEN(gadget_cvtsi2sd_reg64);
         } else {
@@ -5044,9 +4933,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(state->orig_ip);
           return 0;
         }
-        fprintf(stderr, "GEN: CVTSI2SD xmm%d, mem (%s) at ip=0x%llx\n",
-                dst_xmm, is_64bit ? "64-bit" : "32-bit",
-                (unsigned long long)state->orig_ip);
         if (is_64bit) {
           GEN(gadget_cvtsi2sd_mem64);
         } else {
@@ -5071,8 +4957,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       if (is_xmm(inst.operands[1].type)) {
         // xmm, xmm
         int src_xmm = get_xmm_index(inst.operands[1].type);
-        fprintf(stderr, "GEN: ADDSD xmm%d, xmm%d at ip=0x%llx\n",
-                dst_xmm, src_xmm, (unsigned long long)state->orig_ip);
         GEN(load64_gadgets[8]); // load64_imm: Load source XMM index
         GEN(src_xmm);
         GEN(gadget_addsd_xmm_xmm);
@@ -5086,8 +4970,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(state->orig_ip);
           return 0;
         }
-        fprintf(stderr, "GEN: ADDSD xmm%d, mem at ip=0x%llx\n",
-                dst_xmm, (unsigned long long)state->orig_ip);
         GEN(gadget_addsd_xmm_mem);
         GEN(dst_xmm);
         GEN(state->orig_ip);
@@ -5108,8 +4990,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       if (is_xmm(inst.operands[1].type)) {
         // xmm, xmm
         int src_xmm = get_xmm_index(inst.operands[1].type);
-        fprintf(stderr, "GEN: SUBSD xmm%d, xmm%d at ip=0x%llx\n",
-                dst_xmm, src_xmm, (unsigned long long)state->orig_ip);
         GEN(load64_gadgets[8]); /* load64_imm: Load source XMM index */
         GEN(src_xmm);
         GEN(gadget_subsd_xmm_xmm);
@@ -5123,8 +5003,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(state->orig_ip);
           return 0;
         }
-        fprintf(stderr, "GEN: SUBSD xmm%d, mem at ip=0x%llx\n",
-                dst_xmm, (unsigned long long)state->orig_ip);
         GEN(gadget_subsd_xmm_mem);
         GEN(dst_xmm);
         GEN(state->orig_ip);
@@ -5145,8 +5023,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       if (is_xmm(inst.operands[1].type)) {
         // xmm, xmm
         int src_xmm = get_xmm_index(inst.operands[1].type);
-        fprintf(stderr, "GEN: MULSD xmm%d, xmm%d at ip=0x%llx\n",
-                dst_xmm, src_xmm, (unsigned long long)state->orig_ip);
         GEN(load64_gadgets[8]); /* load64_imm: Load source XMM index */
         GEN(src_xmm);
         GEN(gadget_mulsd_xmm_xmm);
@@ -5160,8 +5036,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(state->orig_ip);
           return 0;
         }
-        fprintf(stderr, "GEN: MULSD xmm%d, mem at ip=0x%llx\n",
-                dst_xmm, (unsigned long long)state->orig_ip);
         GEN(gadget_mulsd_xmm_mem);
         GEN(dst_xmm);
         GEN(state->orig_ip);
@@ -5218,8 +5092,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       if (is_xmm(inst.operands[1].type)) {
         // xmm, xmm
         int src2_xmm = get_xmm_index(inst.operands[1].type);
-        fprintf(stderr, "GEN: COMISD xmm%d, xmm%d at ip=0x%llx\n",
-                src1_xmm, src2_xmm, (unsigned long long)state->orig_ip);
         GEN(load64_gadgets[8]); // load64_imm: Load first XMM index
         GEN(src1_xmm);
         GEN(gadget_comisd_xmm_xmm);
@@ -5233,8 +5105,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(state->orig_ip);
           return 0;
         }
-        fprintf(stderr, "GEN: COMISD xmm%d, mem at ip=0x%llx\n",
-                src1_xmm, (unsigned long long)state->orig_ip);
         GEN(gadget_comisd_xmm_mem);
         GEN(src1_xmm);
         GEN(state->orig_ip);
@@ -5260,8 +5130,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       if (is_xmm(inst.operands[1].type)) {
         // CVTTSD2SI reg, xmm
         int src_xmm = get_xmm_index(inst.operands[1].type);
-        fprintf(stderr, "GEN: CVTTSD2SI dst=%d, xmm%d at ip=0x%llx (64bit=%d)\n",
-                dst_type, src_xmm, (unsigned long long)state->orig_ip, is_64bit);
         GEN(is_64bit ? gadget_cvttsd2si_reg64 : gadget_cvttsd2si_reg32);
         GEN(src_xmm);
         // Store to destination register
@@ -5280,8 +5148,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(state->orig_ip);
           return 0;
         }
-        fprintf(stderr, "GEN: CVTTSD2SI dst=%d, mem at ip=0x%llx (64bit=%d)\n",
-                dst_type, (unsigned long long)state->orig_ip, is_64bit);
         GEN(is_64bit ? gadget_cvttsd2si_mem64 : gadget_cvttsd2si_mem32);
         GEN(state->orig_ip);
         // Store to destination register
@@ -5321,8 +5187,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
   case ZYDIS_MNEMONIC_MOVSQ:
     // REP MOVSQ - move [RSI] to [RDI], repeat RCX times
-    DEBUG_FPRINTF(stderr, "GEN: REP MOVSQ at ip=0x%llx\n",
-            (unsigned long long)state->orig_ip);
     GEN(gadget_rep_movsq);
     GEN(state->orig_ip); // For segfault handler
     break;
@@ -5332,14 +5196,10 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     // Check if REP prefix is present
     if (inst.has_rep) {
       // REP MOVSB - repeat RCX times
-      DEBUG_FPRINTF(stderr, "GEN: REP MOVSB at ip=0x%llx\n",
-              (unsigned long long)state->orig_ip);
       GEN(gadget_rep_movsb);
       GEN(state->orig_ip); // For segfault handler
     } else {
       // Single MOVSB - copy exactly one byte
-      DEBUG_FPRINTF(stderr, "GEN: single MOVSB at ip=0x%llx\n",
-              (unsigned long long)state->orig_ip);
       GEN(gadget_single_movsb);
     }
     break;
@@ -5356,8 +5216,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         // xmm to xmm: copy low 64 bits, preserve high 64 bits of dest
         int dst_xmm = get_xmm_index(inst.operands[0].type);
         int src_xmm = get_xmm_index(inst.operands[1].type);
-        fprintf(stderr, "GEN: SSE MOVSD xmm%d, xmm%d at ip=0x%llx\n",
-                dst_xmm, src_xmm, (unsigned long long)state->orig_ip);
         GEN(load64_gadgets[8]); // load64_imm: Load source XMM index
         GEN(src_xmm);
         GEN(gadget_movsd_xmm_xmm);
@@ -5365,8 +5223,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       } else if (is_xmm(inst.operands[0].type)) {
         // xmm, m64: load scalar double from memory into XMM low 64 bits
         int dst_xmm = get_xmm_index(inst.operands[0].type);
-        fprintf(stderr, "GEN: SSE MOVSD xmm%d, mem at ip=0x%llx\n",
-                dst_xmm, (unsigned long long)state->orig_ip);
         if (!gen_addr(state, &inst.operands[1], &inst)) {
           g(interrupt);
           GEN(INT_UNDEFINED);
@@ -5380,8 +5236,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       } else {
         // m64, xmm: store scalar double from XMM low 64 bits to memory
         int src_xmm = get_xmm_index(inst.operands[1].type);
-        fprintf(stderr, "GEN: SSE MOVSD mem, xmm%d at ip=0x%llx\n",
-                src_xmm, (unsigned long long)state->orig_ip);
         if (!gen_addr(state, &inst.operands[0], &inst)) {
           g(interrupt);
           GEN(INT_UNDEFINED);
@@ -5395,8 +5249,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       }
     } else {
       // String MOVSD - REP MOVSD moves dwords from [RSI] to [RDI]
-      DEBUG_FPRINTF(stderr, "GEN: REP MOVSD (string) at ip=0x%llx\n",
-              (unsigned long long)state->orig_ip);
       GEN(gadget_rep_movsd);
       GEN(state->orig_ip); // For segfault handler
     }
@@ -5534,18 +5386,12 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     // SCASB - Compare AL with byte at [RDI]
     if (inst.has_repne) {
       // REPNE SCASB - scan for byte not equal to AL (used for strlen)
-      DEBUG_FPRINTF(stderr, "GEN: REPNE SCASB at ip=0x%llx\n",
-              (unsigned long long)state->orig_ip);
       GEN(gadget_repne_scasb);
     } else if (inst.has_rep) {
       // REPE SCASB - scan for byte equal to AL
-      DEBUG_FPRINTF(stderr, "GEN: REPE SCASB at ip=0x%llx\n",
-              (unsigned long long)state->orig_ip);
       GEN(gadget_repe_scasb);
     } else {
       // Single SCASB
-      DEBUG_FPRINTF(stderr, "GEN: single SCASB at ip=0x%llx\n",
-              (unsigned long long)state->orig_ip);
       GEN(gadget_single_scasb);
     }
     break;
@@ -5556,8 +5402,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
   case ZYDIS_MNEMONIC_FILD:
     // FILD m16/m32/m64 - Load Integer to FPU stack
-    fprintf(stderr, "GEN_FILD: ip=0x%llx size=%d\n",
-            (unsigned long long)state->orig_ip, inst.operands[0].size);
     if (inst.operand_count >= 1 && is_mem(inst.operands[0].type)) {
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
@@ -5586,8 +5430,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
   case ZYDIS_MNEMONIC_FIST:
     // FIST m16/m32 - Store Integer without Pop
     // Note: FIST doesn't support m64, only m16 and m32
-    fprintf(stderr, "GEN: FIST at ip=0x%llx size=%d\n",
-            (unsigned long long)state->orig_ip, inst.operands[0].size);
     if (inst.operand_count >= 1 && is_mem(inst.operands[0].type)) {
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
@@ -5764,7 +5606,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_FADDP:
-    fprintf(stderr, "GEN_FADDP: ip=0x%llx\n", (unsigned long long)state->orig_ip);
     if (inst.operand_count >= 2 &&
         inst.operands[0].type >= arg64_st0 && inst.operands[0].type <= arg64_st7) {
       int i = inst.operands[0].type - arg64_st0;
@@ -5981,7 +5822,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_FSCALE:
-    fprintf(stderr, "GEN_FSCALE: ip=0x%llx\n", (unsigned long long)state->orig_ip);
     GEN(gadget_fpu_fscale);
     break;
 
@@ -6002,7 +5842,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_FLDZ:
-    fprintf(stderr, "GEN_FLDZ: ip=0x%llx\n", (unsigned long long)state->orig_ip);
     GEN(gadget_fpu_fldz);
     break;
 

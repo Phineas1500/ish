@@ -41,14 +41,6 @@ fiber_ret_chain:
 
 poke:
     ldr rip, [_ip, -FIBER_BLOCK_code+FIBER_BLOCK_addr]
-    // Debug: check if poke loaded address 0
-    cbnz rip, 1f
-    save_c
-    mov x0, rip      // target (should be 0)
-    mov x1, rsp      // current rsp
-    bl NAME(helper_debug_null_poke)
-    restore_c
-1:
     // Go directly to fiber_exit - rip is already set
     mvn _tmp, wzr    // return -1 (re-translate)
     b fiber_exit
@@ -60,14 +52,6 @@ fiber_ret:
     // Strip the high bit from _ip to get the real address
     // _ip contains: real_address | (1 << 63)
     and rip, _ip, 0x7fffffffffffffff
-    // Debug: check if result is 0 (shouldn't happen)
-    cbnz rip, 1f
-    save_c
-    mov x0, rip      // should be 0
-    mov x1, rsp      // current rsp
-    bl NAME(helper_debug_null_fiber_ret)
-    restore_c
-1:
     // Load -1 as return value (indicates need to re-translate)
     mvn _tmp, wzr
     // fallthrough
@@ -75,20 +59,6 @@ fiber_ret:
 // Exit fiber and return to C code
 .global fiber_exit
 fiber_exit:
-    // Track last good rip
-    mov x10, rip     // save rip before save_c
-    save_c
-    mov x0, x10
-    bl NAME(helper_debug_trace_rip)
-    restore_c
-    // Debug: check if rip is 0 before saving
-    cbnz rip, 1f
-    save_c
-    mov x0, rip      // target (should be 0)
-    mov x1, rsp      // current rsp
-    bl NAME(helper_debug_null_fiber_exit)
-    restore_c
-1:
     save_regs
     ldr lr, [sp, 0x60]
     ldp x28, x29, [sp, 0x50]
@@ -107,14 +77,6 @@ fiber_exit:
     ldr x8, [_ip, 16]         // segfault_addr (64-bit for 64-bit guest)
     str x8, [_cpu, CPU_segfault_addr]
     ldr rip, [_ip, 8]         // ip where interrupt occurred
-    // Debug: check if interrupt loaded rip = 0
-    cbnz rip, 1f
-    save_c
-    mov x0, rip      // target (should be 0)
-    mov x1, rsp      // current rsp
-    bl NAME(helper_debug_null_jump)
-    restore_c
-1:
     strb wzr, [_cpu, CPU_segfault_was_write]
     b fiber_exit
 
@@ -124,13 +86,5 @@ fiber_exit:
     ldr rip, [_ip]
     // Mask off bit 63 to get real address
     and rip, rip, 0x7fffffffffffffff
-    // Debug: check for NULL exit target
-    cbnz rip, 1f
-    save_c
-    mov x0, rip      // target (should be 0)
-    mov x1, rsp      // current rsp
-    bl NAME(helper_debug_null_exit)
-    restore_c
-1:
     mvn _tmp, wzr    // return -1 (re-translate)
     b fiber_exit

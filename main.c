@@ -6,12 +6,6 @@
 #include "kernel/task.h"
 #include "xX_main_Xx.h"
 
-// Declared in helpers.c
-void helper_debug_print_rip_history(void);
-
-// Declared in kernel/task.h (thread-local)
-#include "kernel/task.h"
-
 static void sigsegv_handler(int sig) {
     (void)sig;
     void *array[50];
@@ -43,7 +37,6 @@ static void sigsegv_handler(int sig) {
                 cpu->esi, cpu->edi);
 #endif
     }
-    helper_debug_print_rip_history();
     fprintf(stderr, "======================\n");
     _exit(139);
 }

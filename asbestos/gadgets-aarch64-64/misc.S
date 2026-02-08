@@ -47,14 +47,6 @@
     gret 1
 1:  // Not equal: load memory to RAX, clear ZF
     mov rax, x8               // RAX = memory value
-    // Debug: trace CMPXCHG64 not-equal path when RAX becomes 1
-    cmp rax, 1
-    b.ne 77f
-    save_c
-    mov x0, rax
-    bl NAME(helper_debug_cmpxchg64_rax1)
-    restore_c
-77:
     // Set ZF=0 (result is non-zero for flags)
     mov x9, 1
     str x9, [_cpu, CPU_res]

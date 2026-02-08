@@ -13,12 +13,6 @@
 .Lrep_stosq_loop:
     mov _addr, rdi
     write_prep 64, rep_stosq
-    // Watchpoint check
-    save_c
-    mov x0, rax          // value
-    mov x1, _addr        // host addr
-    bl NAME(helper_check_watchpoint_store64)
-    restore_c
     str rax, [_addr]
     write_done 64, rep_stosq
     // Reload x11 - clobbered by write_prep!
@@ -40,12 +34,6 @@
 .Lrep_stosd_loop:
     mov _addr, rdi
     write_prep 32, rep_stosd
-    // Watchpoint check for entry 2 flag
-    save_c
-    uxtw x0, eax         // value
-    mov x1, _addr        // host addr
-    bl NAME(helper_check_watchpoint_store32)
-    restore_c
     str eax, [_addr]
     write_done 32, rep_stosd
     // Reload x11 - clobbered by write_prep!
@@ -66,12 +54,6 @@
 .Lrep_stosb_loop:
     mov _addr, rdi
     write_prep 8, rep_stosb
-    // Watchpoint check
-    save_c
-    uxtb x0, eax         // value (byte)
-    mov x1, _addr        // host addr
-    bl NAME(helper_check_watchpoint_store8)
-    restore_c
     strb eax, [_addr]
     write_done 8, rep_stosb
     // Reload x11 - clobbered by write_prep!
@@ -89,13 +71,6 @@
 // IMPORTANT: x11 is clobbered by read_prep/write_prep, must reload in loop!
 // ============================================================
 .gadget rep_movsq
-    // Trace ALL calls (first 30) to understand memcpy patterns
-    save_c
-    mov x0, rsi          // src
-    mov x1, rdi          // dst
-    mov x2, rcx          // count
-    bl NAME(helper_debug_rep_movsq_all)
-    restore_c
     cbz rcx, .Lrep_movsq_done
 .Lrep_movsq_loop:
     mov _addr, rsi
@@ -103,12 +78,6 @@
     ldr _xtmp, [_addr]
     mov _addr, rdi
     write_prep 64, rep_movsq_w
-    // Watchpoint check
-    save_c
-    mov x0, _xtmp        // value
-    mov x1, _addr        // host addr
-    bl NAME(helper_check_watchpoint_store64)
-    restore_c
     str _xtmp, [_addr]
     write_done 64, rep_movsq_w
     // Reload x11 - clobbered by read_prep/write_prep!
@@ -134,12 +103,6 @@
     ldr _tmp, [_addr]
     mov _addr, rdi
     write_prep 32, rep_movsd_w
-    // Watchpoint check
-    save_c
-    uxtw x0, _tmp        // value
-    mov x1, _addr        // host addr
-    bl NAME(helper_check_watchpoint_store32)
-    restore_c
     str _tmp, [_addr]
     write_done 32, rep_movsd_w
     // Reload x11 - clobbered by read_prep/write_prep!
@@ -158,18 +121,6 @@
 // Note: First argument at [_ip] is orig_ip for segfault handler
 // IMPORTANT: x11 is clobbered by read_prep/write_prep, must reload in loop!
 .gadget rep_movsb
-    // Trace: check if dst (RDI) is in 0x7f0000000xxx range
-    lsr x9, rdi, 36
-    mov x10, 0x7f0
-    cmp x9, x10
-    b.ne 1f
-    save_c
-    mov x0, rsi          // src
-    mov x1, rdi          // dst
-    mov x2, rcx          // count
-    bl NAME(helper_debug_rep_movsb_7f)
-    restore_c
-1:
     cbz rcx, .Lrep_movsb_done
 .Lrep_movsb_loop:
     mov _addr, rsi
@@ -177,12 +128,6 @@
     ldrb _tmp, [_addr]
     mov _addr, rdi
     write_prep 8, rep_movsb_w
-    // Watchpoint check
-    save_c
-    uxtb x0, _tmp        // value (byte)
-    mov x1, _addr        // host addr
-    bl NAME(helper_check_watchpoint_store8)
-    restore_c
     strb _tmp, [_addr]
     write_done 8, rep_movsb_w
     // Reload x11 - clobbered by read_prep/write_prep!
@@ -199,18 +144,9 @@
 // Single MOVSB - Move exactly one byte from [RSI] to [RDI], then update RSI/RDI
 // Used when MOVSB appears without REP prefix
 .gadget single_movsb
-    // Trace when dst (RDI) is in 0x7f range OR src (RSI) is getdents buffer
-    str rsi, [_cpu, LOCAL_value_addr]   // save src before read_prep
     mov _addr, rsi
     read_prep 8, single_movsb_r
     ldrb _tmp, [_addr]
-    // Trace the byte copy
-    save_c
-    uxtb x0, _tmp           // byte value
-    ldr x1, [_cpu, LOCAL_value_addr]  // src
-    mov x2, rdi             // dst
-    bl NAME(helper_debug_single_movsb)
-    restore_c
     mov _addr, rdi
     write_prep 8, single_movsb_w
     strb _tmp, [_addr]

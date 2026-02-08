@@ -2,16 +2,9 @@
 #include "emu/interrupt.h"
 
 // Push 64-bit value onto stack
-// IMPORTANT: Added watchpoint check for debugging memory corruption
 .gadget push
     sub _addr, rsp, 8
     write_prep 64, push
-    // Watchpoint check BEFORE the store
-    save_c
-    mov x0, _xtmp        // value (64-bit)
-    mov x1, _addr        // host addr
-    bl NAME(helper_check_watchpoint_store64)
-    restore_c
     str _xtmp, [_addr]
     write_done 64, push
     sub rsp, rsp, 8
@@ -28,16 +21,9 @@
     read_bullshit 64, pop
 
 // Push 32-bit value (for compatibility)
-// IMPORTANT: Added watchpoint check for debugging memory corruption
 .gadget push32
     sub _addr, rsp, 4
     write_prep 32, push32
-    // Watchpoint check BEFORE the store
-    save_c
-    uxtw x0, _tmp        // value (32-bit zero-extended)
-    mov x1, _addr        // host addr
-    bl NAME(helper_check_watchpoint_store32)
-    restore_c
     str _tmp, [_addr]
     write_done 32, push32
     sub rsp, rsp, 4
@@ -216,13 +202,6 @@ NAME(si_r8_r15_gadgets):
 
 .global handle_\type\()_miss
 handle_\type\()_miss:
-    // Debug: trace TLB miss before handling
-    save_c
-    mov x0, _ip         // current _ip
-    ldr x1, [_ip]       // value at [_ip]
-    mov x2, _addr       // address being accessed
-    bl NAME(helper_debug_tlb_miss)
-    restore_c
     save_c
     // _tlb points to tlb->entries, get base
     sub x0, _tlb, TLB_entries
@@ -249,13 +228,6 @@ segfault_\type:
         mov w0, 1
     .endif
     strb w0, [_cpu, CPU_segfault_was_write]
-    // Debug: save _ip and what's at [_ip] before fiber_exit
-    save_c
-    mov x0, _ip         // current _ip
-    ldr x1, [_ip]       // value at [_ip]
-    mov x2, _addr       // segfault address
-    bl NAME(helper_debug_segfault)
-    restore_c
     ldr x0, [_ip]
     mov rip, x0
     sub x8, rsp, 8
@@ -285,12 +257,6 @@ crosspage_load:
 // Cross-page write handler
 .global crosspage_store
 crosspage_store:
-    // Debug: trace crosspage_store entry
-    save_c
-    ldr x0, [_cpu, LOCAL_value_addr]   // guest addr
-    mov x1, x19                        // size
-    bl NAME(helper_debug_crosspage_store)
-    restore_c
     save_c
     sub x0, _tlb, TLB_entries
     add x2, _cpu, LOCAL_value

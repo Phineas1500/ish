@@ -7,17 +7,6 @@
 #include "kernel/task.h"
 #include <string.h>
 
-// Debug output guard: define DEBUG_64BIT_VERBOSE=1 to enable verbose debug
-// output
-#ifndef DEBUG_64BIT_VERBOSE
-#define DEBUG_64BIT_VERBOSE 0
-#endif
-
-#if DEBUG_64BIT_VERBOSE
-#define DEBUG_FPRINTF(...) fprintf(__VA_ARGS__)
-#else
-#define DEBUG_FPRINTF(...) ((void)0)
-#endif
 dword_t syscall_stub(void) { return _ENOSYS; }
 // While identical, this version of the stub doesn't log below. Use this for
 // syscalls that are optional (i.e. fallback on something else) but called
@@ -484,169 +473,15 @@ void handle_interrupt(int interrupt) {
   // x86_64: syscall instruction (INT_SYSCALL64) with different ABI
   if (interrupt == INT_SYSCALL64) {
     unsigned syscall_num = cpu->rax;
-    static int syscall_counter = 0;
-    syscall_counter++;
-    fprintf(stderr, "SYSCALL[%d]: num=%u rip=0x%llx regs: rdi=0x%llx rsi=0x%llx rdx=0x%llx\n",
-            syscall_counter, syscall_num, (unsigned long long)cpu->rip,
-            (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi,
-            (unsigned long long)cpu->rdx);
-    fflush(stderr);
-    // Enable execution tracing after syscall 8 (getuid) to see where we get stuck
-    extern void helper_enable_exec_trace(void);
-    if (syscall_counter == 8) {
-      helper_enable_exec_trace();
-    }
     if (syscall_num >= NUM_SYSCALLS || syscall_table[syscall_num] == NULL) {
       printk("%d(%s) missing syscall %d\n", current->pid, current->comm,
              syscall_num);
       cpu->rax = _ENOSYS;
     } else {
-
-      // Trace when entering code (brk syscall is called early) - DISABLED
-      if (0 && syscall_num == 12) { // brk
-        static int brk_count = 0;
-        if (brk_count < 2) {
-          brk_count++;
-          DEBUG_FPRINTF(stderr, "REGISTERS at brk #%d:\n", brk_count);
-          DEBUG_FPRINTF(
-              stderr, "  rdi=0x%llx rsi=0x%llx rdx=0x%llx rcx=0x%llx\n",
-              (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi,
-              (unsigned long long)cpu->rdx, (unsigned long long)cpu->rcx);
-          DEBUG_FPRINTF(
-              stderr, "  r8=0x%llx r9=0x%llx r10=0x%llx r11=0x%llx\n",
-              (unsigned long long)cpu->r8, (unsigned long long)cpu->r9,
-              (unsigned long long)cpu->r10, (unsigned long long)cpu->r11);
-        }
-      }
-      // Trace getcwd syscall
-      // Syscall-specific traces - DISABLED for cleaner output
-      // Trace writev syscall to dump iovec contents
-      if (syscall_num == 20 && cpu->rdi == 1) { // writev to stdout
-        // Dump the actual bytes at the iovec base addresses
-        struct {
-          uint64_t base;
-          uint64_t len;
-        } iov[4];
-        int count = cpu->rdx < 4 ? cpu->rdx : 4;
-        DEBUG_FPRINTF(stderr, "WRITEV: count=%d iovec_addr=0x%llx\n", count,
-                      (unsigned long long)cpu->rsi);
-        // Dump raw bytes at iovec address (32 bytes = 2 iovec entries)
-        uint8_t raw[64];
-        user_read(cpu->rsi, raw, 32);
-        DEBUG_FPRINTF(stderr, "  raw iovec bytes (32 bytes): ");
-        for (int i = 0; i < 32; i++) {
-          DEBUG_FPRINTF(stderr, "%02x ", raw[i]);
-        }
-        DEBUG_FPRINTF(stderr, "\n");
-        user_read(cpu->rsi, iov, count * 16);
-        for (int i = 0; i < count; i++) {
-          DEBUG_FPRINTF(stderr, "  iov[%d]: base=0x%llx len=%llu", i,
-                        (unsigned long long)iov[i].base,
-                        (unsigned long long)iov[i].len);
-          // Always dump 32 bytes from base to see string content
-          if (iov[i].base != 0) {
-            char buf[40] = {0};
-            user_read(iov[i].base, buf, 32);
-            DEBUG_FPRINTF(stderr, " mem='");
-            for (size_t j = 0; j < 32; j++) {
-              if (buf[j] >= 32 && buf[j] < 127)
-                DEBUG_FPRINTF(stderr, "%c", buf[j]);
-              else
-                DEBUG_FPRINTF(stderr, "\\x%02x", (unsigned char)buf[j]);
-            }
-            DEBUG_FPRINTF(stderr, "'");
-          }
-          DEBUG_FPRINTF(stderr, "\n");
-        }
-        // Check if "/" is still at the getcwd heap buffer (0x7f0000000e70)
-        {
-          char heap_check[8] = {0};
-          user_read(0x7f0000000e70, heap_check, 8);
-          DEBUG_FPRINTF(stderr, "  heap buffer (getcwd): '");
-          for (int j = 0; j < 8; j++) {
-            if (heap_check[j] >= 32 && heap_check[j] < 127)
-              DEBUG_FPRINTF(stderr, "%c", heap_check[j]);
-            else
-              DEBUG_FPRINTF(stderr, "\\x%02x", (unsigned char)heap_check[j]);
-          }
-          DEBUG_FPRINTF(stderr, "'\n");
-        }
-      }
       // x86_64 argument order: rdi, rsi, rdx, r10, r8, r9
-      // syscall_t returns int64_t for 64-bit mode (brk, mmap return 64-bit
-      // addresses)
-      addr_t buf_addr_before = cpu->rdi; // Save for getcwd tracing
-      // Trace lstat (syscall 6) arguments
-      if (syscall_num == 6) {
-        static int lstat_count = 0;
-        lstat_count++;
-        if (lstat_count <= 3) {
-          DEBUG_FPRINTF(stderr, "LSTAT[%d]: rdi(path)=0x%llx rip=0x%llx\n",
-                        lstat_count, (unsigned long long)cpu->rdi,
-                        (unsigned long long)cpu->rip);
-          // Dump memory at path address - show first 32 bytes as string
-          char pathbuf[64];
-          if (user_read(cpu->rdi, pathbuf, 63) == 0) {
-            pathbuf[63] = '\0';
-            DEBUG_FPRINTF(stderr, "  path bytes: ");
-            for (int i = 0; i < 16; i++) {
-              DEBUG_FPRINTF(stderr, "%02x ", (unsigned char)pathbuf[i]);
-            }
-            DEBUG_FPRINTF(stderr, " = \"%s\"\n", pathbuf);
-          }
-          // Check name pointer at offset +10 (0x55555561c078)
-          uint64_t name_ptr;
-          if (user_read(0x55555561c078, &name_ptr, 8) == 0) {
-            DEBUG_FPRINTF(stderr, "  name_ptr=0x%llx",
-                          (unsigned long long)name_ptr);
-            if ((name_ptr >> 36) == 0x7f0) {
-              DEBUG_FPRINTF(stderr, " (IN BSS - BUG!)");
-            }
-            DEBUG_FPRINTF(stderr, "\n");
-          }
-        }
-      }
       int64_t result = syscall_table[syscall_num](cpu->rdi, cpu->rsi, cpu->rdx,
                                                   cpu->r10, cpu->r8, cpu->r9);
       STRACE(" = 0x%llx\n", (unsigned long long)result);
-      // Trace mmap result
-      if (syscall_num == 9) {
-        static int mmap_ret_count = 0;
-        mmap_ret_count++;
-        DEBUG_FPRINTF(stderr,
-                      "MMAP[%d]: addr=0x%llx len=0x%llx -> result=0x%llx\n",
-                      mmap_ret_count, (unsigned long long)cpu->rdi,
-                      (unsigned long long)cpu->rsi, (unsigned long long)result);
-      }
-      // Trace brk
-      if (syscall_num == 12) {
-        DEBUG_FPRINTF(stderr, "BRK: arg=0x%llx -> result=0x%llx\n",
-                      (unsigned long long)cpu->rdi, (unsigned long long)result);
-      }
-      // Trace openat (257)
-      if (syscall_num == 257) {
-        char path[128];
-        user_read_string(cpu->rsi, path, sizeof(path));
-        DEBUG_FPRINTF(stderr, "OPENAT: dirfd=%lld path=\"%s\" -> fd=%lld\n",
-                      (long long)cpu->rdi, path, (long long)result);
-      }
-      // Trace getcwd result
-      if (syscall_num == 79) { // getcwd
-        DEBUG_FPRINTF(stderr, "GETCWD result: 0x%llx buf_addr=0x%llx\n",
-                      (unsigned long long)result,
-                      (unsigned long long)buf_addr_before);
-        if ((int64_t)result > 0) {
-          char buf[64];
-          if (user_read(buf_addr_before, buf, 63) == 0) {
-            buf[63] = '\0';
-            DEBUG_FPRINTF(stderr, "GETCWD buf content: '%s'\n", buf);
-          }
-        }
-      }
-      // Trace write result
-      if (syscall_num == 1) { // write
-        DEBUG_FPRINTF(stderr, "WRITE result: %lld\n", (long long)result);
-      }
       cpu->rax = result;
     }
   } else if (interrupt == INT_GPF) {
@@ -672,41 +507,6 @@ void handle_interrupt(int interrupt) {
     }
   } else if (interrupt == INT_GPF) {
 #endif
-#ifdef ISH_GUEST_64BIT
-    DEBUG_FPRINTF(stderr,
-                  "INT_GPF: segfault_addr=0x%llx ip=0x%llx was_write=%d\n",
-                  (unsigned long long)cpu->segfault_addr,
-                  (unsigned long long)CPU_IP(cpu), cpu->segfault_was_write);
-    // Print instruction bytes at IP
-    read_wrlock(&current->mem->lock);
-    uint8_t *ip_ptr = mem_ptr(current->mem, CPU_IP(cpu), MEM_READ);
-    if (ip_ptr) {
-      DEBUG_FPRINTF(stderr,
-                    "  bytes at IP: %02x %02x %02x %02x %02x %02x %02x %02x\n",
-                    ip_ptr[0], ip_ptr[1], ip_ptr[2], ip_ptr[3], ip_ptr[4],
-                    ip_ptr[5], ip_ptr[6], ip_ptr[7]);
-    }
-    read_wrunlock(&current->mem->lock);
-    DEBUG_FPRINTF(stderr, "  rax=%llx rbx=%llx rcx=%llx rdx=%llx\n",
-                  (unsigned long long)cpu->rax, (unsigned long long)cpu->rbx,
-                  (unsigned long long)cpu->rcx, (unsigned long long)cpu->rdx);
-    DEBUG_FPRINTF(stderr, "  rsi=%llx rdi=%llx rbp=%llx rsp=%llx\n",
-                  (unsigned long long)cpu->rsi, (unsigned long long)cpu->rdi,
-                  (unsigned long long)cpu->rbp, (unsigned long long)cpu->rsp);
-    DEBUG_FPRINTF(stderr, "  r8=%llx r9=%llx r10=%llx r11=%llx\n",
-                  (unsigned long long)cpu->r8, (unsigned long long)cpu->r9,
-                  (unsigned long long)cpu->r10, (unsigned long long)cpu->r11);
-    DEBUG_FPRINTF(stderr, "  r12=%llx r13=%llx r14=%llx r15=%llx\n",
-                  (unsigned long long)cpu->r12, (unsigned long long)cpu->r13,
-                  (unsigned long long)cpu->r14, (unsigned long long)cpu->r15);
-    // Print string at r15
-    read_wrlock(&current->mem->lock);
-    uint8_t *r15_ptr = mem_ptr(current->mem, cpu->r15, MEM_READ);
-    if (r15_ptr) {
-      DEBUG_FPRINTF(stderr, "  string at r15: %.30s\n", (char *)r15_ptr);
-    }
-    read_wrunlock(&current->mem->lock);
-#endif
     // some page faults, such as stack growing or CoW clones, are handled by
     // mem_ptr
     read_wrlock(&current->mem->lock);
@@ -724,16 +524,6 @@ void handle_interrupt(int interrupt) {
       deliver_signal(current, SIGSEGV_, info);
     }
   } else if (interrupt == INT_UNDEFINED) {
-    DEBUG_FPRINTF(stderr,
-                  "UNDEFINED at 0x%llx: ", (unsigned long long)CPU_IP(cpu));
-    read_wrlock(&current->mem->lock);
-    uint8_t *ptr = mem_ptr(current->mem, CPU_IP(cpu), MEM_READ);
-    if (ptr) {
-      for (int i = 0; i < 15; i++)
-        DEBUG_FPRINTF(stderr, "%02x ", ptr[i]);
-    }
-    read_wrunlock(&current->mem->lock);
-    DEBUG_FPRINTF(stderr, "\n");
     printk("%d illegal instruction at " ADDR_FMT ": ", current->pid,
            CPU_IP(cpu));
     for (int i = 0; i < 8; i++) {
