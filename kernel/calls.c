@@ -481,6 +481,14 @@ void handle_interrupt(int interrupt) {
       // x86_64 argument order: rdi, rsi, rdx, r10, r8, r9
       int64_t result = syscall_table[syscall_num](cpu->rdi, cpu->rsi, cpu->rdx,
                                                   cpu->r10, cpu->r8, cpu->r9);
+      // Many syscall functions return dword_t (uint32_t) but are called through
+      // syscall_t (int64_t). On ARM64, 32-bit returns are zero-extended, so
+      // negative error codes like -EEXIST (0xFFFFFFEF) become 0x00000000FFFFFFEF.
+      // The guest checks (rax >= -4095ULL) which needs sign-extended values.
+      // Fix: if result fits in 32 bits with bit 31 set, sign-extend to 64-bit.
+      if ((uint64_t)result >= 0x80000000ULL && (uint64_t)result <= 0xFFFFFFFFULL) {
+        result = (int64_t)(int32_t)(uint32_t)result;
+      }
       STRACE(" = 0x%llx\n", (unsigned long long)result);
       cpu->rax = result;
     }

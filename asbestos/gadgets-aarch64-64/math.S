@@ -1451,6 +1451,22 @@ div64_by_zero_nodebug:
 1:  gret 1
 
 // ============================================================
+// BSWAP (byte swap)
+// ============================================================
+
+// BSWAP r32 - reverse byte order of 32-bit register
+// Result is zero-extended to 64-bit
+.gadget bswap32
+    rev _tmp, _tmp              // ARM64 REV reverses bytes of 32-bit Wn
+    mov _xtmp, _xtmp            // Zero-extend to 64-bit (clear upper 32)
+    gret
+
+// BSWAP r64 - reverse byte order of 64-bit register
+.gadget bswap64
+    rev _xtmp, _xtmp            // ARM64 REV reverses bytes of 64-bit Xn
+    gret
+
+// ============================================================
 // Rotate instructions (ROL/ROR)
 // ============================================================
 

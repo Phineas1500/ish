@@ -67,6 +67,8 @@ const char *zydis_mnemonic_name(int mnemonic) {
     return "DIV";
   case ZYDIS_MNEMONIC_IDIV:
     return "IDIV";
+  case ZYDIS_MNEMONIC_BSWAP:
+    return "BSWAP";
   default:
     return "???";
   }
@@ -331,6 +333,10 @@ extern void gadget_shld32_imm(void);
 extern void gadget_shld64_imm(void);
 extern void gadget_shld32_cl(void);
 extern void gadget_shld64_cl(void);
+
+// Byte swap
+extern void gadget_bswap32(void);
+extern void gadget_bswap64(void);
 extern void gadget_bsf32(void);
 extern void gadget_bsf64(void);
 extern void gadget_bsr32(void);
@@ -2919,7 +2925,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(load);
 
       if (inst.operand_count == 1) {
-        // Implicit 1 (opcode d1) - shift by 1
         GEN(gadget_shr64_one);
       } else if (inst.operands[1].type == arg64_imm) {
         if (inst.operands[1].imm == 1) {
@@ -2941,6 +2946,58 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
       if (store)
         GEN(store);
+    } else if (is_mem(inst.operands[0].type)) {
+      // SHR [mem], imm/1/CL - read-modify-write
+      if (!gen_addr(state, &inst.operands[0], &inst)) {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+      int shr_mem_size = inst.operands[0].size;
+      GEN(gadget_save_addr);
+      if (shr_mem_size == size64_64) {
+        GEN(load64_gadgets[9]);
+      } else if (shr_mem_size == size64_32) {
+        GEN(load32_gadgets[9]);
+      } else if (shr_mem_size == size64_16) {
+        GEN(gadget_load16_mem);
+      } else {
+        GEN(gadget_load8_mem);
+      }
+      GEN(state->orig_ip);
+
+      if (inst.operand_count == 1) {
+        GEN(gadget_shr64_one);
+      } else if (inst.operands[1].type == arg64_imm) {
+        if (inst.operands[1].imm == 1) {
+          GEN(gadget_shr64_one);
+        } else {
+          GEN(gadget_shr64_imm);
+          GEN(inst.operands[1].imm);
+        }
+      } else if (inst.operands[1].type == arg64_rcx) {
+        GEN(gadget_shr64_cl);
+      } else {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+
+      GEN(gadget_restore_addr);
+      if (shr_mem_size == size64_64) {
+        GEN(store64_gadgets[9]);
+      } else if (shr_mem_size == size64_32) {
+        GEN(store32_gadgets[9]);
+      } else if (shr_mem_size == size64_16) {
+        GEN(gadget_store16_mem);
+      } else {
+        GEN(gadget_store8_mem);
+      }
+      GEN(state->orig_ip);
     } else {
       g(interrupt);
       GEN(INT_UNDEFINED);
@@ -2958,7 +3015,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(load);
 
       if (inst.operand_count == 1) {
-        // Implicit 1 (opcode d1) - shift by 1
         GEN(gadget_shl64_one);
       } else if (inst.operands[1].type == arg64_imm) {
         if (inst.operands[1].imm == 1) {
@@ -2980,6 +3036,58 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
       if (store)
         GEN(store);
+    } else if (is_mem(inst.operands[0].type)) {
+      // SHL [mem], imm/1/CL - read-modify-write
+      if (!gen_addr(state, &inst.operands[0], &inst)) {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+      int shl_mem_size = inst.operands[0].size;
+      GEN(gadget_save_addr);
+      if (shl_mem_size == size64_64) {
+        GEN(load64_gadgets[9]);
+      } else if (shl_mem_size == size64_32) {
+        GEN(load32_gadgets[9]);
+      } else if (shl_mem_size == size64_16) {
+        GEN(gadget_load16_mem);
+      } else {
+        GEN(gadget_load8_mem);
+      }
+      GEN(state->orig_ip);
+
+      if (inst.operand_count == 1) {
+        GEN(gadget_shl64_one);
+      } else if (inst.operands[1].type == arg64_imm) {
+        if (inst.operands[1].imm == 1) {
+          GEN(gadget_shl64_one);
+        } else {
+          GEN(gadget_shl64_imm);
+          GEN(inst.operands[1].imm);
+        }
+      } else if (inst.operands[1].type == arg64_rcx) {
+        GEN(gadget_shl64_cl);
+      } else {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+
+      GEN(gadget_restore_addr);
+      if (shl_mem_size == size64_64) {
+        GEN(store64_gadgets[9]);
+      } else if (shl_mem_size == size64_32) {
+        GEN(store32_gadgets[9]);
+      } else if (shl_mem_size == size64_16) {
+        GEN(gadget_store16_mem);
+      } else {
+        GEN(gadget_store8_mem);
+      }
+      GEN(state->orig_ip);
     } else {
       g(interrupt);
       GEN(INT_UNDEFINED);
@@ -2997,7 +3105,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(load);
 
       if (inst.operand_count == 1) {
-        // Implicit 1 (opcode d1) - shift by 1
         GEN(gadget_sar64_one);
       } else if (inst.operands[1].type == arg64_imm) {
         if (inst.operands[1].imm == 1) {
@@ -3019,6 +3126,68 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
       if (store)
         GEN(store);
+    } else if (is_mem(inst.operands[0].type)) {
+      // SAR [mem], imm/1/CL - read-modify-write
+      // SAR is arithmetic: must sign-extend loaded value before shifting
+      if (!gen_addr(state, &inst.operands[0], &inst)) {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+      int sar_mem_size = inst.operands[0].size;
+      GEN(gadget_save_addr);
+      if (sar_mem_size == size64_64) {
+        GEN(load64_gadgets[9]);
+      } else if (sar_mem_size == size64_32) {
+        GEN(load32_gadgets[9]);
+      } else if (sar_mem_size == size64_16) {
+        GEN(gadget_load16_mem);
+      } else {
+        GEN(gadget_load8_mem);
+      }
+      GEN(state->orig_ip);
+
+      // Sign-extend for SAR (arithmetic shift needs sign bit propagated)
+      if (sar_mem_size == size64_32) {
+        GEN(gadget_sign_extend32);
+      } else if (sar_mem_size == size64_16) {
+        GEN(gadget_sign_extend16);
+      } else if (sar_mem_size == size64_8) {
+        GEN(gadget_sign_extend8);
+      }
+
+      if (inst.operand_count == 1) {
+        GEN(gadget_sar64_one);
+      } else if (inst.operands[1].type == arg64_imm) {
+        if (inst.operands[1].imm == 1) {
+          GEN(gadget_sar64_one);
+        } else {
+          GEN(gadget_sar64_imm);
+          GEN(inst.operands[1].imm);
+        }
+      } else if (inst.operands[1].type == arg64_rcx) {
+        GEN(gadget_sar64_cl);
+      } else {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+
+      GEN(gadget_restore_addr);
+      if (sar_mem_size == size64_64) {
+        GEN(store64_gadgets[9]);
+      } else if (sar_mem_size == size64_32) {
+        GEN(store32_gadgets[9]);
+      } else if (sar_mem_size == size64_16) {
+        GEN(gadget_store16_mem);
+      } else {
+        GEN(gadget_store8_mem);
+      }
+      GEN(state->orig_ip);
     } else {
       g(interrupt);
       GEN(INT_UNDEFINED);
@@ -3188,6 +3357,31 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(state->orig_ip);
         GEN(state->orig_ip);
         return 0;
+      }
+
+      gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
+      if (store)
+        GEN(store);
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_BSWAP:
+    // BSWAP reg - byte swap (reverse byte order)
+    if (inst.operand_count >= 1 && is_gpr(inst.operands[0].type)) {
+      gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
+      if (load)
+        GEN(load);
+
+      if (inst.operands[0].size == size64_64) {
+        GEN(gadget_bswap64);
+      } else {
+        GEN(gadget_bswap32);
       }
 
       gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
