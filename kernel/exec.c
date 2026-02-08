@@ -922,7 +922,11 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv,
   current->mm->argv_start = sp;
   sp = align_stack(sp);
 
+#ifdef ISH_GUEST_64BIT
+  addr_t platform_addr = sp = copy_string(sp, "x86_64");
+#else
   addr_t platform_addr = sp = copy_string(sp, "i686");
+#endif
   if (sp == 0)
     goto beyond_hope;
   // 16 random bytes so no system call is needed to seed a userspace RNG
