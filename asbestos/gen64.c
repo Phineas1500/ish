@@ -1357,6 +1357,8 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         return 0;
       }
       int size_bits = inst.operands[0].size;
+      // Save guest address before load (load converts _addr to host address)
+      GEN(gadget_save_addr);
       // Load from memory
       if (size_bits == size64_64) {
         GEN(load64_gadgets[9]); // load64_mem
@@ -1368,8 +1370,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(gadget_load8_mem);
       }
       GEN(state->orig_ip);
-      // Save address before XOR (which will overwrite it)
-      GEN(gadget_save_addr);
       // XOR with immediate
       if (size_bits == size64_64) {
         GEN(gadget_xor64_imm);
