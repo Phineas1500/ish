@@ -1164,6 +1164,23 @@ NAME(xor32_r8_r15_gadgets):
     and _xtmp, _xtmp, x8    // and (not ands) - doesn't touch ARM flags
     gret 1
 
+// Flag-preserving SHL for LEA scaled index - does NOT modify CPU flags
+.gadget lea_shl64_imm
+    ldr w11, [_ip]
+    lsl _xtmp, _xtmp, x11   // plain lsl, no flag setting
+    gret 1
+
+// Flag-preserving ADD x8 for LEA - does NOT modify CPU flags
+.gadget lea_add64_x8
+    add _xtmp, _xtmp, x8    // add (not adds) - doesn't touch ARM flags
+    gret
+
+// Flag-preserving LSR for high-byte register extraction - does NOT modify CPU flags
+.gadget lea_lsr64_imm
+    ldr w11, [_ip]
+    lsr _xtmp, _xtmp, x11   // plain lsr, no flag setting
+    gret 1
+
 .gadget and32_imm
     ldr w8, [_ip]
     ands _tmp, _tmp, w8

@@ -611,6 +611,9 @@ extern void gadget_fpu_faddp(void);
 extern void gadget_breadcrumb(void);
 extern void gadget_trace_xa(void);
 extern void gadget_trace_rp(void);
+extern void gadget_lea_shl64_imm(void);
+extern void gadget_lea_add64_x8(void);
+extern void gadget_lea_lsr64_imm(void);
 extern void gadget_trace_xmm(void);
 extern void gadget_fpu_fadd_m32(void);
 extern void gadget_fpu_fadd_m64(void);
@@ -3561,19 +3564,19 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             if (load_idx) {
               GEN(load_idx);
             }
-            // Scale it
+            // Scale it (LEA does NOT modify flags - use flag-preserving shift)
             if (inst.operands[1].mem.scale == 2) {
-              GEN(gadget_shl64_imm);
+              GEN(gadget_lea_shl64_imm);
               GEN(1);
             } else if (inst.operands[1].mem.scale == 4) {
-              GEN(gadget_shl64_imm);
+              GEN(gadget_lea_shl64_imm);
               GEN(2);
             } else if (inst.operands[1].mem.scale == 8) {
-              GEN(gadget_shl64_imm);
+              GEN(gadget_lea_shl64_imm);
               GEN(3);
             }
-            // Add scaled index to base+disp (x8)
-            GEN(gadget_add64_x8);
+            // Add scaled index to base+disp (x8) - flag-preserving
+            GEN(gadget_lea_add64_x8);
           }
         } else if (inst.operands[1].mem.index != arg64_invalid &&
                    inst.operands[1].mem.index >= arg64_r8 &&
@@ -3589,22 +3592,19 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             if (load_idx) {
               GEN(load_idx);
             }
-            // Scale it (LEA does NOT modify flags)
+            // Scale it (LEA does NOT modify flags - use flag-preserving shift)
             if (inst.operands[1].mem.scale == 2) {
-              GEN(gadget_shl64_imm);
+              GEN(gadget_lea_shl64_imm);
               GEN(1);
             } else if (inst.operands[1].mem.scale == 4) {
-              GEN(gadget_shl64_imm);
+              GEN(gadget_lea_shl64_imm);
               GEN(2);
             } else if (inst.operands[1].mem.scale == 8) {
-              GEN(gadget_shl64_imm);
+              GEN(gadget_lea_shl64_imm);
               GEN(3);
             }
-            // Add scaled index to base+disp (x8)
-            // NOTE: This uses flag-modifying add, but LEA shouldn't modify
-            // flags For now, use lea_add64_x8 if available, otherwise regular
-            // add
-            GEN(gadget_add64_x8);
+            // Add scaled index to base+disp (x8) - flag-preserving
+            GEN(gadget_lea_add64_x8);
           }
         }
 
@@ -3942,8 +3942,18 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         gadget_t load = get_load64_reg_gadget(inst.operands[1].type);
         if (load)
           GEN(load);
-        // Apply appropriate mask (flag-preserving - MOVZX doesn't modify flags)
-        if (inst.operands[1].size == size64_8) {
+        // Check for high-byte register (AH, BH, CH, DH)
+        bool is_high_byte = inst.operands[1].size == size64_8 &&
+            inst.raw_operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+            zydis_is_high_byte_reg(inst.raw_operands[1].reg.value);
+        if (is_high_byte) {
+          // High-byte: shift right by 8 first, then mask
+          GEN(gadget_lea_lsr64_imm);
+          GEN(8);
+          GEN(gadget_lea_and64_imm);
+          GEN(0xFF);
+        } else if (inst.operands[1].size == size64_8) {
+          // Apply appropriate mask (flag-preserving - MOVZX doesn't modify flags)
           GEN(gadget_lea_and64_imm);
           GEN(0xFF);
         } else if (inst.operands[1].size == size64_16) {
@@ -4007,7 +4017,16 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         gadget_t load = get_load64_reg_gadget(inst.operands[1].type);
         if (load)
           GEN(load);
-        if (inst.operands[1].size == size64_8) {
+        // Check for high-byte register (AH, BH, CH, DH)
+        bool is_high_byte_sx = inst.operands[1].size == size64_8 &&
+            inst.raw_operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+            zydis_is_high_byte_reg(inst.raw_operands[1].reg.value);
+        if (is_high_byte_sx) {
+          // High-byte: shift right by 8 first, then sign-extend byte
+          GEN(gadget_lea_lsr64_imm);
+          GEN(8);
+          GEN(gadget_sign_extend8);
+        } else if (inst.operands[1].size == size64_8) {
           GEN(gadget_sign_extend8);
         } else if (inst.operands[1].size == size64_16) {
           GEN(gadget_sign_extend16);
