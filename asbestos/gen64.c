@@ -85,6 +85,7 @@ extern void gadget_exit(void);
 extern void gadget_interrupt(void);
 extern void gadget_syscall(void);
 extern void gadget_nop(void);
+extern void gadget_cpuid(void);
 extern void gadget_jmp(void);
 extern void gadget_jmp_indir(void);
 extern void gadget_call(void);
@@ -1171,6 +1172,10 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
   case ZYDIS_MNEMONIC_STD:
     // Set Direction Flag (DF=1, decrement in string ops)
     GEN(gadget_std);
+    break;
+
+  case ZYDIS_MNEMONIC_CPUID:
+    GEN(gadget_cpuid);
     break;
 
   case ZYDIS_MNEMONIC_HLT:
@@ -4474,6 +4479,40 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       GEN(state->orig_ip);
       GEN(state->orig_ip);
       return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_XADD:
+    // XADD [mem], reg: temp=[mem]; [mem]=[mem]+reg; reg=temp; flags from add
+    if (is_mem(inst.operands[0].type) && is_gpr(inst.operands[1].type)) {
+      // Compute address
+      gen_addr(state, &inst.operands[0], &inst);
+      GEN(gadget_save_addr);
+      // Load [mem] → _xtmp (old value)
+      int xadd_size = inst.operands[0].size;
+      if (xadd_size == size64_64) GEN(load64_gadgets[9]);
+      else GEN(load32_gadgets[9]);
+      GEN(state->orig_ip);
+      // _xtmp = old [mem]. Save it to x8.
+      GEN(gadget_save_xtmp_to_x8);  // x8 = old [mem]
+      // Load reg → _xtmp
+      gadget_t load_reg = get_load64_reg_gadget(inst.operands[1].type);
+      if (!load_reg) { GEN(gadget_interrupt); GEN(INT_UNDEFINED); GEN(state->orig_ip); GEN(state->orig_ip); return 0; }
+      GEN(load_reg);
+      // Add: _xtmp = reg + old_[mem] (with flags). x8 still = old [mem].
+      if (xadd_size == size64_64) GEN(gadget_add64_x8);
+      else GEN(gadget_add32_x8);
+      // Store sum to [mem]
+      GEN(gadget_restore_addr);
+      if (xadd_size == size64_64) GEN(store64_gadgets[9]);
+      else GEN(store32_gadgets[9]);
+      GEN(state->orig_ip);
+      // Store old [mem] (x8) to register
+      GEN(gadget_restore_xtmp_from_x8);
+      gadget_t store_reg = get_store64_reg_gadget(inst.operands[1].type);
+      if (store_reg) GEN(store_reg);
+    } else {
+      GEN(gadget_interrupt); GEN(INT_UNDEFINED); GEN(state->orig_ip); GEN(state->orig_ip); return 0;
     }
     break;
 

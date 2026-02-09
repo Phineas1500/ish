@@ -33,7 +33,7 @@ syscall_t syscall_table[] = {
     [7] = (syscall_t)sys_poll,
     [8] = (syscall_t)sys_lseek,
     [9] = (syscall_t)
-        sys_mmap2, // mmap (x86_64 uses mmap, not mmap2, but same semantics)
+        sys_mmap64, // mmap (x86_64 passes offset in bytes, not pages)
     [10] = (syscall_t)sys_mprotect,
     [11] = (syscall_t)sys_munmap,
     [12] = (syscall_t)sys_brk,

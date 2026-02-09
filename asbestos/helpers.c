@@ -3,8 +3,26 @@
 #include "emu/cpu.h"
 #include "emu/cpuid.h"
 
-void helper_cpuid(dword_t *a, dword_t *b, dword_t *c, dword_t *d) {
+void helper_cpuid(
+#ifdef ISH_GUEST_64BIT
+    struct cpu_state *cpu
+#else
+    dword_t *a, dword_t *b, dword_t *c, dword_t *d
+#endif
+) {
+#ifdef ISH_GUEST_64BIT
+    dword_t a32 = (dword_t)cpu->rax;
+    dword_t b32 = (dword_t)cpu->rbx;
+    dword_t c32 = (dword_t)cpu->rcx;
+    dword_t d32 = (dword_t)cpu->rdx;
+    do_cpuid(&a32, &b32, &c32, &d32);
+    cpu->rax = a32;
+    cpu->rbx = b32;
+    cpu->rcx = c32;
+    cpu->rdx = d32;
+#else
     do_cpuid(a, b, c, d);
+#endif
 }
 
 void helper_rdtsc(struct cpu_state *cpu) {
