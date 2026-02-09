@@ -461,6 +461,64 @@
     setf_zsp w
     gret
 
+// 16-bit INC - increment by 1, preserving CF, 16-bit flag semantics
+.gadget inc16
+    ldrb w8, [_cpu, CPU_cf]
+    and _tmp, _tmp, 0xFFFF
+    // OF=1 when incrementing 0x7FFF (positive max)
+    mov w10, 0x7FFF
+    cmp _tmp, w10
+    cset w10, eq
+    strb w10, [_cpu, CPU_of]
+    add _tmp, _tmp, 1
+    and _tmp, _tmp, 0xFFFF
+    strb w8, [_cpu, CPU_cf]
+    setf_zsp h
+    gret
+
+// 8-bit INC - increment by 1, preserving CF, 8-bit flag semantics
+.gadget inc8
+    ldrb w8, [_cpu, CPU_cf]
+    and _tmp, _tmp, 0xFF
+    // OF=1 when incrementing 0x7F (positive max)
+    cmp _tmp, 0x7F
+    cset w10, eq
+    strb w10, [_cpu, CPU_of]
+    add _tmp, _tmp, 1
+    and _tmp, _tmp, 0xFF
+    strb w8, [_cpu, CPU_cf]
+    setf_zsp b
+    gret
+
+// 16-bit DEC - decrement by 1, preserving CF, 16-bit flag semantics
+.gadget dec16
+    ldrb w8, [_cpu, CPU_cf]
+    and _tmp, _tmp, 0xFFFF
+    // OF=1 when decrementing 0x8000 (negative min)
+    mov w10, 0x8000
+    cmp _tmp, w10
+    cset w10, eq
+    strb w10, [_cpu, CPU_of]
+    sub _tmp, _tmp, 1
+    and _tmp, _tmp, 0xFFFF
+    strb w8, [_cpu, CPU_cf]
+    setf_zsp h
+    gret
+
+// 8-bit DEC - decrement by 1, preserving CF, 8-bit flag semantics
+.gadget dec8
+    ldrb w8, [_cpu, CPU_cf]
+    and _tmp, _tmp, 0xFF
+    // OF=1 when decrementing 0x80 (negative min)
+    cmp _tmp, 0x80
+    cset w10, eq
+    strb w10, [_cpu, CPU_of]
+    sub _tmp, _tmp, 1
+    and _tmp, _tmp, 0xFF
+    strb w8, [_cpu, CPU_cf]
+    setf_zsp b
+    gret
+
 .gadget sub64_mem
     read_prep 64, sub64_mem
     ldr x8, [_addr]

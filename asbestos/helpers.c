@@ -29,6 +29,7 @@ void helper_store64_via_c(uint64_t host_addr, uint64_t value) {
 }
 
 #ifdef ISH_GUEST_64BIT
+
 // Simple r10 load helper - used by load64_r10 workaround
 uint64_t helper_load_r10_simple(struct cpu_state *cpu) {
     return cpu->r10;

@@ -6,18 +6,6 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-// Debug output guard: define DEBUG_64BIT_VERBOSE=1 to enable verbose debug
-// output
-#ifndef DEBUG_64BIT_VERBOSE
-#define DEBUG_64BIT_VERBOSE 0
-#endif
-
-#if DEBUG_64BIT_VERBOSE
-#define DEBUG_FPRINTF(...) fprintf(__VA_ARGS__)
-#else
-#define DEBUG_FPRINTF(...) ((void)0)
-#endif
-
 #define DEFAULT_CHANNEL memory
 #include "asbestos/asbestos.h"
 #include "debug.h"
@@ -59,7 +47,7 @@ void mem_destroy(struct mem *mem) {
       // Handle data cleanup
       if (entry->entry.data != NULL) {
         struct data *data = entry->entry.data;
-        if (--data->refcount == 0) {
+        if (atomic_fetch_sub(&data->refcount, 1) == 1) {
           if (data->data != vdso_data) {
             munmap(data->data, data->size);
           }
@@ -97,11 +85,6 @@ static struct pt_entry *mem_pt_new(struct mem *mem, page_t page) {
   mem->hash_table[hash] = entry;
   mem->pages_mapped++;
 
-  // Debug: trace 0x7f... page creations
-  if (page >= 0x7f0000000ULL && page <= 0x7f0000010ULL) {
-    DEBUG_FPRINTF(stderr, "MEM_PT_NEW: creating page 0x%llx\n",
-                  (unsigned long long)page);
-  }
   return &entry->entry;
 }
 
@@ -112,14 +95,6 @@ struct pt_entry *mem_pt(struct mem *mem, page_t page) {
     if (entry->page == page) {
       if (entry->entry.data == NULL)
         return NULL;
-      // Debug: trace 0x7f... page lookups
-      static int trace_count = 0;
-      if (page >= 0x7f0000000ULL && page <= 0x7f0000010ULL && trace_count < 5) {
-        trace_count++;
-        DEBUG_FPRINTF(stderr, "MEM_PT: found page 0x%llx data=%p offset=%zu\n",
-                      (unsigned long long)page, entry->entry.data,
-                      entry->entry.offset);
-      }
       return &entry->entry;
     }
     entry = entry->next;
@@ -191,12 +166,6 @@ static struct pt_entry *mem_pt_new(struct mem *mem, page_t page) {
 }
 
 struct pt_entry *mem_pt(struct mem *mem, page_t page) {
-  // Debug: check for out of bounds access
-  if (PGDIR_TOP(page) >= MEM_PGDIR_SIZE) {
-    DEBUG_FPRINTF(stderr, "MEM_PT OOB: page=0x%llx PGDIR_TOP=0x%llx\n",
-                  (unsigned long long)page,
-                  (unsigned long long)PGDIR_TOP(page));
-  }
   struct pt_entry *pgdir = mem->pgdir[PGDIR_TOP(page)];
   if (pgdir == NULL)
     return NULL;
@@ -282,19 +251,11 @@ int pt_map(struct mem *mem, page_t start, pages_t pages, void *memory,
   for (page_t page = start; page < start + pages; page++) {
     if (mem_pt(mem, page) != NULL)
       pt_unmap(mem, page, 1);
-    data->refcount++;
+    atomic_fetch_add(&data->refcount, 1);
     struct pt_entry *pt = mem_pt_new(mem, page);
     pt->data = data;
     pt->offset = ((page - start) << PAGE_BITS) + offset;
     pt->flags = flags;
-    // Debug: trace 0x7f... page mappings
-    if (page >= 0x7f0000000ULL && page <= 0x7f0000010ULL) {
-      DEBUG_FPRINTF(
-          stderr,
-          "PT_MAP: page 0x%llx start=0x%llx pages=%u offset=%zu flags=0x%x\n",
-          (unsigned long long)page, (unsigned long long)start,
-          (unsigned int)pages, offset, flags);
-    }
   }
   return 0;
 }
@@ -314,7 +275,7 @@ int pt_unmap_always(struct mem *mem, page_t start, pages_t pages) {
     asbestos_invalidate_page(mem->mmu.asbestos, page);
     struct data *data = pt->data;
     mem_pt_del(mem, page);
-    if (--data->refcount == 0) {
+    if (atomic_fetch_sub(&data->refcount, 1) == 1) {
       // vdso wasn't allocated with mmap, it's just in our data segment
       if (data->data != vdso_data) {
         int err = munmap(data->data, data->size);
@@ -380,7 +341,7 @@ int pt_copy_on_write(struct mem *src, struct mem *dst, page_t start,
           return -1;
         if (!(entry->entry.flags & P_SHARED))
           entry->entry.flags |= P_COW;
-        entry->entry.data->refcount++;
+        atomic_fetch_add(&entry->entry.data->refcount, 1);
         struct pt_entry *dst_entry = mem_pt_new(dst, page);
         dst_entry->data = entry->entry.data;
         dst_entry->offset = entry->entry.offset;
@@ -401,7 +362,7 @@ int pt_copy_on_write(struct mem *src, struct mem *dst, page_t start,
       return -1;
     if (!(entry->flags & P_SHARED))
       entry->flags |= P_COW;
-    entry->data->refcount++;
+    atomic_fetch_add(&entry->data->refcount, 1);
     struct pt_entry *dst_entry = mem_pt_new(dst, page);
     dst_entry->data = entry->data;
     dst_entry->offset = entry->offset;
@@ -424,28 +385,6 @@ static void *mem_ptr_nofault(struct mem *mem, addr_t addr, int type) {
   if (type == MEM_WRITE && !P_WRITABLE(entry->flags))
     return NULL;
   void *result = entry->data->data + entry->offset + PGOFFSET(addr);
-  // Trace crash page
-  if (PAGE(addr) == 0x55555561c) {
-    DEBUG_FPRINTF(
-        stderr,
-        "MEM_PTR: page=0x%llx data=%p size=0x%zx offset=0x%zx flags=0x%x "
-        "result=%p\n",
-        (unsigned long long)PAGE(addr), entry->data->data, entry->data->size,
-        entry->offset, entry->flags, result);
-    // Check if offset is within data size
-    if (entry->offset + PAGE_SIZE > entry->data->size) {
-      fprintf(
-          stderr,
-          "MEM_PTR WARNING: offset+PAGE_SIZE (0x%zx) > data size (0x%zx)!\n",
-          entry->offset + PAGE_SIZE, entry->data->size);
-    }
-    // Try to read from result to verify it's accessible
-    volatile char *test = (volatile char *)result;
-    DEBUG_FPRINTF(stderr, "MEM_PTR TEST: reading from %p...\n", result);
-    char c = test[0x150]; // Read at offset 0x150 where crash happens
-    DEBUG_FPRINTF(stderr, "MEM_PTR TEST: read byte 0x%02x OK\n",
-                  (unsigned char)c);
-  }
   return result;
 }
 
@@ -474,12 +413,6 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
 #endif
     if (!(mem_pt(mem, p)->flags & P_GROWSDOWN))
       return NULL;
-    // Debug: trace growsdown allocations
-    if (page >= 0x7f0000000ULL) {
-      DEBUG_FPRINTF(
-          stderr, "GROWSDOWN: allocating page 0x%llx (growsdown from 0x%llx)\n",
-          (unsigned long long)page, (unsigned long long)p);
-    }
 
     // Changing memory maps must be done with the write lock. But this is
     // called with the read lock.
@@ -512,7 +445,6 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
       void *data = (char *)entry->data->data + entry->offset;
       void *copy = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
                         MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
-
       // copy/paste from above
       read_wrunlock(&mem->lock);
       write_wrlock(&mem->lock);

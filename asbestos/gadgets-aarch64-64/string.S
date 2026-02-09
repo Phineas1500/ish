@@ -143,6 +143,7 @@
 
 // Single MOVSB - Move exactly one byte from [RSI] to [RDI], then update RSI/RDI
 // Used when MOVSB appears without REP prefix
+// Note: First argument at [_ip] is orig_ip for segfault handler
 .gadget single_movsb
     mov _addr, rsi
     read_prep 8, single_movsb_r
@@ -155,7 +156,7 @@
     ldrsw x11, [_cpu, CPU_df_offset]  // x11 = 1 or -1 (sign-extended)
     add rsi, rsi, x11
     add rdi, rdi, x11
-    gret
+    gret 1
     read_bullshit 8, single_movsb_r
     write_bullshit 8, single_movsb_w
 
@@ -187,7 +188,7 @@
     cbz rcx, .Lrepne_scasb_done
     cbnz _tmp, .Lrepne_scasb_loop  // If not equal, continue
 .Lrepne_scasb_done:
-    gret
+    gret 1
     read_bullshit 8, repne_scasb_r
 
 // REPE SCASB - Scan string while equal
@@ -213,10 +214,11 @@
     cbz rcx, .Lrepe_scasb_done
     cbz _tmp, .Lrepe_scasb_loop  // If equal, continue
 .Lrepe_scasb_done:
-    gret
+    gret 1
     read_bullshit 8, repe_scasb_r
 
 // Single SCASB - Compare AL with [RDI], update RDI, no repeat
+// Note: First argument at [_ip] is orig_ip for segfault handler
 .gadget single_scasb
     mov _addr, rdi
     read_prep 8, single_scasb_r
@@ -230,7 +232,7 @@
     // Store comparison result for flags
     setf_zsp w
     clearf_oc
-    gret
+    gret 1
     read_bullshit 8, single_scasb_r
 
 // Placeholder gadget arrays (kept for compatibility)

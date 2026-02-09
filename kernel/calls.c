@@ -522,8 +522,8 @@ void handle_interrupt(int interrupt) {
                         cpu->segfault_was_write ? MEM_WRITE : MEM_READ);
     read_wrunlock(&current->mem->lock);
     if (ptr == NULL) {
-      printk("%d page fault on " ADDR_FMT " at " ADDR_FMT "\n", current->pid,
-             cpu->segfault_addr, CPU_IP(cpu));
+      printk("%d page fault on %#llx at ip=%#llx\n", current->pid,
+             (unsigned long long)cpu->segfault_addr, (unsigned long long)CPU_IP(cpu));
       struct siginfo_ info = {
           .code = mem_segv_reason(current->mem, cpu->segfault_addr),
           .fault.addr = cpu->segfault_addr,

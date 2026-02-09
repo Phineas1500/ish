@@ -185,9 +185,6 @@ dword_t sys_nanosleep(addr_t req_addr, addr_t rem_addr) {
     struct timespec_ req_ts;
     if (user_get(req_addr, req_ts))
         return _EFAULT;
-    fprintf(stderr, "NANOSLEEP: req={%lld, %lld} rem=0x%llx\n",
-            (long long)req_ts.sec, (long long)req_ts.nsec, (unsigned long long)rem_addr);
-    fflush(stderr);
     STRACE("nanosleep({%d, %d}, 0x%x", req_ts.sec, req_ts.nsec, rem_addr);
     struct timespec req;
     req.tv_sec = req_ts.sec;

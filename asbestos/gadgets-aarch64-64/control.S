@@ -57,6 +57,22 @@
     read_prep 64, ret
     ldr _xtmp, [_addr]
 
+    // DEBUG: validate popped return address is a guest address
+    lsr x14, _xtmp, 32
+    cbz x14, .Lret_addr_ok     // < 4GB: skip
+    cmp x14, 0x100
+    b.hs .Lret_addr_ok         // >= 1TB: guest address, OK
+    // HOST ADDRESS POPPED FROM STACK!
+    // _xtmp has the corrupt value, _addr has the stack location
+    save_regs
+    save_c
+    mov x0, _cpu
+    mov x1, _xtmp               // corrupt return addr
+    mov x2, _addr                // stack addr where it was found
+    bl NAME(debug_ret_popped_host_addr)
+    brk #0x44
+.Lret_addr_ok:
+
     // Pop stack (add immediate from gadget args)
     ldr x8, [_ip, 8]
     add rsp, rsp, x8
