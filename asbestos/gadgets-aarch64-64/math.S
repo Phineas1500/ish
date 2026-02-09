@@ -537,6 +537,13 @@
     setf_zsp
     gret
 
+.gadget sub32_x8
+    subs _tmp, w8, _tmp
+    setf_oc
+    uxtw _xtmp, _tmp
+    setf_zsp
+    gret
+
 .gadget sub32_mem
     read_prep 32, sub32_mem
     ldr w8, [_addr]
@@ -1662,6 +1669,51 @@ div64_by_zero_nodebug:
     strb w10, [_cpu, CPU_cf]
     setf_zsp
 1:  gret
+
+// ROL by immediate - 16-bit
+// Rotate lower 16 bits of _xtmp left by immediate, preserve upper bits
+// ROL16 by N: result = ((val << N) | (val >> (16 - N))) & 0xFFFF
+.gadget rol16_imm
+    ldr w11, [_ip]
+    ands w11, w11, 15        // mask count to 0-15
+    b.eq 1f
+    and w9, _tmp, 0xffff     // w9 = lower 16 bits (val)
+    mov w10, 16
+    sub w10, w10, w11        // w10 = 16 - N
+    lsl w12, w9, w11         // w12 = val << N
+    lsr w10, w9, w10         // w10 = val >> (16 - N)
+    orr w9, w12, w10         // w9 = rotated
+    and w9, w9, 0xffff       // mask to 16 bits
+    bic _tmp, _tmp, 0xffff   // clear lower 16 bits of original
+    orr _tmp, _tmp, w9       // merge rotated value back
+    uxtw _xtmp, _tmp         // zero-extend to 64 bits
+    and w11, w9, 1            // CF = bit 0 of result
+    strb w11, [_cpu, CPU_cf]
+    setf_zsp w
+1:  gret 1
+
+// ROR by immediate - 16-bit
+// Rotate lower 16 bits of _xtmp right by immediate, preserve upper bits
+// ROR16 by N: result = ((val >> N) | (val << (16 - N))) & 0xFFFF
+.gadget ror16_imm
+    ldr w11, [_ip]
+    ands w11, w11, 15        // mask count to 0-15
+    b.eq 1f
+    and w9, _tmp, 0xffff     // w9 = lower 16 bits (val)
+    mov w10, 16
+    sub w10, w10, w11        // w10 = 16 - N
+    lsr w12, w9, w11         // w12 = val >> N
+    lsl w10, w9, w10         // w10 = val << (16 - N)
+    orr w9, w12, w10         // w9 = rotated
+    and w9, w9, 0xffff       // mask to 16 bits
+    // CF = MSB of result (bit 15)
+    ubfx w10, w9, 15, 1
+    strb w10, [_cpu, CPU_cf]
+    bic _tmp, _tmp, 0xffff   // clear lower 16 bits
+    orr _tmp, _tmp, w9       // merge
+    uxtw _xtmp, _tmp
+    setf_zsp w
+1:  gret 1
 
 // ROR by immediate - 32-bit
 .gadget ror32_imm

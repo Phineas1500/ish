@@ -532,15 +532,15 @@ void handle_interrupt(int interrupt) {
       deliver_signal(current, SIGSEGV_, info);
     }
   } else if (interrupt == INT_UNDEFINED) {
-    printk("%d illegal instruction at " ADDR_FMT ": ", current->pid,
-           CPU_IP(cpu));
+    fprintf(stderr, "%d illegal instruction at 0x%llx: ",
+            current->pid, (unsigned long long)CPU_IP(cpu));
     for (int i = 0; i < 8; i++) {
       uint8_t b;
       if (user_get(CPU_IP(cpu) + i, b))
         break;
-      printk("%02x ", b);
+      fprintf(stderr, "%02x ", b);
     }
-    printk("\n");
+    fprintf(stderr, "\n");
     dump_stack(8);
     struct siginfo_ info = {
         .code = SI_KERNEL_,

@@ -133,6 +133,7 @@ extern void gadget_sub64_di(void);
 extern void gadget_sub64_imm(void);
 extern void gadget_sub64_mem(void);
 extern void gadget_sub64_x8(void); // For subtracting r8-r15
+extern void gadget_sub32_x8(void);
 extern void gadget_sub32_imm(void);
 extern void gadget_sub32_mem(void);
 extern void gadget_sub32_a(void);
@@ -318,12 +319,14 @@ extern void gadget_rol32_one(void);
 extern void gadget_rol64_one(void);
 extern void gadget_rol32_cl(void);
 extern void gadget_rol64_cl(void);
+extern void gadget_rol16_imm(void);
 extern void gadget_rol32_imm(void);
 extern void gadget_rol64_imm(void);
 extern void gadget_ror32_one(void);
 extern void gadget_ror64_one(void);
 extern void gadget_ror32_cl(void);
 extern void gadget_ror64_cl(void);
+extern void gadget_ror16_imm(void);
 extern void gadget_ror32_imm(void);
 extern void gadget_ror64_imm(void);
 extern void gadget_shrd32_imm(void);
@@ -2073,11 +2076,15 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       }
       GEN(state->orig_ip);
     } else if (inst.operand_count >= 2 && is_mem(inst.operands[0].type) &&
-               inst.operands[1].type >= arg64_rax &&
-               inst.operands[1].type <= arg64_rdi) {
-      // SUB [mem], reg (rax-rdi source)
+               is_gpr(inst.operands[1].type)) {
+      // SUB [mem], reg (any register source including r8-r15)
       int sub_reg_sz = inst.operands[0].size;
-      // 1. Calculate address
+      // 1. Load source register value, save to x8
+      gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
+      if (!load_src) { GEN(gadget_interrupt); GEN(INT_UNDEFINED); GEN(state->orig_ip); GEN(state->orig_ip); return 0; }
+      GEN(load_src);
+      GEN(gadget_save_xtmp_to_x8);
+      // 2. Calculate address
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -2085,7 +2092,8 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(state->orig_ip);
         return 0;
       }
-      // 2. Load from memory (size-appropriate)
+      GEN(gadget_save_addr);
+      // 3. Load from memory (size-appropriate)
       if (sub_reg_sz == size64_64) {
         GEN(load64_gadgets[9]);
       } else if (sub_reg_sz == size64_32) {
@@ -2096,20 +2104,15 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(gadget_load8_mem);
       }
       GEN(state->orig_ip);
-      // 3. Subtract source register
+      // 4. Subtract: _xtmp = _xtmp - x8 = [mem] - reg  (sub64_x8 does x8 - _xtmp, so swap first)
+      GEN(gadget_swap_xtmp_x8);
       if (sub_reg_sz == size64_64) {
-        GEN(sub64_gadgets[inst.operands[1].type - arg64_rax]);
+        GEN(gadget_sub64_x8);
       } else {
-        GEN(sub32_gadgets[inst.operands[1].type - arg64_rax]);
+        GEN(gadget_sub32_x8);
       }
-      // 4. Recalculate address and store (size-appropriate)
-      if (!gen_addr(state, &inst.operands[0], &inst)) {
-        g(interrupt);
-        GEN(INT_UNDEFINED);
-        GEN(state->orig_ip);
-        GEN(state->orig_ip);
-        return 0;
-      }
+      // 5. Restore address and store (size-appropriate)
+      GEN(gadget_restore_addr);
       if (sub_reg_sz == size64_64) {
         GEN(store64_gadgets[9]);
       } else if (sub_reg_sz == size64_32) {
@@ -3247,20 +3250,28 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       if (load)
         GEN(load);
 
-      bool is_32bit = (inst.operands[0].size == size64_32);
+      int rol_size = inst.operands[0].size;
 
       if (inst.operand_count == 1) {
         // Implicit 1 (opcode d1) - rotate by 1
-        GEN(is_32bit ? gadget_rol32_one : gadget_rol64_one);
-      } else if (inst.operands[1].type == arg64_imm) {
-        if (inst.operands[1].imm == 1) {
-          GEN(is_32bit ? gadget_rol32_one : gadget_rol64_one);
+        if (rol_size == size64_16) {
+          GEN(gadget_rol16_imm);
+          GEN(1);
         } else {
-          GEN(is_32bit ? gadget_rol32_imm : gadget_rol64_imm);
+          GEN(rol_size == size64_32 ? gadget_rol32_one : gadget_rol64_one);
+        }
+      } else if (inst.operands[1].type == arg64_imm) {
+        if (rol_size == size64_16) {
+          GEN(gadget_rol16_imm);
+          GEN(inst.operands[1].imm);
+        } else if (inst.operands[1].imm == 1) {
+          GEN(rol_size == size64_32 ? gadget_rol32_one : gadget_rol64_one);
+        } else {
+          GEN(rol_size == size64_32 ? gadget_rol32_imm : gadget_rol64_imm);
           GEN(inst.operands[1].imm);
         }
       } else if (inst.operands[1].type == arg64_rcx) {
-        GEN(is_32bit ? gadget_rol32_cl : gadget_rol64_cl);
+        GEN(rol_size == size64_32 ? gadget_rol32_cl : gadget_rol64_cl);
       } else {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -3288,20 +3299,28 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       if (load)
         GEN(load);
 
-      bool is_32bit = (inst.operands[0].size == size64_32);
+      int ror_size = inst.operands[0].size;
 
       if (inst.operand_count == 1) {
         // Implicit 1 - rotate by 1
-        GEN(is_32bit ? gadget_ror32_one : gadget_ror64_one);
-      } else if (inst.operands[1].type == arg64_imm) {
-        if (inst.operands[1].imm == 1) {
-          GEN(is_32bit ? gadget_ror32_one : gadget_ror64_one);
+        if (ror_size == size64_16) {
+          GEN(gadget_ror16_imm);
+          GEN(1);
         } else {
-          GEN(is_32bit ? gadget_ror32_imm : gadget_ror64_imm);
+          GEN(ror_size == size64_32 ? gadget_ror32_one : gadget_ror64_one);
+        }
+      } else if (inst.operands[1].type == arg64_imm) {
+        if (ror_size == size64_16) {
+          GEN(gadget_ror16_imm);
+          GEN(inst.operands[1].imm);
+        } else if (inst.operands[1].imm == 1) {
+          GEN(ror_size == size64_32 ? gadget_ror32_one : gadget_ror64_one);
+        } else {
+          GEN(ror_size == size64_32 ? gadget_ror32_imm : gadget_ror64_imm);
           GEN(inst.operands[1].imm);
         }
       } else if (inst.operands[1].type == arg64_rcx) {
-        GEN(is_32bit ? gadget_ror32_cl : gadget_ror64_cl);
+        GEN(ror_size == size64_32 ? gadget_ror32_cl : gadget_ror64_cl);
       } else {
         g(interrupt);
         GEN(INT_UNDEFINED);

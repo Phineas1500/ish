@@ -20,7 +20,9 @@ static void exit_handler(struct task *task, int code) {
     return;
   real_tty_reset_term();
   if (code & 0xff) {
-    raise(code & 0xff);
+    // Guest was killed by signal N. Exit with 128+N like a shell would,
+    // instead of raise() which kills the host and loses buffered output.
+    _exit(128 + (code & 0x7f));
   }
   _exit(code >> 8);
 }
