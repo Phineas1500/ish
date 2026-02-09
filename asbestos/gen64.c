@@ -2150,6 +2150,14 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       if (load)
         GEN(load);
 
+      // Handle high-byte registers (AH, BH, CH, DH)
+      if (inst.operands[0].size == size64_8 &&
+          inst.raw_operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+          zydis_is_high_byte_reg(inst.raw_operands[0].reg.value)) {
+        GEN(gadget_lea_lsr64_imm);
+        GEN(8);
+      }
+
       if (inst.operands[1].type == arg64_imm) {
         // CMP reg, imm - use size-appropriate compare
         switch (inst.operands[0].size) {
@@ -2398,6 +2406,15 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
       if (load)
         GEN(load);
+
+      // Handle high-byte registers (AH, BH, CH, DH)
+      // Need to shift right by 8 to get the high byte into bits 7:0
+      if (inst.operands[0].size == size64_8 &&
+          inst.raw_operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+          zydis_is_high_byte_reg(inst.raw_operands[0].reg.value)) {
+        GEN(gadget_lea_lsr64_imm);
+        GEN(8);
+      }
 
       if (inst.operands[1].type == arg64_imm) {
         // TEST reg, imm - use size-appropriate test

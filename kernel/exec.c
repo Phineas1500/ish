@@ -1191,8 +1191,9 @@ int __do_execve(const char *file, struct exec_args argv,
   }
 
   err = format_exec(fd, file, argv, envp);
-  if (err == _ENOEXEC)
+  if (err == _ENOEXEC) {
     err = shebang_exec(fd, file, argv, envp);
+  }
   fd_close(fd);
   if (err < 0)
     return err;
