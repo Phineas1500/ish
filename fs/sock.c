@@ -1,5 +1,6 @@
 #include <fcntl.h>
 #include <netinet/tcp.h>
+#include <poll.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -530,7 +531,7 @@ int_t sys_socketpair(dword_t domain, dword_t type, dword_t protocol, addr_t sock
         return _EINVAL;
 
     int sockets[2];
-    int err = socketpair(domain, type, protocol, sockets);
+    int err = socketpair(real_domain, real_type, protocol, sockets);
     if (err < 0)
         return errno_map();
 
@@ -1142,6 +1143,17 @@ static void sock_translate_err(struct fd *fd, int *err) {
 
 static ssize_t sock_read(struct fd *fd, void *buf, size_t size) {
     int err = realfs_read(fd, buf, size);
+    // When a non-blocking read on a unix socketpair returns EAGAIN and the
+    // peer is still connected, wait briefly for data. This handles the case
+    // where an emulated TLS proxy (ssl_client) is slower than the reader
+    // (wget) due to emulation overhead, causing spurious EAGAIN instead of
+    // the data or EOF that would arrive on a real system.
+    if (err == _EAGAIN && fd->socket.domain == AF_LOCAL_) {
+        struct pollfd p = {.fd = fd->real_fd, .events = POLLIN | POLLHUP};
+        if (poll(&p, 1, 500) > 0) {
+            err = realfs_read(fd, buf, size);
+        }
+    }
     sock_translate_err(fd, &err);
     return err;
 }
