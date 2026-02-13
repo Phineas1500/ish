@@ -217,3 +217,26 @@
 .global.name xchg_gadgets
     .fill 60, 8, 0
 .popsection
+
+// Debug gadget: dump all registers to stderr
+// Called with no arguments
+.gadget debug_regs
+    save_regs
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]        // Load the guest IP argument
+    bl NAME(debug_dump_regs)
+    restore_c
+    load_regs
+    gret 1                // Skip past the guest IP argument
+
+// TRACE: dump all registers (called from generated code at specific IPs)
+.gadget trace_regs
+    save_regs
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]       // Load the guest IP argument
+    bl NAME(helper_trace_regs)
+    restore_c
+    load_regs
+    gret 1

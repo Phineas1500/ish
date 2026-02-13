@@ -189,18 +189,39 @@
     gret
 
 // ============================================================
+// MOV merge gadgets for 8/16-bit partial register writes
+// x86-64: 8-bit and 16-bit MOV preserve upper bits of destination
+// Expects: _xtmp = destination register, x8 = source value
+// ============================================================
+
+// Merge x8's low 8 bits into _xtmp at bits [7:0]
+.gadget mov_merge8
+    bfi _xtmp, x8, #0, #8
+    gret
+
+// Merge x8's low 8 bits into _xtmp at bits [15:8] (for AH/BH/CH/DH destination)
+.gadget mov_merge8h
+    bfi _xtmp, x8, #8, #8
+    gret
+
+// Merge x8's low 16 bits into _xtmp at bits [15:0]
+.gadget mov_merge16
+    bfi _xtmp, x8, #0, #16
+    gret
+
+// ============================================================
 // ADD gadgets
 // ============================================================
 
 .macro add_reg64 name, reg64, reg32
     .gadget add64_\name
         adds _xtmp, _xtmp, \reg64
-        setf_oc
+        setf_oc_add
         setf_zsp
         gret
     .gadget add32_\name
         adds _tmp, _tmp, \reg32
-        setf_oc
+        setf_oc_add
         setf_zsp w
         gret
 .endm
@@ -210,7 +231,7 @@
 .gadget add64_imm
     ldr x8, [_ip]
     adds _xtmp, _xtmp, x8
-    setf_oc
+    setf_oc_add
     setf_zsp
     gret 1
 
@@ -223,7 +244,7 @@
 .gadget add32_imm
     ldr w8, [_ip]
     adds _tmp, _tmp, w8
-    setf_oc
+    setf_oc_add
     setf_zsp w
     gret 1
 
@@ -231,7 +252,7 @@
     read_prep 64, add64_mem
     ldr x8, [_addr]
     adds _xtmp, _xtmp, x8
-    setf_oc
+    setf_oc_add
     setf_zsp
     gret 1
     read_bullshit 64, add64_mem
@@ -240,7 +261,7 @@
     read_prep 32, add32_mem
     ldr w8, [_addr]
     adds _tmp, _tmp, w8
-    setf_oc
+    setf_oc_add
     setf_zsp w
     gret 1
     read_bullshit 32, add32_mem
@@ -248,7 +269,7 @@
 // ADD with x8 (for adding r8-r15 which are loaded into x8)
 .gadget add64_x8
     adds _xtmp, _xtmp, x8
-    setf_oc
+    setf_oc_add
     setf_zsp
     gret
 
@@ -256,8 +277,7 @@
 // Result is zero-extended to 64 bits (x86_64 semantics)
 .gadget add32_x8
     adds _tmp, _tmp, w8        // 32-bit add with flags
-    uxtw _xtmp, _tmp           // zero-extend to 64-bit
-    setf_oc
+    setf_oc_add
     setf_zsp w
     gret
 
@@ -271,19 +291,21 @@
 .gadget adc64_imm
     ldr x8, [_ip]           // Load immediate
     ldrb w9, [_cpu, CPU_cf] // Load carry flag
-    adds _xtmp, _xtmp, x8   // Add immediate
-    add _xtmp, _xtmp, x9    // Add carry (this won't set flags correctly, but simplifies)
-    setf_oc
+    lsl w9, w9, 29          // Position CF at NZCV.C (bit 29)
+    msr nzcv, x9            // Set ARM64 carry flag
+    adcs _xtmp, _xtmp, x8   // dest + src + CF (flags set correctly)
+    setf_oc_add
     setf_zsp
     gret 1
 
 .gadget adc32_imm
     ldr w8, [_ip]           // Load immediate
     ldrb w9, [_cpu, CPU_cf] // Load carry flag
-    adds _tmp, _tmp, w8     // Add immediate
-    add _tmp, _tmp, w9      // Add carry
+    lsl w9, w9, 29          // Position CF at NZCV.C (bit 29)
+    msr nzcv, x9            // Set ARM64 carry flag
+    adcs _tmp, _tmp, w8     // dest + src + CF
     and _xtmp, _xtmp, 0xffffffff  // Zero-extend
-    setf_oc
+    setf_oc_add
     setf_zsp w
     gret 1
 
@@ -291,37 +313,91 @@
 .macro adc_reg64 name, reg64, reg32
     .gadget adc64_\name
         ldrb w9, [_cpu, CPU_cf]   // Load carry flag
-        adds _xtmp, _xtmp, \reg64 // dest + src
-        add _xtmp, _xtmp, x9      // + CF
-        setf_oc
+        lsl w9, w9, 29            // Position CF at NZCV.C (bit 29)
+        msr nzcv, x9              // Set ARM64 carry flag
+        adcs _xtmp, _xtmp, \reg64 // dest + src + CF (flags correct)
+        setf_oc_add
         setf_zsp
         gret
     .gadget adc32_\name
         ldrb w9, [_cpu, CPU_cf]   // Load carry flag
-        adds _tmp, _tmp, \reg32   // dest + src
-        add _tmp, _tmp, w9        // + CF
+        lsl w9, w9, 29            // Position CF at NZCV.C (bit 29)
+        msr nzcv, x9              // Set ARM64 carry flag
+        adcs _tmp, _tmp, \reg32   // dest + src + CF
         and _xtmp, _xtmp, 0xffffffff  // Zero-extend
-        setf_oc
+        setf_oc_add
         setf_zsp w
         gret
 .endm
 .each_reg64 adc_reg64
 .purgem adc_reg64
 
+// ADC with x8 (for r8-r15 source registers)
+// _xtmp = _xtmp + x8 + CF
+.gadget adc64_x8
+    ldrb w9, [_cpu, CPU_cf]    // Load carry flag
+    lsl w9, w9, 29             // Position CF at NZCV.C (bit 29)
+    msr nzcv, x9               // Set ARM64 carry flag
+    adcs _xtmp, _xtmp, x8      // dest + src + CF (flags correct)
+    setf_oc_add
+    setf_zsp
+    gret
+
+.gadget adc32_x8
+    ldrb w9, [_cpu, CPU_cf]    // Load carry flag
+    lsl w9, w9, 29             // Position CF at NZCV.C (bit 29)
+    msr nzcv, x9               // Set ARM64 carry flag
+    adcs _tmp, _tmp, w8        // dest + src + CF
+    and _xtmp, _xtmp, 0xffffffff  // Zero-extend
+    setf_oc_add
+    setf_zsp w
+    gret
+
+// ADC with memory operand: dest = dest + [mem] + CF
+.gadget adc64_mem
+    read_prep 64, adc64_mem
+    ldr x8, [_addr]
+    ldrb w9, [_cpu, CPU_cf]    // Load carry flag
+    lsl w9, w9, 29             // Position CF at NZCV.C (bit 29)
+    msr nzcv, x9               // Set ARM64 carry flag
+    adcs _xtmp, _xtmp, x8      // dest + [mem] + CF (flags correct)
+    setf_oc_add
+    setf_zsp
+    gret 1
+    read_bullshit 64, adc64_mem
+
+.gadget adc32_mem
+    read_prep 32, adc32_mem
+    ldr w8, [_addr]
+    ldrb w9, [_cpu, CPU_cf]    // Load carry flag
+    lsl w9, w9, 29             // Position CF at NZCV.C (bit 29)
+    msr nzcv, x9               // Set ARM64 carry flag
+    adcs _tmp, _tmp, w8        // dest + [mem] + CF
+    and _xtmp, _xtmp, 0xffffffff  // Zero-extend
+    setf_oc_add
+    setf_zsp w
+    gret 1
+    read_bullshit 32, adc32_mem
+
 // SBB (Subtract with Borrow) gadgets
 // SBB dest, src: dest = dest - src - CF
+// ARM64 sbcs: Rd = Rn - Rm - !C, so set ARM64 C = !CF
 .macro sbb_reg64 name, reg64, reg32
     .gadget sbb64_\name
         ldrb w9, [_cpu, CPU_cf]   // Load carry flag
-        subs _xtmp, _xtmp, \reg64 // dest - src
-        sub _xtmp, _xtmp, x9      // - CF
+        eor w9, w9, 1             // Invert: ARM64 needs C = !CF for sbcs
+        lsl w9, w9, 29            // Position at NZCV.C (bit 29)
+        msr nzcv, x9              // Set ARM64 carry flag
+        sbcs _xtmp, _xtmp, \reg64 // dest - src - CF (flags correct)
         setf_oc
         setf_zsp
         gret
     .gadget sbb32_\name
         ldrb w9, [_cpu, CPU_cf]   // Load carry flag
-        subs _tmp, _tmp, \reg32   // dest - src
-        sub _tmp, _tmp, w9        // - CF
+        eor w9, w9, 1             // Invert: ARM64 needs C = !CF for sbcs
+        lsl w9, w9, 29            // Position at NZCV.C (bit 29)
+        msr nzcv, x9              // Set ARM64 carry flag
+        sbcs _tmp, _tmp, \reg32   // dest - src - CF
         and _xtmp, _xtmp, 0xffffffff  // Zero-extend
         setf_oc
         setf_zsp w
@@ -333,8 +409,10 @@
 .gadget sbb64_imm
     ldr x8, [_ip]            // Load immediate
     ldrb w9, [_cpu, CPU_cf]  // Load carry flag
-    subs _xtmp, _xtmp, x8    // dest - imm
-    sub _xtmp, _xtmp, x9     // - CF
+    eor w9, w9, 1            // Invert: ARM64 needs C = !CF for sbcs
+    lsl w9, w9, 29           // Position at NZCV.C (bit 29)
+    msr nzcv, x9             // Set ARM64 carry flag
+    sbcs _xtmp, _xtmp, x8    // dest - src - CF (flags correct)
     setf_oc
     setf_zsp
     gret 1
@@ -342,8 +420,10 @@
 .gadget sbb32_imm
     ldr w8, [_ip]            // Load immediate
     ldrb w9, [_cpu, CPU_cf]  // Load carry flag
-    subs _tmp, _tmp, w8      // dest - imm
-    sub _tmp, _tmp, w9       // - CF
+    eor w9, w9, 1            // Invert: ARM64 needs C = !CF for sbcs
+    lsl w9, w9, 29           // Position at NZCV.C (bit 29)
+    msr nzcv, x9             // Set ARM64 carry flag
+    sbcs _tmp, _tmp, w8      // dest - src - CF
     and _xtmp, _xtmp, 0xffffffff  // Zero-extend
     setf_oc
     setf_zsp w
@@ -353,20 +433,52 @@
 // _xtmp = _xtmp - x8 - CF
 .gadget sbb64_x8
     ldrb w9, [_cpu, CPU_cf]   // Load carry flag
-    subs _xtmp, _xtmp, x8     // dest - src
-    sub _xtmp, _xtmp, x9      // - CF
+    eor w9, w9, 1             // Invert: ARM64 needs C = !CF for sbcs
+    lsl w9, w9, 29            // Position at NZCV.C (bit 29)
+    msr nzcv, x9              // Set ARM64 carry flag
+    sbcs _xtmp, _xtmp, x8     // dest - src - CF (flags correct)
     setf_oc
     setf_zsp
     gret
 
 .gadget sbb32_x8
     ldrb w9, [_cpu, CPU_cf]   // Load carry flag
-    subs _tmp, _tmp, w8       // dest - src
-    sub _tmp, _tmp, w9        // - CF
+    eor w9, w9, 1             // Invert: ARM64 needs C = !CF for sbcs
+    lsl w9, w9, 29            // Position at NZCV.C (bit 29)
+    msr nzcv, x9              // Set ARM64 carry flag
+    sbcs _tmp, _tmp, w8       // dest - src - CF
     and _xtmp, _xtmp, 0xffffffff  // Zero-extend
     setf_oc
     setf_zsp w
     gret
+
+// SBB with memory operand: dest = dest - [mem] - CF
+.gadget sbb64_mem
+    read_prep 64, sbb64_mem
+    ldr x8, [_addr]
+    ldrb w9, [_cpu, CPU_cf]   // Load carry flag
+    eor w9, w9, 1             // Invert: ARM64 needs C = !CF for sbcs
+    lsl w9, w9, 29            // Position at NZCV.C (bit 29)
+    msr nzcv, x9              // Set ARM64 carry flag
+    sbcs _xtmp, _xtmp, x8     // dest - [mem] - CF (flags correct)
+    setf_oc
+    setf_zsp
+    gret 1
+    read_bullshit 64, sbb64_mem
+
+.gadget sbb32_mem
+    read_prep 32, sbb32_mem
+    ldr w8, [_addr]
+    ldrb w9, [_cpu, CPU_cf]   // Load carry flag
+    eor w9, w9, 1             // Invert: ARM64 needs C = !CF for sbcs
+    lsl w9, w9, 29            // Position at NZCV.C (bit 29)
+    msr nzcv, x9              // Set ARM64 carry flag
+    sbcs _tmp, _tmp, w8       // dest - [mem] - CF
+    and _xtmp, _xtmp, 0xffffffff  // Zero-extend
+    setf_oc
+    setf_zsp w
+    gret 1
+    read_bullshit 32, sbb32_mem
 
 // ============================================================
 // SUB gadgets
@@ -540,8 +652,7 @@
 .gadget sub32_x8
     subs _tmp, w8, _tmp
     setf_oc
-    uxtw _xtmp, _tmp
-    setf_zsp
+    setf_zsp w
     gret
 
 .gadget sub32_mem
@@ -639,6 +750,44 @@
     gret 1
     read_bullshit 32, xor32_mem
 
+// XOR with x8 register (for read-modify-write [mem] operations)
+.gadget xor64_x8
+    eor _xtmp, _xtmp, x8
+    clearf_oc
+    setf_zsp
+    gret
+
+
+.gadget xor32_x8
+    eor _tmp, _tmp, w8
+    clearf_oc
+    setf_zsp w
+    gret
+
+.gadget xor16_x8
+    and w8, w8, 0xffff            // Mask x8 to 16 bits
+    eor w10, _tmp, w8             // XOR
+    and w10, w10, 0xffff          // Keep only 16 bits of result
+    bic _tmp, _tmp, 0xffff        // Clear low 16 bits of dest
+    orr _tmp, _tmp, w10           // Merge result
+    mov _xtmp, _xtmp
+    sxth x10, w10                 // Sign-extend for flag setting
+    clearf_oc
+    setf_zsp h, x10
+    gret
+
+.gadget xor8_x8
+    and w8, w8, 0xff              // Mask x8 to 8 bits
+    eor w10, _tmp, w8             // XOR
+    and w10, w10, 0xff            // Keep only 8 bits of result
+    bic _tmp, _tmp, 0xff          // Clear low 8 bits of dest
+    orr _tmp, _tmp, w10           // Merge result
+    mov _xtmp, _xtmp
+    sxtb x10, w10                 // Sign-extend for flag setting
+    clearf_oc
+    setf_zsp b, x10
+    gret
+
 // XOR gadgets for r8-r15: _xtmp = _xtmp XOR r[N]
 .macro xor64_r8_r15 num, offset
 .gadget xor64_r\num
@@ -656,10 +805,50 @@
 .endm
 xor64_r8_r15 8, CPU_r8
 xor64_r8_r15 9, CPU_r9
-xor64_r8_r15 10, CPU_r10
+// xor r10 gadgets: use C helper workaround for r10 load (offset 0x60 crash)
+.gadget xor64_r10
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r10_simple)
+    mov x19, x0
+    restore_c
+    eor _xtmp, _xtmp, x19
+    clearf_oc
+    setf_zsp
+    gret
+.gadget xor32_r10
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r10_simple)
+    and x19, x0, 0xffffffff
+    restore_c
+    eor _tmp, _tmp, w19
+    clearf_oc
+    setf_zsp w
+    gret
 xor64_r8_r15 11, CPU_r11
 xor64_r8_r15 12, CPU_r12
-xor64_r8_r15 13, CPU_r13
+// xor r13 gadgets: use C helper workaround for r13 load (offset 0x78 crash)
+.gadget xor64_r13
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r13_simple)
+    mov x19, x0
+    restore_c
+    eor _xtmp, _xtmp, x19
+    clearf_oc
+    setf_zsp
+    gret
+.gadget xor32_r13
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r13_simple)
+    and x19, x0, 0xffffffff
+    restore_c
+    eor _tmp, _tmp, w19
+    clearf_oc
+    setf_zsp w
+    gret
 xor64_r8_r15 14, CPU_r14
 xor64_r8_r15 15, CPU_r15
 
@@ -746,6 +935,23 @@ NAME(xor32_r8_r15_gadgets):
 .each_reg64 and_reg64
 .purgem and_reg64
 
+// AND 32-bit with register (for reg, reg - tmp = tmp & other_reg32)
+.macro and_reg32 name, reg64, reg32
+    .gadget and32_\name
+        ands _tmp, _tmp, \reg32
+        clearf_oc
+        setf_zsp w
+        gret
+.endm
+.each_reg64 and_reg32
+.purgem and_reg32
+
+.gadget and32_x8
+    ands _tmp, _tmp, w8
+    clearf_oc
+    setf_zsp w
+    gret
+
 // AND memory operand (read from _addr, AND with value in x8)
 .gadget and64_mem
     read_prep 64, and64_mem
@@ -794,6 +1000,23 @@ NAME(xor32_r8_r15_gadgets):
 .endm
 .each_reg64 or_reg64
 .purgem or_reg64
+
+// OR 32-bit with register (for reg, reg - tmp = tmp | other_reg32)
+.macro or_reg32 name, reg64, reg32
+    .gadget or32_\name
+        orr _tmp, _tmp, \reg32
+        clearf_oc
+        setf_zsp w
+        gret
+.endm
+.each_reg64 or_reg32
+.purgem or_reg32
+
+.gadget or32_x8
+    orr _tmp, _tmp, w8
+    clearf_oc
+    setf_zsp w
+    gret
 
 // OR 64-bit memory operand (read from _addr, OR with value in x8)
 // NOTE: For 32-bit OR operations, use or32_mem instead to avoid
@@ -1295,26 +1518,21 @@ NAME(xor32_r8_r15_gadgets):
     gret
 
 // DIV64: Unsigned divide RDX:RAX by _xtmp (64-bit divisor)
-// This requires 128-bit division which ARM64 doesn't have natively
-// For now, handle the common case where RDX=0 (dividend fits in 64 bits)
+// Uses C helper for full 128-bit / 64-bit unsigned division
 .gadget div64
-    // No debug tracing - just do the division
     // _xtmp (x0) = divisor, _cpu (x1) = cpu pointer
-    // Check for division by zero
-    cmp _xtmp, 0
-    b.eq div64_by_zero_nodebug
-    // Do the division: RDX:RAX / _xtmp
-    // For now, handle common case where RDX=0
-    udiv x10, rax, _xtmp        // Quotient
-    msub x11, x10, _xtmp, rax   // Remainder = RAX - quotient * divisor
-    mov rax, x10                // Store quotient
-    mov rdx, x11                // Store remainder
-    gret
-div64_by_zero_nodebug:
-    // On x86, division by zero causes #DE (fault)
-    // For now, just return 0 to continue
-    mov rax, 0
-    mov rdx, 0
+    // Store rax/rdx to cpu_state so helper can read them
+    str rax, [_cpu, CPU_rax]
+    str rdx, [_cpu, CPU_rdx]
+    // Call helper: x0 = divisor (already in _xtmp), x1 = cpu (already in _cpu)
+    save_c
+    mov x0, _xtmp
+    mov x1, _cpu
+    bl NAME(helper_div64)
+    restore_c
+    // Reload results from cpu_state
+    ldr rax, [_cpu, CPU_rax]
+    ldr rdx, [_cpu, CPU_rdx]
     gret
 
 // IDIV32: Signed divide EDX:EAX by _xtmp (32-bit divisor)
@@ -1334,12 +1552,20 @@ div64_by_zero_nodebug:
     gret
 
 // IDIV64: Signed divide RDX:RAX by _xtmp (64-bit divisor)
+// Uses C helper for full 128-bit / 64-bit signed division
 .gadget idiv64
-    // Simple case: dividend = RAX (assume RDX is sign extension of RAX)
-    sdiv x10, rax, _xtmp        // Quotient (signed)
-    msub x11, x10, _xtmp, rax   // Remainder
-    mov rax, x10                // Store quotient
-    mov rdx, x11                // Store remainder
+    // Store rax/rdx to cpu_state so helper can read them
+    str rax, [_cpu, CPU_rax]
+    str rdx, [_cpu, CPU_rdx]
+    // Call helper: x0 = divisor (already in _xtmp), x1 = cpu (already in _cpu)
+    save_c
+    mov x0, _xtmp
+    mov x1, _cpu
+    bl NAME(helper_idiv64)
+    restore_c
+    // Reload results from cpu_state
+    ldr rax, [_cpu, CPU_rax]
+    ldr rdx, [_cpu, CPU_rdx]
     gret
 
 // MUL32: Unsigned multiply EAX * _xtmp -> EDX:EAX
@@ -1513,6 +1739,399 @@ div64_by_zero_nodebug:
     asr _xtmp, _xtmp, 1
     strb w9, [_cpu, CPU_cf]
     setf_zsp
+1:  gret 1
+
+// ============================================================
+// 32-bit Shift gadgets
+// ============================================================
+// 32-bit shifts use w-register (ARM64 auto-zero-extends to 64-bit)
+// Shift count masked to 0-31 (not 0-63)
+// MSB/OF flag check at bit 31 (not 63)
+// setf_zsp w for proper 32-bit flag setting
+
+// SHR32 (logical shift right 32-bit) - shift by 1
+.gadget shr32_one
+    // Get bit 31 for OF flag
+    lsr w9, _tmp, 31
+    strb w9, [_cpu, CPU_of]
+    // Get LSB for CF
+    and w8, _tmp, 1
+    strb w8, [_cpu, CPU_cf]
+    // Do the 32-bit shift (w-register auto-zero-extends to x0)
+    lsr _tmp, _tmp, 1
+    setf_zsp w
+    gret
+
+// SHR32 by CL
+.gadget shr32_cl
+    ands w8, ecx, 31
+    b.eq 1f
+    // Save bit 31 for OF
+    lsr w9, _tmp, 31
+    strb w9, [_cpu, CPU_of]
+    // Shift by (count-1), get CF from LSB, then shift by 1 more
+    sub w8, w8, 1
+    lsr _tmp, _tmp, w8
+    and w9, _tmp, 1
+    lsr _tmp, _tmp, 1
+    strb w9, [_cpu, CPU_cf]
+    setf_zsp w
+1:  gret
+
+// SHR32 by immediate
+.gadget shr32_imm
+    ldr w11, [_ip]
+    ands w11, w11, 31
+    b.eq 1f
+    // Save bit 31 for OF
+    lsr w9, _tmp, 31
+    strb w9, [_cpu, CPU_of]
+    // Shift by (count-1), get CF from LSB, then shift by 1 more
+    sub w11, w11, 1
+    lsr _tmp, _tmp, w11
+    and w9, _tmp, 1
+    lsr _tmp, _tmp, 1
+    strb w9, [_cpu, CPU_cf]
+    setf_zsp w
+1:  gret 1
+
+// SHL32 (logical shift left 32-bit) - shift by 1
+.gadget shl32_one
+    // Get bit 31 (old MSB) for CF
+    lsr w8, _tmp, 31
+    // Do the 32-bit shift
+    lsl _tmp, _tmp, 1
+    strb w8, [_cpu, CPU_cf]
+    // OF = CF XOR new MSB
+    lsr w9, _tmp, 31
+    eor w9, w9, w8
+    strb w9, [_cpu, CPU_of]
+    setf_zsp w
+    gret
+
+// SHL32 by CL
+.gadget shl32_cl
+    ands w8, ecx, 31
+    b.eq 1f
+    sub w8, w8, 1
+    lsl _tmp, _tmp, w8
+    // Get bit that will become CF
+    lsr w9, _tmp, 31
+    // Shift one more
+    lsl _tmp, _tmp, 1
+    // CF = old MSB, OF = CF XOR new MSB
+    lsr w10, _tmp, 31
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    setf_zsp w
+1:  gret
+
+// SHL32 by immediate
+.gadget shl32_imm
+    ldr w11, [_ip]
+    ands w11, w11, 31
+    b.eq 1f
+    sub w11, w11, 1
+    lsl _tmp, _tmp, w11
+    lsr w9, _tmp, 31
+    lsl _tmp, _tmp, 1
+    lsr w10, _tmp, 31
+    eor w10, w10, w9
+    strb w9, [_cpu, CPU_cf]
+    strb w10, [_cpu, CPU_of]
+    setf_zsp w
+1:  gret 1
+
+// SAR32 (arithmetic shift right 32-bit) - shift by 1
+
+// SHL8 by immediate - shift only low byte, preserving upper bits
+// _xtmp contains full register value, only bits 7:0 are shifted
+.gadget shl8_imm
+    ldr w11, [_ip]
+    ands w11, w11, 7               // Mask to 0-7 (8-bit shift count)
+    b.eq 1f
+    mov x9, _xtmp                  // Save original for upper bits
+    and _xtmp, _xtmp, 0xFF         // Isolate low byte
+    // Compute CF: bit (8 - count) of the original byte
+    mov w10, 8
+    sub w10, w10, w11
+    lsr x12, _xtmp, x10            // Shift right to get the bit that becomes CF
+    and w12, w12, 1
+    strb w12, [_cpu, CPU_cf]
+    // Do the shift
+    lsl _xtmp, _xtmp, x11
+    and _xtmp, _xtmp, 0xFF         // Mask to byte
+    // Compute OF: MSB of result XOR CF (defined for shift by 1)
+    lsr w10, _tmp, 7
+    eor w10, w10, w12
+    strb w10, [_cpu, CPU_of]
+    // Merge: replace low byte of original with shifted result
+    bic x9, x9, 0xFF               // Clear low byte of original
+    orr _xtmp, x9, _xtmp           // Insert shifted byte
+    setf_zsp b
+1:  gret 1
+
+// SHR8 by immediate - shift only low byte, preserving upper bits
+.gadget shr8_imm
+    ldr w11, [_ip]
+    ands w11, w11, 7
+    b.eq 1f
+    mov x9, _xtmp                  // Save original for upper bits
+    and _xtmp, _xtmp, 0xFF         // Isolate low byte
+    // Compute CF: bit (count - 1) of original byte
+    sub w10, w11, 1
+    lsr x12, _xtmp, x10
+    and w12, w12, 1
+    strb w12, [_cpu, CPU_cf]
+    // Compute OF: MSB of original byte (defined for shift by 1)
+    lsr w10, _tmp, 7
+    strb w10, [_cpu, CPU_of]
+    // Do the shift
+    lsr _xtmp, _xtmp, x11
+    and _xtmp, _xtmp, 0xFF         // Mask to byte
+    // Merge: replace low byte
+    bic x9, x9, 0xFF
+    orr _xtmp, x9, _xtmp
+    setf_zsp b
+1:  gret 1
+
+// SHL16 by immediate - shift only low 16 bits, preserving upper bits
+.gadget shl16_imm
+    ldr w11, [_ip]
+    ands w11, w11, 15              // Mask to 0-15
+    b.eq 1f
+    mov x9, _xtmp                  // Save original
+    and _xtmp, _xtmp, 0xFFFF       // Isolate low 16 bits
+    mov w10, 16
+    sub w10, w10, w11
+    lsr x12, _xtmp, x10            // Get bit that becomes CF
+    and w12, w12, 1
+    strb w12, [_cpu, CPU_cf]
+    lsl _xtmp, _xtmp, x11
+    and _xtmp, _xtmp, 0xFFFF       // Mask to 16 bits
+    lsr w10, _tmp, 15
+    eor w10, w10, w12
+    strb w10, [_cpu, CPU_of]
+    bic x9, x9, 0xFFFF
+    orr _xtmp, x9, _xtmp
+    setf_zsp h
+1:  gret 1
+
+// SHR16 by immediate - shift only low 16 bits, preserving upper bits
+.gadget shr16_imm
+    ldr w11, [_ip]
+    ands w11, w11, 15
+    b.eq 1f
+    mov x9, _xtmp
+    and _xtmp, _xtmp, 0xFFFF
+    sub w10, w11, 1
+    lsr x12, _xtmp, x10
+    and w12, w12, 1
+    strb w12, [_cpu, CPU_cf]
+    lsr w10, _tmp, 15
+    strb w10, [_cpu, CPU_of]
+    lsr _xtmp, _xtmp, x11
+    and _xtmp, _xtmp, 0xFFFF
+    bic x9, x9, 0xFFFF
+    orr _xtmp, x9, _xtmp
+    setf_zsp h
+1:  gret 1
+
+// SAR8 by immediate - arithmetic shift right only low byte, preserving upper bits
+.gadget sar8_imm
+    ldr w11, [_ip]
+    ands w11, w11, 7               // Mask to 0-7 (8-bit shift count)
+    b.eq 1f
+    mov x9, _xtmp                  // Save original for upper bits
+    sxtb _xtmp, _tmp              // Sign-extend byte to 64-bit for arithmetic shift
+    // Compute CF: bit (count - 1) of original byte
+    sub w10, w11, 1
+    asr x12, _xtmp, x10
+    and w12, w12, 1
+    strb w12, [_cpu, CPU_cf]
+    // OF is 0 for SAR (defined for shift by 1: OF = 0)
+    strb wzr, [_cpu, CPU_of]
+    // Do the arithmetic shift
+    asr _xtmp, _xtmp, x11
+    and _xtmp, _xtmp, 0xFF         // Mask to byte
+    // Merge: replace low byte of original with shifted result
+    bic x9, x9, 0xFF               // Clear low byte of original
+    orr _xtmp, x9, _xtmp           // Insert shifted byte
+    setf_zsp b
+1:  gret 1
+
+// SAR16 by immediate - arithmetic shift right only low 16 bits, preserving upper bits
+.gadget sar16_imm
+    ldr w11, [_ip]
+    ands w11, w11, 15              // Mask to 0-15
+    b.eq 1f
+    mov x9, _xtmp                  // Save original
+    sxth _xtmp, _tmp              // Sign-extend halfword to 64-bit
+    sub w10, w11, 1
+    asr x12, _xtmp, x10
+    and w12, w12, 1
+    strb w12, [_cpu, CPU_cf]
+    strb wzr, [_cpu, CPU_of]
+    asr _xtmp, _xtmp, x11
+    and _xtmp, _xtmp, 0xFFFF       // Mask to 16 bits
+    bic x9, x9, 0xFFFF
+    orr _xtmp, x9, _xtmp
+    setf_zsp h
+1:  gret 1
+
+// SAR8 by CL - arithmetic shift right low byte by CL count
+.gadget sar8_cl
+    ands w11, ecx, 7               // Mask CL to 0-7
+    b.eq 1f
+    mov x9, _xtmp                  // Save original for upper bits
+    sxtb _xtmp, _tmp              // Sign-extend byte to 64-bit
+    sub w10, w11, 1
+    asr x12, _xtmp, x10
+    and w12, w12, 1
+    strb w12, [_cpu, CPU_cf]
+    strb wzr, [_cpu, CPU_of]
+    asr _xtmp, _xtmp, x11
+    and _xtmp, _xtmp, 0xFF         // Mask to byte
+    bic x9, x9, 0xFF
+    orr _xtmp, x9, _xtmp
+    setf_zsp b
+1:  gret
+
+// SAR16 by CL - arithmetic shift right low 16 bits by CL count
+.gadget sar16_cl
+    ands w11, ecx, 15              // Mask CL to 0-15
+    b.eq 1f
+    mov x9, _xtmp                  // Save original
+    sxth _xtmp, _tmp              // Sign-extend halfword to 64-bit
+    sub w10, w11, 1
+    asr x12, _xtmp, x10
+    and w12, w12, 1
+    strb w12, [_cpu, CPU_cf]
+    strb wzr, [_cpu, CPU_of]
+    asr _xtmp, _xtmp, x11
+    and _xtmp, _xtmp, 0xFFFF
+    bic x9, x9, 0xFFFF
+    orr _xtmp, x9, _xtmp
+    setf_zsp h
+1:  gret
+
+// SHR8 by CL - logical shift right low byte by CL count
+.gadget shr8_cl
+    ands w11, ecx, 7               // Mask CL to 0-7
+    b.eq 1f
+    mov x9, _xtmp                  // Save original for upper bits
+    and _xtmp, _xtmp, 0xFF         // Isolate low byte
+    sub w10, w11, 1
+    lsr x12, _xtmp, x10
+    and w12, w12, 1
+    strb w12, [_cpu, CPU_cf]
+    lsr w10, _tmp, 7               // OF = MSB of original byte
+    strb w10, [_cpu, CPU_of]
+    lsr _xtmp, _xtmp, x11
+    and _xtmp, _xtmp, 0xFF
+    bic x9, x9, 0xFF
+    orr _xtmp, x9, _xtmp
+    setf_zsp b
+1:  gret
+
+// SHR16 by CL - logical shift right low 16 bits by CL count
+.gadget shr16_cl
+    ands w11, ecx, 15              // Mask CL to 0-15
+    b.eq 1f
+    mov x9, _xtmp
+    and _xtmp, _xtmp, 0xFFFF
+    sub w10, w11, 1
+    lsr x12, _xtmp, x10
+    and w12, w12, 1
+    strb w12, [_cpu, CPU_cf]
+    lsr w10, _tmp, 15
+    strb w10, [_cpu, CPU_of]
+    lsr _xtmp, _xtmp, x11
+    and _xtmp, _xtmp, 0xFFFF
+    bic x9, x9, 0xFFFF
+    orr _xtmp, x9, _xtmp
+    setf_zsp h
+1:  gret
+
+// SHL8 by CL - logical shift left low byte by CL count
+.gadget shl8_cl
+    ands w11, ecx, 7               // Mask CL to 0-7
+    b.eq 1f
+    mov x9, _xtmp                  // Save original for upper bits
+    and _xtmp, _xtmp, 0xFF         // Isolate low byte
+    mov w10, 8
+    sub w10, w10, w11
+    lsr x12, _xtmp, x10
+    and w12, w12, 1
+    strb w12, [_cpu, CPU_cf]
+    lsl _xtmp, _xtmp, x11
+    and _xtmp, _xtmp, 0xFF
+    lsr w10, _tmp, 7               // OF = MSB of result XOR CF
+    eor w10, w10, w12
+    strb w10, [_cpu, CPU_of]
+    bic x9, x9, 0xFF
+    orr _xtmp, x9, _xtmp
+    setf_zsp b
+1:  gret
+
+// SHL16 by CL - logical shift left low 16 bits by CL count
+.gadget shl16_cl
+    ands w11, ecx, 15              // Mask CL to 0-15
+    b.eq 1f
+    mov x9, _xtmp
+    and _xtmp, _xtmp, 0xFFFF
+    mov w10, 16
+    sub w10, w10, w11
+    lsr x12, _xtmp, x10
+    and w12, w12, 1
+    strb w12, [_cpu, CPU_cf]
+    lsl _xtmp, _xtmp, x11
+    and _xtmp, _xtmp, 0xFFFF
+    lsr w10, _tmp, 15
+    eor w10, w10, w12
+    strb w10, [_cpu, CPU_of]
+    bic x9, x9, 0xFFFF
+    orr _xtmp, x9, _xtmp
+    setf_zsp h
+1:  gret
+
+.gadget sar32_one
+    // Get LSB for CF
+    and w8, _tmp, 1
+    strb w8, [_cpu, CPU_cf]
+    // OF is always 0 for SAR by 1
+    strb wzr, [_cpu, CPU_of]
+    // Do the 32-bit arithmetic shift (w-register auto-zero-extends)
+    asr _tmp, _tmp, 1
+    setf_zsp w
+    gret
+
+// SAR32 by CL
+.gadget sar32_cl
+    ands w8, ecx, 31
+    b.eq 1f
+    strb wzr, [_cpu, CPU_of]
+    sub w8, w8, 1
+    asr _tmp, _tmp, w8
+    and w9, _tmp, 1
+    asr _tmp, _tmp, 1
+    strb w9, [_cpu, CPU_cf]
+    setf_zsp w
+1:  gret
+
+// SAR32 by immediate
+.gadget sar32_imm
+    ldr w11, [_ip]
+    ands w11, w11, 31
+    b.eq 1f
+    strb wzr, [_cpu, CPU_of]
+    sub w11, w11, 1
+    asr _tmp, _tmp, w11
+    and w9, _tmp, 1
+    asr _tmp, _tmp, 1
+    strb w9, [_cpu, CPU_cf]
+    setf_zsp w
 1:  gret 1
 
 // ============================================================
@@ -2190,10 +2809,42 @@ imul32_to di, edi
 .endm
 imul64_r8_r15 8, CPU_r8
 imul64_r8_r15 9, CPU_r9
-imul64_r8_r15 10, CPU_r10
+// imul64 r10: use C helper workaround for r10 load (offset 0x60 crash)
+.gadget imul64_r10
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r10_simple)
+    mov x19, x0
+    restore_c
+    mul x8, _xtmp, x19         // result = _xtmp * r10
+    str x8, [_cpu, CPU_r10]    // Store result back
+    // Set flags (OF/CF if high bits would overflow)
+    smulh x9, _xtmp, x19       // Get high 64 bits (use original r10, not result!)
+    asr x10, x8, 63            // Sign extend of low result
+    cmp x9, x10
+    cset w11, ne
+    strb w11, [_cpu, CPU_of]
+    strb w11, [_cpu, CPU_cf]
+    gret
 imul64_r8_r15 11, CPU_r11
 imul64_r8_r15 12, CPU_r12
-imul64_r8_r15 13, CPU_r13
+// imul64 r13: use C helper workaround for r13 load (offset 0x78 crash)
+.gadget imul64_r13
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r13_simple)
+    mov x19, x0
+    restore_c
+    mul x8, _xtmp, x19         // result = _xtmp * r13
+    str x8, [_cpu, CPU_r13]    // Store result back
+    // Set flags (OF/CF if high bits would overflow)
+    smulh x9, _xtmp, x19       // Get high 64 bits (use original r13, not result!)
+    asr x10, x8, 63            // Sign extend of low result
+    cmp x9, x10
+    cset w11, ne
+    strb w11, [_cpu, CPU_of]
+    strb w11, [_cpu, CPU_cf]
+    gret
 imul64_r8_r15 14, CPU_r14
 imul64_r8_r15 15, CPU_r15
 
@@ -2218,10 +2869,48 @@ imul64_r8_r15 15, CPU_r15
 .endm
 imul32_r8_r15 8, CPU_r8
 imul32_r8_r15 9, CPU_r9
-imul32_r8_r15 10, CPU_r10
+// imul32 r10: use C helper workaround for r10 load (offset 0x60 crash)
+.gadget imul32_r10
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r10_simple)
+    and x19, x0, 0xffffffff    // Get 32-bit r10d
+    restore_c
+    mul w9, _tmp, w19          // result = _tmp * r10d (32-bit)
+    uxtw x9, w9                // Zero-extend to 64-bit
+    str x9, [_cpu, CPU_r10]    // Store full 64-bit value
+    // Set flags
+    smull x10, _tmp, w19       // Signed 32x32 -> 64
+    asr x11, x10, 32           // High 32 bits
+    asr w12, w9, 31            // Sign of 32-bit result
+    sxtw x12, w12
+    cmp x11, x12
+    cset w13, ne
+    strb w13, [_cpu, CPU_of]
+    strb w13, [_cpu, CPU_cf]
+    gret
 imul32_r8_r15 11, CPU_r11
 imul32_r8_r15 12, CPU_r12
-imul32_r8_r15 13, CPU_r13
+// imul32 r13: use C helper workaround for r13 load (offset 0x78 crash)
+.gadget imul32_r13
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r13_simple)
+    and x19, x0, 0xffffffff    // Get 32-bit r13d
+    restore_c
+    mul w9, _tmp, w19          // result = _tmp * r13d (32-bit)
+    uxtw x9, w9                // Zero-extend to 64-bit
+    str x9, [_cpu, CPU_r13]    // Store full 64-bit value
+    // Set flags
+    smull x10, _tmp, w19       // Signed 32x32 -> 64
+    asr x11, x10, 32           // High 32 bits
+    asr w12, w9, 31            // Sign of 32-bit result
+    sxtw x12, w12
+    cmp x11, x12
+    cset w13, ne
+    strb w13, [_cpu, CPU_of]
+    strb w13, [_cpu, CPU_cf]
+    gret
 imul32_r8_r15 14, CPU_r14
 imul32_r8_r15 15, CPU_r15
 
@@ -2429,6 +3118,44 @@ NAME(imul32_r8_r15_gadgets):
     str x11, [x9, 8]           // Store high
     gret 1
 
+// PXOR xmm, [mem] - XOR 128 bits from memory with XMM register
+// _addr = GUEST memory address
+// [_ip] = orig_ip, [_ip+8] = destination XMM index
+.gadget pxor_xmm_mem
+    // Save guest address for second half
+    str _addr, [_cpu, LOCAL_value_addr]
+
+    // Load first 64 bits from memory (low half)
+    read_prep 64, pxor_mem1
+    ldr x8, [_addr]            // Load low 64 bits
+    str x8, [_cpu, LOCAL_value]     // Temporarily store low
+
+    // Load second 64 bits - use saved guest address + 8
+    ldr _addr, [_cpu, LOCAL_value_addr]
+    add _addr, _addr, 8        // Second half is at guest_addr + 8
+    read_prep 64, pxor_mem2
+    ldr x13, [_addr]           // Load high 64 bits (mem)
+    ldr x12, [_cpu, LOCAL_value]    // Restore low (mem)
+
+    // Load destination XMM
+    ldr x10, [_ip, 8]          // XMM register index (after orig_ip)
+    lsl x10, x10, 4            // Multiply by 16
+    add x10, x10, CPU_xmm
+    add x10, _cpu, x10         // x10 = &xmm[dst]
+    ldr x8, [x10]              // Load dst low
+    ldr x9, [x10, 8]           // Load dst high
+
+    // XOR
+    eor x8, x8, x12           // low ^= mem_low
+    eor x9, x9, x13           // high ^= mem_high
+
+    // Store result
+    str x8, [x10]              // Store low
+    str x9, [x10, 8]           // Store high
+    gret 2
+    read_bullshit 64, pxor_mem1
+    read_bullshit 64, pxor_mem2
+
 // PXOR xmm, xmm - XOR 128 bits between XMM registers
 // Used commonly as PXOR xmm, xmm to zero a register
 // _xtmp = source XMM index, [_ip] = destination XMM index
@@ -2594,10 +3321,82 @@ NAME(imul32_r8_r15_gadgets):
 .endm
 
 sse_xmm_xmm_op punpckldq
+sse_xmm_xmm_op punpckhqdq
 sse_xmm_xmm_op pcmpeqd
 sse_xmm_xmm_op pand
+sse_xmm_xmm_op pandn
+sse_xmm_xmm_op por
 sse_xmm_xmm_op paddd
 sse_xmm_xmm_op psubd
+sse_xmm_xmm_op orps
+
+// Helper macro for XMM-MEM operations: reads 128 bits from [_addr], calls helper(cpu, dst_xmm, addr)
+.macro sse_xmm_mem_op name
+.gadget \name\()_mem
+    read_prep 128, \name\()_mem
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    mov x2, _addr              // host memory address
+    bl NAME(helper_\name\()_mem)
+    restore_c
+    gret 2                     // skip 2: XMM index + orig_ip
+    read_bullshit 128, \name\()_mem
+.endm
+
+sse_xmm_mem_op pand
+sse_xmm_mem_op pandn
+sse_xmm_mem_op por
+sse_xmm_mem_op orps
+sse_xmm_mem_op paddd
+sse_xmm_mem_op psubd
+sse_xmm_mem_op pcmpeqd
+sse_xmm_mem_op punpckldq
+sse_xmm_mem_op punpckhqdq
+
+// PSRLQ xmm, imm8 - Packed Shift Right Logical Quadword
+// [_ip] = XMM index, [_ip+8] = imm8
+.gadget psrlq
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // XMM index
+    ldr x2, [_ip, 8]           // imm8
+    bl NAME(helper_psrlq)
+    restore_c
+    gret 2
+
+// PSLLQ xmm, imm8 - Packed Shift Left Logical Quadword
+// [_ip] = XMM index, [_ip+8] = imm8
+.gadget psllq
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // XMM index
+    ldr x2, [_ip, 8]           // imm8
+    bl NAME(helper_psllq)
+    restore_c
+    gret 2
+
+// PSRLD xmm, imm8 - Packed Shift Right Logical Doubleword
+// [_ip] = XMM index, [_ip+8] = imm8
+.gadget psrld
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // XMM index
+    ldr x2, [_ip, 8]           // imm8
+    bl NAME(helper_psrld)
+    restore_c
+    gret 2
+
+// PSLLD xmm, imm8 - Packed Shift Left Logical Doubleword
+// [_ip] = XMM index, [_ip+8] = imm8
+.gadget pslld
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // XMM index
+    ldr x2, [_ip, 8]           // imm8
+    bl NAME(helper_pslld)
+    restore_c
+    gret 2
 
 // PSHUFD xmm, xmm, imm8 - Shuffle packed doublewords
 // [_ip] = dst XMM index, [_ip+8] = src XMM index, [_ip+16] = imm8
@@ -2610,6 +3409,93 @@ sse_xmm_xmm_op psubd
     bl NAME(helper_pshufd)
     restore_c
     gret 3
+
+// PALIGNR xmm, xmm, imm8 - Packed Align Right (SSSE3)
+// [_ip] = dst XMM index, [_ip+8] = src XMM index, [_ip+16] = imm8
+.gadget palignr
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    ldr x2, [_ip, 8]           // src XMM index
+    ldr x3, [_ip, 16]          // imm8
+    bl NAME(helper_palignr)
+    restore_c
+    gret 3
+
+// PSHUFB xmm, xmm - Packed Shuffle Bytes (SSSE3)
+// [_ip] = dst XMM index, [_ip+8] = src XMM index
+.gadget pshufb
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    ldr x2, [_ip, 8]           // src XMM index
+    bl NAME(helper_pshufb)
+    restore_c
+    gret 2
+
+// MOVDQA xmm, xmm - Move aligned 128-bit (register to register)
+// [_ip] = dst XMM index, [_ip+8] = src XMM index
+sse_xmm_xmm_op movdqa_xmm
+
+// MOVDQU/MOVDQA xmm, [mem] - Load 128-bit from memory to XMM
+// _addr = memory address, [_ip] = dst XMM index
+.gadget movdqu_load
+    read_prep 128, movdqu_load
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    mov x2, _addr              // host memory address
+    bl NAME(helper_movdqu_load)
+    restore_c
+    gret 1
+    read_bullshit 128, movdqu_load
+
+// MOVDQU/MOVDQA [mem], xmm - Store 128-bit from XMM to memory
+// _addr = memory address, [_ip] = src XMM index
+.gadget movdqu_store
+    write_prep 128, movdqu_store
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // src XMM index
+    mov x2, _addr              // host memory address
+    bl NAME(helper_movdqu_store)
+    restore_c
+    write_done 128, movdqu_store
+    gret 1
+    write_bullshit 128, movdqu_store
+
+// SHA256RNDS2 xmm, xmm - 2 rounds of SHA-256 compression (implicit XMM0)
+// [_ip] = dst XMM index, [_ip+8] = src XMM index
+.gadget sha256rnds2
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    ldr x2, [_ip, 8]           // src XMM index
+    bl NAME(helper_sha256rnds2)
+    restore_c
+    gret 2
+
+// SHA256MSG1 xmm, xmm - SHA-256 message schedule intermediate
+// [_ip] = dst XMM index, [_ip+8] = src XMM index
+.gadget sha256msg1
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    ldr x2, [_ip, 8]           // src XMM index
+    bl NAME(helper_sha256msg1)
+    restore_c
+    gret 2
+
+// SHA256MSG2 xmm, xmm - SHA-256 message schedule final
+// [_ip] = dst XMM index, [_ip+8] = src XMM index
+.gadget sha256msg2
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    ldr x2, [_ip, 8]           // src XMM index
+    bl NAME(helper_sha256msg2)
+    restore_c
+    gret 2
 
 // PMOVMSKB r, xmm - Move byte mask to GPR
 // [_ip] = src XMM index, result in _xtmp

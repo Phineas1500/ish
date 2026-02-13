@@ -474,10 +474,11 @@ void handle_interrupt(int interrupt) {
   if (interrupt == INT_SYSCALL64) {
     unsigned syscall_num = cpu->rax;
     if (syscall_num >= NUM_SYSCALLS || syscall_table[syscall_num] == NULL) {
-      printk("%d(%s) missing syscall %d\n", current->pid, current->comm,
+      fprintf(stderr, "%d(%s) missing syscall %d\n", current->pid, current->comm,
              syscall_num);
       cpu->rax = _ENOSYS;
     } else {
+      STRACE("%d call %-3d ", current->pid, syscall_num);
       // x86_64 argument order: rdi, rsi, rdx, r10, r8, r9
       int64_t result = syscall_table[syscall_num](cpu->rdi, cpu->rsi, cpu->rdx,
                                                   cpu->r10, cpu->r8, cpu->r9);
@@ -490,6 +491,132 @@ void handle_interrupt(int interrupt) {
         result = (int64_t)(int32_t)(uint32_t)result;
       }
       STRACE(" = 0x%llx\n", (unsigned long long)result);
+      // Temporary: trace network I/O and process lifecycle for TLS debugging
+      {
+        // Trace write/writev/sendto: dump first bytes to detect TLS vs plain HTTP
+        if ((syscall_num == 1 || syscall_num == 20 || syscall_num == 44) &&
+            (int64_t)cpu->rdi >= 3) {
+          const char *name = syscall_num==1?"write":syscall_num==20?"writev":"sendto";
+          fprintf(stderr, "  [io] pid=%d %s(fd=%lld, len=%lld) = %lld",
+                  current->pid, name, (long long)cpu->rdi,
+                  (long long)(syscall_num==20?cpu->rdx:cpu->rdx), (long long)result);
+          // For write(), dump first 8 bytes
+          if (syscall_num == 1 && result > 0) {
+            void *p = mem_ptr(current->mem, cpu->rsi, MEM_READ);
+            if (p) {
+              uint8_t *b = (uint8_t *)p;
+              int n = result > 16 ? 16 : (int)result;
+              fprintf(stderr, " [");
+              for (int i = 0; i < n; i++) fprintf(stderr, "%02x", b[i]);
+              fprintf(stderr, "]");
+            }
+          }
+          // For writev(), dump first bytes of first iov
+          if (syscall_num == 20 && result > 0) {
+            void *iov_ptr = mem_ptr(current->mem, cpu->rsi, MEM_READ);
+            if (iov_ptr) {
+              uint64_t base = *(uint64_t *)iov_ptr;
+              uint64_t len = *((uint64_t *)iov_ptr + 1);
+              void *data = mem_ptr(current->mem, base, MEM_READ);
+              if (data) {
+                uint8_t *b = (uint8_t *)data;
+                int n = len > 16 ? 16 : (int)len;
+                fprintf(stderr, " [");
+                for (int i = 0; i < n; i++) fprintf(stderr, "%02x", b[i]);
+                fprintf(stderr, "]");
+              }
+            }
+          }
+          fprintf(stderr, "\n");
+        }
+        // Trace read/readv/recvfrom on fds >= 3
+        if ((syscall_num == 0 || syscall_num == 19 || syscall_num == 45) &&
+            (int64_t)cpu->rdi >= 3) {
+          const char *name = syscall_num==0?"read":syscall_num==19?"readv":"recvfrom";
+          // read(fd=rdi, buf=rsi, count=rdx)
+          fprintf(stderr, "  [io] pid=%d %s(fd=%lld, count=%lld) = %lld\n",
+                  current->pid, name, (long long)cpu->rdi,
+                  (long long)cpu->rdx, (long long)result);
+        }
+        // Trace open/openat to see what fd=4 is
+        if (syscall_num == 2 || syscall_num == 257) { // open / openat
+          addr_t path_addr = (syscall_num == 2) ? cpu->rdi : cpu->rsi;
+          char path_buf[256] = {0};
+          for (int i = 0; i < 255; i++) {
+            uint8_t ch;
+            if (user_get(path_addr + i, ch)) break;
+            path_buf[i] = (char)ch;
+            if (ch == 0) break;
+          }
+          fprintf(stderr, "  [fs] pid=%d %s(\"%s\") = %lld\n",
+                  current->pid, syscall_num==2?"open":"openat",
+                  path_buf, (long long)result);
+        }
+        // Trace close
+        if (syscall_num == 3) // close
+          fprintf(stderr, "  [fs] pid=%d close(%lld) = %lld\n",
+                  current->pid, (long long)cpu->rdi, (long long)result);
+        // Trace getrandom
+        if (syscall_num == 318)
+          fprintf(stderr, "  [rng] pid=%d getrandom(len=%lld, flags=%lld) = %lld\n",
+                  current->pid, (long long)cpu->rsi, (long long)cpu->rdx, (long long)result);
+        // Trace socket/connect/socketpair
+        if (syscall_num == 41) // socket
+          fprintf(stderr, "  [net] pid=%d socket(%lld,%lld,%lld) = %lld\n",
+                  current->pid, (long long)cpu->rdi, (long long)cpu->rsi,
+                  (long long)cpu->rdx, (long long)result);
+        if (syscall_num == 42) // connect
+          fprintf(stderr, "  [net] pid=%d connect(fd=%lld) = %lld\n",
+                  current->pid, (long long)cpu->rdi, (long long)result);
+        if (syscall_num == 53) { // socketpair
+          int sv[2] = {-1, -1};
+          void *p = mem_ptr(current->mem, cpu->r10, MEM_READ);
+          if (p) { sv[0] = ((int*)p)[0]; sv[1] = ((int*)p)[1]; }
+          fprintf(stderr, "  [net] pid=%d socketpair() = %lld [%d, %d]\n",
+                  current->pid, (long long)result, sv[0], sv[1]);
+        }
+        // Trace dup2/dup3
+        if (syscall_num == 33) // dup2
+          fprintf(stderr, "  [fd] pid=%d dup2(%lld, %lld) = %lld\n",
+                  current->pid, (long long)cpu->rdi, (long long)cpu->rsi, (long long)result);
+        if (syscall_num == 292) // dup3
+          fprintf(stderr, "  [fd] pid=%d dup3(%lld, %lld) = %lld\n",
+                  current->pid, (long long)cpu->rdi, (long long)cpu->rsi, (long long)result);
+        // Trace clone/fork
+        if (syscall_num == 56 || syscall_num == 57 || syscall_num == 58) {
+          const char *name = syscall_num==56?"clone":syscall_num==57?"fork":"vfork";
+          fprintf(stderr, "  [proc] pid=%d %s() = %lld\n",
+                  current->pid, name, (long long)result);
+        }
+        // Trace execve
+        if (syscall_num == 59) { // execve
+          char exec_path[256] = {0};
+          for (int i = 0; i < 255; i++) {
+            uint8_t ch;
+            if (user_get(cpu->rdi + i, ch)) break;
+            exec_path[i] = (char)ch;
+            if (ch == 0) break;
+          }
+          fprintf(stderr, "  [proc] pid=%d execve(\"%s\") = %lld\n",
+                  current->pid, exec_path, (long long)result);
+        }
+        // Trace exit
+        if (syscall_num == 231) // exit_group
+          fprintf(stderr, "  [exit] pid=%d exit_group(%lld)\n",
+                  current->pid, (long long)cpu->rdi);
+        if (syscall_num == 60) // exit
+          fprintf(stderr, "  [exit] pid=%d exit(%lld)\n",
+                  current->pid, (long long)cpu->rdi);
+        // Trace pipe
+        if (syscall_num == 22 || syscall_num == 293) {
+          int pipefd[2] = {-1, -1};
+          void *p = mem_ptr(current->mem, cpu->rdi, MEM_READ);
+          if (p) { pipefd[0] = ((int*)p)[0]; pipefd[1] = ((int*)p)[1]; }
+          fprintf(stderr, "  [fd] pid=%d %s() = %lld [%d, %d]\n",
+                  current->pid, syscall_num==22?"pipe":"pipe2", (long long)result,
+                  pipefd[0], pipefd[1]);
+        }
+      }
       cpu->rax = result;
     }
   } else if (interrupt == INT_GPF) {
@@ -522,6 +649,87 @@ void handle_interrupt(int interrupt) {
                         cpu->segfault_was_write ? MEM_WRITE : MEM_READ);
     read_wrunlock(&current->mem->lock);
     if (ptr == NULL) {
+      fprintf(stderr, "%d page fault on %#llx at ip=%#llx\n", current->pid,
+             (unsigned long long)cpu->segfault_addr, (unsigned long long)CPU_IP(cpu));
+#ifdef ISH_GUEST_64BIT
+      fprintf(stderr, "  rax=%#llx rbx=%#llx rcx=%#llx rdx=%#llx\n",
+             (unsigned long long)cpu->rax, (unsigned long long)cpu->rbx,
+             (unsigned long long)cpu->rcx, (unsigned long long)cpu->rdx);
+      fprintf(stderr, "  rsi=%#llx rdi=%#llx rbp=%#llx rsp=%#llx\n",
+             (unsigned long long)cpu->rsi, (unsigned long long)cpu->rdi,
+             (unsigned long long)cpu->rbp, (unsigned long long)cpu->rsp);
+      fprintf(stderr, "  r8=%#llx r9=%#llx r10=%#llx r11=%#llx\n",
+             (unsigned long long)cpu->r8, (unsigned long long)cpu->r9,
+             (unsigned long long)cpu->r10, (unsigned long long)cpu->r11);
+      fprintf(stderr, "  r12=%#llx r13=%#llx r14=%#llx r15=%#llx\n",
+             (unsigned long long)cpu->r12, (unsigned long long)cpu->r13,
+             (unsigned long long)cpu->r14, (unsigned long long)cpu->r15);
+      // Dump instruction bytes at fault IP
+      fprintf(stderr, "  insn bytes at ip:");
+      for (int i = 0; i < 16; i++) {
+        uint8_t b;
+        if (user_get(CPU_IP(cpu) + i, b)) break;
+        fprintf(stderr, " %02x", b);
+      }
+      fprintf(stderr, "\n");
+      // Dump stack around RSP
+      fprintf(stderr, "  stack:");
+      for (int i = 0; i < 48; i++) {
+        uint64_t val;
+        if (user_get(cpu->rsp + i*8, val)) break;
+        fprintf(stderr, " [rsp+%02x]=%#llx", i*8, (unsigned long long)val);
+        if (i % 4 == 3) fprintf(stderr, "\n       ");
+      }
+      fprintf(stderr, "\n");
+      // Guest call stack backtrace via RBP chain
+      fprintf(stderr, "  backtrace (rbp chain):\n");
+      {
+        uint64_t frame_bp = cpu->rbp;
+        for (int depth = 0; depth < 20; depth++) {
+          uint64_t ret_addr = 0;
+          uint64_t saved_bp = 0;
+          if (user_get(frame_bp + 8, ret_addr)) break;
+          if (user_get(frame_bp, saved_bp)) break;
+          fprintf(stderr, "    [%d] ret=%#llx (rbp=%#llx)\n", depth, 
+                 (unsigned long long)ret_addr, (unsigned long long)frame_bp);
+          if (saved_bp == 0 || saved_bp <= frame_bp) break;
+          frame_bp = saved_bp;
+        }
+      }
+      // Dump nearby page map around fault address
+      {
+        page_t fault_page = PAGE(cpu->segfault_addr);
+        fprintf(stderr, "  page map around fault page %#llx:\n", (unsigned long long)fault_page);
+        for (int delta = -8; delta <= 8; delta++) {
+          page_t p = fault_page + delta;
+          struct pt_entry *e = mem_pt(current->mem, p);
+          if (e != NULL) {
+            fprintf(stderr, "    page %#llx (addr %#llx): MAPPED flags=%x\n",
+                   (unsigned long long)p, (unsigned long long)(p << PAGE_BITS), e->flags);
+          } else if (delta == 0) {
+            fprintf(stderr, "    page %#llx (addr %#llx): *** UNMAPPED *** (FAULT)\n",
+                   (unsigned long long)p, (unsigned long long)(p << PAGE_BITS));
+          }
+        }
+        // Also scan for nearest mapped pages below and above
+        page_t below = fault_page - 1;
+        while (below > fault_page - 0x100 && mem_pt(current->mem, below) == NULL) below--;
+        if (mem_pt(current->mem, below) != NULL) {
+          struct pt_entry *e = mem_pt(current->mem, below);
+          fprintf(stderr, "  nearest mapped below: page %#llx (addr %#llx) flags=%x (gap=%lld pages)\n",
+                 (unsigned long long)below, (unsigned long long)(below << PAGE_BITS),
+                 e->flags, (long long)(fault_page - below));
+        }
+        page_t above = fault_page + 1;
+        while (above < fault_page + 0x100 && mem_pt(current->mem, above) == NULL) above++;
+        if (mem_pt(current->mem, above) != NULL) {
+          struct pt_entry *e = mem_pt(current->mem, above);
+          fprintf(stderr, "  nearest mapped above: page %#llx (addr %#llx) flags=%x (gap=%lld pages)\n",
+                 (unsigned long long)above, (unsigned long long)(above << PAGE_BITS),
+                 e->flags, (long long)(above - fault_page));
+        }
+      }
+#endif
       printk("%d page fault on %#llx at ip=%#llx\n", current->pid,
              (unsigned long long)cpu->segfault_addr, (unsigned long long)CPU_IP(cpu));
       struct siginfo_ info = {

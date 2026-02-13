@@ -298,6 +298,14 @@
     mov x8, x9
     gret
 
+// Merge low 16 bits of _xtmp into x8, preserving x8's upper bits.
+// Used for 16-bit CMOV (which only updates the low 16 bits of the destination).
+.gadget merge16_x8
+    mov x9, x8
+    bfi x9, _xtmp, #0, #16
+    mov _xtmp, x9
+    gret
+
 // CMOVcc gadgets - conditional move
 // Expects: _xtmp = source value, x8 = original destination value
 // If condition is true, keep _xtmp (source); if false, _xtmp = x8 (keep dst)
@@ -370,4 +378,3 @@
     mov w8, -1  // -1 as 32-bit (0xffffffff)
     str w8, [_cpu, CPU_df_offset]  // Use 32-bit store - df_offset is dword_t
     gret
-

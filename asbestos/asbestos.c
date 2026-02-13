@@ -472,3 +472,34 @@ int cpu_run_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 void cpu_poke(struct cpu_state *cpu) {
     __atomic_store_n(cpu->poked_ptr, true, __ATOMIC_SEQ_CST);
 }
+
+#ifdef ISH_GUEST_64BIT
+void debug_dump_regs(struct cpu_state *cpu, uint64_t guest_ip) {
+    fprintf(stderr, "[DEBUG] at ip=%#llx:\n", (unsigned long long)guest_ip);
+    fprintf(stderr, "  rax=%#llx rbx=%#llx rcx=%#llx rdx=%#llx\n",
+           (unsigned long long)cpu->rax, (unsigned long long)cpu->rbx,
+           (unsigned long long)cpu->rcx, (unsigned long long)cpu->rdx);
+    fprintf(stderr, "  rsi=%#llx rdi=%#llx rbp=%#llx rsp=%#llx\n",
+           (unsigned long long)cpu->rsi, (unsigned long long)cpu->rdi,
+           (unsigned long long)cpu->rbp, (unsigned long long)cpu->rsp);
+    fprintf(stderr, "  r8=%#llx r9=%#llx r10=%#llx r11=%#llx\n",
+           (unsigned long long)cpu->r8, (unsigned long long)cpu->r9,
+           (unsigned long long)cpu->r10, (unsigned long long)cpu->r11);
+    fprintf(stderr, "  r12=%#llx r13=%#llx r14=%#llx r15=%#llx\n",
+           (unsigned long long)cpu->r12, (unsigned long long)cpu->r13,
+           (unsigned long long)cpu->r14, (unsigned long long)cpu->r15);
+    // Dump stack using mmu_translate
+    fprintf(stderr, "  stack dump:\n");
+    for (int i = 0; i < 24; i++) {
+        uint64_t val = 0;
+        void *ptr = mmu_translate(cpu->mmu, cpu->rsp + i*8, MEM_READ);
+        if (ptr) {
+            memcpy(&val, ptr, 8);
+            fprintf(stderr, "    [rsp+%02x]=%#llx\n", i*8, (unsigned long long)val);
+        } else {
+            fprintf(stderr, "    [rsp+%02x]=<unmapped>\n", i*8);
+            break;
+        }
+    }
+}
+#endif

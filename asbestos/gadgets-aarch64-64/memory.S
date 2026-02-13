@@ -70,8 +70,13 @@
 
 .gadget addr_r10
     ldr _addr, [_ip]
-    ldr x10, [_cpu, CPU_r10]
-    add _addr, _addr, x10
+    // Use C helper to load r10 (workaround for ARM64 ldr crash at offset 0x60)
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r10_simple)
+    mov x19, x0
+    restore_c
+    add _addr, _addr, x19
     gret 1
 
 .gadget addr_r11
@@ -88,8 +93,13 @@
 
 .gadget addr_r13
     ldr _addr, [_ip]
-    ldr x10, [_cpu, CPU_r13]
-    add _addr, _addr, x10
+    // Use C helper to load r13 (workaround for ARM64 ldr crash at offset 0x78)
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r13_simple)
+    mov x19, x0
+    restore_c
+    add _addr, _addr, x19
     gret 1
 
 .gadget addr_r14
@@ -166,10 +176,74 @@ NAME(si_gadgets):
 .endm
 si_r8_r15 8, CPU_r8
 si_r8_r15 9, CPU_r9
-si_r8_r15 10, CPU_r10
+// si_r10 gadgets: use C helper workaround for r10 load (offset 0x60 crash)
+.gadget si_r10_1
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r10_simple)
+    mov x19, x0
+    restore_c
+    add _addr, _addr, x19
+    gret
+.gadget si_r10_2
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r10_simple)
+    mov x19, x0
+    restore_c
+    add _addr, _addr, x19, lsl 1
+    gret
+.gadget si_r10_4
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r10_simple)
+    mov x19, x0
+    restore_c
+    add _addr, _addr, x19, lsl 2
+    gret
+.gadget si_r10_8
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r10_simple)
+    mov x19, x0
+    restore_c
+    add _addr, _addr, x19, lsl 3
+    gret
 si_r8_r15 11, CPU_r11
 si_r8_r15 12, CPU_r12
-si_r8_r15 13, CPU_r13
+// si_r13 gadgets: use C helper workaround for r13 load (offset 0x78 crash)
+.gadget si_r13_1
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r13_simple)
+    mov x19, x0
+    restore_c
+    add _addr, _addr, x19
+    gret
+.gadget si_r13_2
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r13_simple)
+    mov x19, x0
+    restore_c
+    add _addr, _addr, x19, lsl 1
+    gret
+.gadget si_r13_4
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r13_simple)
+    mov x19, x0
+    restore_c
+    add _addr, _addr, x19, lsl 2
+    gret
+.gadget si_r13_8
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_load_r13_simple)
+    mov x19, x0
+    restore_c
+    add _addr, _addr, x19, lsl 3
+    gret
 si_r8_r15 14, CPU_r14
 si_r8_r15 15, CPU_r15
 .purgem si_r8_r15

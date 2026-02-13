@@ -99,6 +99,7 @@ static addr_t mmap_common(addr_t addr, dword_t len, dword_t prot, dword_t flags,
     write_wrlock(&current->mem->lock);
     addr_t res = do_mmap(addr, len, prot, flags, fd_no, offset);
     write_wrunlock(&current->mem->lock);
+    // Debug: mmap tracing disabled for cleaner output
     return res;
 }
 
@@ -247,5 +248,6 @@ addr_t sys_brk(addr_t new_brk) {
 out:;
     addr_t brk = mm->brk;
     write_wrunlock(&mm->mem.lock);
+    // Debug: brk tracing disabled for cleaner output
     return brk;
 }

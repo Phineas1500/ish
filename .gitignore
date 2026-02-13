@@ -22,3 +22,6 @@ alpine/
 alpine64/
 .cache/
 alpine-*
+
+CLAUDE.md
+AGENTS.md

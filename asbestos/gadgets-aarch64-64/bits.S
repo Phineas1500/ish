@@ -134,7 +134,39 @@
     negs _tmp, _tmp
     setf_oc
     setf_zsp w
-    and _xtmp, _xtmp, 0xffffffff  // Zero-extend to 64-bit
+    gret
+
+// 16-bit NEG - two's complement negation with 16-bit flag semantics
+.gadget neg16
+    and _xtmp, _xtmp, 0xffff
+    // OF = 1 only if source is 0x8000 (negating INT16_MIN overflows)
+    mov w10, 0x8000
+    cmp _tmp, w10
+    cset w10, eq
+    strb w10, [_cpu, CPU_of]
+    // Negate with flags for CF
+    negs _tmp, _tmp
+    setf_c
+    // Mask result to 16 bits
+    and _xtmp, _xtmp, 0xffff
+    // ZF/SF/PF based on 16-bit result
+    setf_zsp h
+    gret
+
+// 8-bit NEG - two's complement negation with 8-bit flag semantics
+.gadget neg8
+    and _xtmp, _xtmp, 0xff
+    // OF = 1 only if source is 0x80 (negating INT8_MIN overflows)
+    cmp _tmp, 0x80
+    cset w10, eq
+    strb w10, [_cpu, CPU_of]
+    // Negate with flags for CF
+    negs _tmp, _tmp
+    setf_c
+    // Mask result to 8 bits
+    and _xtmp, _xtmp, 0xff
+    // ZF/SF/PF based on 8-bit result
+    setf_zsp b
     gret
 
 // Placeholder gadget arrays to satisfy linker

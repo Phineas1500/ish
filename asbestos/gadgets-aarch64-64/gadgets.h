@@ -177,14 +177,33 @@ back_write_done_\id :
 .endm
 
 // Flag setting macros
+// IMPORTANT: ARM64 carry flag semantics differ between ADD and SUB:
+// - ADD: ARM64 C=1 means carry (same as x86 CF=1). Use "cs" (carry set).
+// - SUB/CMP: ARM64 C=0 means borrow (x86 CF=1). Use "cc" (carry clear).
+// The 32-bit gadgets handle this correctly in do_add macro (math.h).
+// For 64-bit, we need separate macros for ADD and SUB operations.
+
+// setf_c for SUB/CMP operations (ARM64 C inverted from x86 CF)
 .macro setf_c
     cset w10, cc
     strb w10, [_cpu, CPU_cf]
 .endm
+// setf_c for ADD operations (ARM64 C same as x86 CF)
+.macro setf_c_add
+    cset w10, cs
+    strb w10, [_cpu, CPU_cf]
+.endm
+// setf_oc for SUB/CMP operations
 .macro setf_oc
     cset w10, vs
     strb w10, [_cpu, CPU_of]
     setf_c
+.endm
+// setf_oc for ADD operations
+.macro setf_oc_add
+    cset w10, vs
+    strb w10, [_cpu, CPU_of]
+    setf_c_add
 .endm
 .macro setf_a src, dst
     str \src, [_cpu, CPU_op1]
@@ -207,9 +226,11 @@ back_write_done_\id :
 .endm
 .macro setf_zsp s, val=_xtmp
     .ifnb \s
-        sxt\s \val, \val
+        sxt\s x9, \val
+        str x9, [_cpu, CPU_res]
+    .else
+        str \val, [_cpu, CPU_res]
     .endif
-    str \val, [_cpu, CPU_res]
     ldr w10, [_cpu, CPU_flags_res]
     orr w10, w10, (ZF_RES|SF_RES|PF_RES)
     str w10, [_cpu, CPU_flags_res]
