@@ -79,7 +79,11 @@ dword_t sys_readv(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count);
 dword_t sys_write(fd_t fd_no, addr_t buf_addr, dword_t size);
 dword_t sys_writev(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count);
 dword_t sys__llseek(fd_t f, dword_t off_high, dword_t off_low, addr_t res_addr, dword_t whence);
+#ifdef ISH_GUEST_64BIT
+sqword_t sys_lseek(fd_t f, sqword_t off, dword_t whence);
+#else
 dword_t sys_lseek(fd_t f, dword_t off, dword_t whence);
+#endif
 dword_t sys_pread(fd_t f, addr_t buf_addr, dword_t buf_size, off_t_ off);
 dword_t sys_pwrite(fd_t f, addr_t buf_addr, dword_t size, off_t_ off);
 dword_t sys_ioctl(fd_t f, dword_t cmd, dword_t arg);
@@ -144,9 +148,15 @@ dword_t sys_fchown32(fd_t f, dword_t owner, dword_t group);
 dword_t sys_fchownat(fd_t at_f, addr_t path_addr, dword_t owner, dword_t group, int flags);
 dword_t sys_chown32(addr_t path_addr, uid_t_ owner, uid_t_ group);
 dword_t sys_lchown(addr_t path_addr, uid_t_ owner, uid_t_ group);
+#ifdef ISH_GUEST_64BIT
+dword_t sys_truncate64(addr_t path_addr, qword_t size);
+dword_t sys_ftruncate64(fd_t f, qword_t size);
+dword_t sys_fallocate(fd_t f, dword_t mode, qword_t offset, qword_t len);
+#else
 dword_t sys_truncate64(addr_t path_addr, dword_t size_low, dword_t size_high);
 dword_t sys_ftruncate64(fd_t f, dword_t size_low, dword_t size_high);
 dword_t sys_fallocate(fd_t f, dword_t mode, dword_t offset_low, dword_t offset_high, dword_t len_low, dword_t len_high);
+#endif
 dword_t sys_mkdir(addr_t path_addr, mode_t_ mode);
 dword_t sys_mkdirat(fd_t at_f, addr_t path_addr, mode_t_ mode);
 dword_t sys_utimensat(fd_t at_f, addr_t path_addr, addr_t times_addr, dword_t flags);

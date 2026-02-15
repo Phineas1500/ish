@@ -8,16 +8,14 @@
     gret
 
 // CPUID - handled by helper
+// Must save_regs first so helper can read cpu->rax (leaf number) from memory
 .gadget cpuid
+    save_regs
     save_c
     mov x0, _cpu
     bl NAME(helper_cpuid)
     restore_c
-    // Reload registers that might have changed
-    ldr rax, [_cpu, CPU_rax]
-    ldr rbx, [_cpu, CPU_rbx]
-    ldr rcx, [_cpu, CPU_rcx]
-    ldr rdx, [_cpu, CPU_rdx]
+    load_regs
     gret
 
 // CMPXCHG [mem], reg - Compare and exchange

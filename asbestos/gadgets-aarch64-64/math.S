@@ -209,6 +209,15 @@
     bfi _xtmp, x8, #0, #16
     gret
 
+// XCHG AL, AH: swap bits [7:0] and bits [15:8] of _xtmp, preserve upper bits
+// Used for xchg ah, al / xchg al, ah (e.g., base64 byte-order conversion)
+.gadget xchg_al_ah
+    ubfx x9, _xtmp, 0, 8     // x9 = bits [7:0] (AL)
+    ubfx x10, _xtmp, 8, 8    // x10 = bits [15:8] (AH)
+    bfi _xtmp, x10, 0, 8     // _xtmp[7:0] = old AH
+    bfi _xtmp, x9, 8, 8      // _xtmp[15:8] = old AL
+    gret
+
 // ============================================================
 // ADD gadgets
 // ============================================================
@@ -3037,20 +3046,12 @@ NAME(imul32_r8_r15_gadgets):
 // _addr = memory address (GUEST address)
 // [_ip] = orig_ip (for segfault handler), [_ip+8] = XMM register index
 .gadget movaps_load
-    // Save guest address for second half (read_prep modifies _addr to host addr)
-    str _addr, [_cpu, LOCAL_value_addr]
-
-    // Load first 64 bits from memory (low half)
-    read_prep 64, movaps_load1
+    // Single 128-bit read_prep handles cross-page atomically
+    // (two separate read_prep 64 calls had a bug: crosspage_load for the
+    // second half would clobber the first half's data in LOCAL_value)
+    read_prep 128, movaps_load
     ldr x8, [_addr]            // Load low 64 bits
-    str x8, [_cpu, LOCAL_value]     // Temporarily store low
-
-    // Load second 64 bits - use saved guest address + 8
-    ldr _addr, [_cpu, LOCAL_value_addr]
-    add _addr, _addr, 8        // Second half is at guest_addr + 8
-    read_prep 64, movaps_load2
-    ldr x9, [_addr]            // Load high 64 bits
-    ldr x8, [_cpu, LOCAL_value]     // Restore low
+    ldr x9, [_addr, 8]         // Load high 64 bits
 
     // Store to XMM register
     ldr x10, [_ip, 8]          // XMM register index (after orig_ip)
@@ -3060,44 +3061,23 @@ NAME(imul32_r8_r15_gadgets):
     str x8, [x10]              // Store low 64 bits
     str x9, [x10, 8]           // Store high 64 bits
     gret 2
-    read_bullshit 64, movaps_load1
-    read_bullshit 64, movaps_load2
+    read_bullshit 128, movaps_load
 
 // MOVAPS/MOVUPS [mem], xmm - Store 128-bit from XMM to memory
 // _addr = memory address (GUEST address)
 // [_ip] = orig_ip (for segfault handler), [_ip+8] = XMM register index
 .gadget movaps_store
-    // Save guest address for second half (write_prep modifies _addr to host addr)
-    str _addr, [_cpu, LOCAL_value_addr]
-
-    // Load from XMM register
-    ldr x10, [_ip, 8]          // XMM register index (after orig_ip)
-    lsl x10, x10, 4            // Multiply by 16
-    add x10, x10, CPU_xmm
-    add x10, _cpu, x10         // x10 = &xmm[n]
-    ldr x8, [x10]              // Load low 64 bits
-    ldr x9, [x10, 8]           // Load high 64 bits
-
-    // Store to memory (16 bytes)
-    str x8, [_cpu, LOCAL_value]     // Temporarily store low
-    str x9, [_cpu, LOCAL_value+8]   // Temporarily store high
-
-    // First 64-bit store (low half)
-    write_prep 64, movaps_store1
-    ldr x8, [_cpu, LOCAL_value]     // Restore low
-    str x8, [_addr]            // Store low 64 bits
-    write_done 64, movaps_store1
-
-    // Second 64-bit store (high half) - use saved guest address + 8
-    ldr _addr, [_cpu, LOCAL_value_addr]
-    add _addr, _addr, 8        // Second half is at guest_addr + 8
-    write_prep 64, movaps_store2
-    ldr x9, [_cpu, LOCAL_value+8]   // Restore high
-    str x9, [_addr]            // Store high 64 bits
-    write_done 64, movaps_store2
+    // Single 128-bit write_prep handles cross-page atomically
+    write_prep 128, movaps_store
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip, 8]           // XMM register index (after orig_ip)
+    mov x2, _addr              // host memory address (or LOCAL_value for cross-page)
+    bl NAME(helper_movdqu_store)
+    restore_c
+    write_done 128, movaps_store
     gret 2
-    write_bullshit 64, movaps_store1
-    write_bullshit 64, movaps_store2
+    write_bullshit 128, movaps_store
 
 // MOVAPS xmm, xmm - Copy 128 bits between XMM registers
 // _xtmp = source XMM index, [_ip] = destination XMM index
@@ -3122,20 +3102,10 @@ NAME(imul32_r8_r15_gadgets):
 // _addr = GUEST memory address
 // [_ip] = orig_ip, [_ip+8] = destination XMM index
 .gadget pxor_xmm_mem
-    // Save guest address for second half
-    str _addr, [_cpu, LOCAL_value_addr]
-
-    // Load first 64 bits from memory (low half)
-    read_prep 64, pxor_mem1
-    ldr x8, [_addr]            // Load low 64 bits
-    str x8, [_cpu, LOCAL_value]     // Temporarily store low
-
-    // Load second 64 bits - use saved guest address + 8
-    ldr _addr, [_cpu, LOCAL_value_addr]
-    add _addr, _addr, 8        // Second half is at guest_addr + 8
-    read_prep 64, pxor_mem2
-    ldr x13, [_addr]           // Load high 64 bits (mem)
-    ldr x12, [_cpu, LOCAL_value]    // Restore low (mem)
+    // Single 128-bit read_prep handles cross-page atomically
+    read_prep 128, pxor_mem
+    ldr x12, [_addr]           // Load low 64 bits (mem)
+    ldr x13, [_addr, 8]        // Load high 64 bits (mem)
 
     // Load destination XMM
     ldr x10, [_ip, 8]          // XMM register index (after orig_ip)
@@ -3153,8 +3123,7 @@ NAME(imul32_r8_r15_gadgets):
     str x8, [x10]              // Store low
     str x9, [x10, 8]           // Store high
     gret 2
-    read_bullshit 64, pxor_mem1
-    read_bullshit 64, pxor_mem2
+    read_bullshit 128, pxor_mem
 
 // PXOR xmm, xmm - XOR 128 bits between XMM registers
 // Used commonly as PXOR xmm, xmm to zero a register
@@ -3353,6 +3322,28 @@ sse_xmm_mem_op psubd
 sse_xmm_mem_op pcmpeqd
 sse_xmm_mem_op punpckldq
 sse_xmm_mem_op punpckhqdq
+
+// PSRLDQ xmm, imm8 - Packed Shift Right Logical Double Quadword (byte shift)
+// [_ip] = XMM index, [_ip+8] = imm8
+.gadget psrldq
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // XMM index
+    ldr x2, [_ip, 8]           // imm8
+    bl NAME(helper_psrldq)
+    restore_c
+    gret 2
+
+// PSLLDQ xmm, imm8 - Packed Shift Left Logical Double Quadword (byte shift)
+// [_ip] = XMM index, [_ip+8] = imm8
+.gadget pslldq
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // XMM index
+    ldr x2, [_ip, 8]           // imm8
+    bl NAME(helper_pslldq)
+    restore_c
+    gret 2
 
 // PSRLQ xmm, imm8 - Packed Shift Right Logical Quadword
 // [_ip] = XMM index, [_ip+8] = imm8

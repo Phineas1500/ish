@@ -99,7 +99,8 @@ static addr_t mmap_common(addr_t addr, dword_t len, dword_t prot, dword_t flags,
     write_wrlock(&current->mem->lock);
     addr_t res = do_mmap(addr, len, prot, flags, fd_no, offset);
     write_wrunlock(&current->mem->lock);
-    // Debug: mmap tracing disabled for cleaner output
+    if (fd_no >= 0 && (prot & P_EXEC))
+        fprintf(stderr, "  [mmap] pid=%d mmap(fd=%d, len=0x%x, prot=%d) = 0x%llx\n", current->pid, fd_no, len, prot, (unsigned long long)res);
     return res;
 }
 

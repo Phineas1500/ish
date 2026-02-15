@@ -23,6 +23,7 @@ static inline void do_cpuid(dword_t *eax, dword_t *ebx, dword_t *ecx, dword_t *e
             *ecx = 0
 #ifdef ISH_GUEST_64BIT
                 | (1 << 0) // SSE3
+                | (1 << 9) // SSSE3
 #endif
                 ;
             *edx = (1 << 0) // fpu

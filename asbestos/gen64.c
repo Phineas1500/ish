@@ -475,6 +475,8 @@ extern void gadget_sha256msg2(void);
 extern void gadget_pmovmskb(void);
 extern void gadget_psrlq(void);
 extern void gadget_psllq(void);
+extern void gadget_psrldq(void);
+extern void gadget_pslldq(void);
 // SSE CVTSI2SD - Convert Integer to Scalar Double
 extern void gadget_cvtsi2sd_reg64(void); // cvtsi2sd xmm, r64
 extern void gadget_cvtsi2sd_reg32(void); // cvtsi2sd xmm, r32
@@ -639,6 +641,7 @@ extern void gadget_cmpxchg32_mem(void);
 // XCHG gadgets
 extern void gadget_xchg64_mem(void);
 extern void gadget_xchg32_mem(void);
+extern void gadget_xchg_al_ah(void);
 
 // ADC imm gadgets (register versions declared earlier)
 extern void gadget_adc64_imm(void);
@@ -1391,6 +1394,19 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 #define fake_ip (state->ip | (1ul << 63))
 
   bool end_block = false;
+
+  // Trace points (empty array = disabled, add IPs here when debugging)
+  {
+    static const uint64_t trace_ips[] = {
+    };
+    for (int i = 0; i < (int)(sizeof(trace_ips)/sizeof(trace_ips[0])); i++) {
+      if (state->orig_ip == trace_ips[i]) {
+        GEN(gadget_trace_regs);
+        GEN(state->orig_ip);
+        break;
+      }
+    }
+  }
 
   // Generate code based on mnemonic
   switch (inst.mnemonic) {
@@ -4988,9 +5004,26 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
   case ZYDIS_MNEMONIC_XCHG:
     // XCHG - Exchange register with register or memory
     if (is_gpr(inst.operands[0].type) && is_gpr(inst.operands[1].type)) {
-      // XCHG reg1, reg2 - Exchange two registers
-      // Load reg1 into _xtmp, save to temp, load reg2, store to reg1, restore
-      // temp, store to reg2
+      // Special case: XCHG AL, AH (or AH, AL) - 8-bit swap within same register
+      // Both high-byte and low-byte map to the same parent register (e.g., arg64_rax)
+      if (inst.operands[0].size == size64_8 &&
+          inst.operands[0].type == inst.operands[1].type) {
+        bool op0_high = zydis_is_high_byte_reg(
+            inst.raw_operands[0].reg.value);
+        bool op1_high = zydis_is_high_byte_reg(
+            inst.raw_operands[1].reg.value);
+        if (op0_high != op1_high) {
+          // XCHG low_byte, high_byte within same register
+          gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
+          if (load) GEN(load);
+          GEN(gadget_xchg_al_ah);
+          gadget_t store = get_store64_reg_gadget(inst.operands[0].type);
+          if (store) GEN(store);
+        }
+        // If both same byte position (xchg al, al), it's a NOP - do nothing
+        break;
+      }
+      // XCHG reg1, reg2 - Exchange two full registers
       gadget_t load1 = get_load64_reg_gadget(inst.operands[0].type);
       gadget_t load2 = get_load64_reg_gadget(inst.operands[1].type);
       gadget_t store1 = get_store64_reg_gadget(inst.operands[0].type);
@@ -6411,7 +6444,9 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
   case ZYDIS_MNEMONIC_PSLLQ:
   case ZYDIS_MNEMONIC_PSRLD:
   case ZYDIS_MNEMONIC_PSLLD:
-    // PSRLQ/PSLLQ/PSRLD/PSLLD xmm, imm8 - Packed shift by immediate
+  case ZYDIS_MNEMONIC_PSRLDQ:
+  case ZYDIS_MNEMONIC_PSLLDQ:
+    // Packed shift by immediate
     if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type) &&
         inst.operands[1].type == arg64_imm) {
       int xmm_idx = get_xmm_index(inst.operands[0].type);
@@ -6421,6 +6456,8 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         case ZYDIS_MNEMONIC_PSLLQ: gadget = gadget_psllq; break;
         case ZYDIS_MNEMONIC_PSRLD: gadget = gadget_psrld; break;
         case ZYDIS_MNEMONIC_PSLLD: gadget = gadget_pslld; break;
+        case ZYDIS_MNEMONIC_PSRLDQ: gadget = gadget_psrldq; break;
+        case ZYDIS_MNEMONIC_PSLLDQ: gadget = gadget_pslldq; break;
         default: gadget = gadget_psrlq; break;
       }
       GEN(gadget);

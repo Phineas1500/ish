@@ -1,8 +1,35 @@
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
+#include <stdint.h>
 #include "emu/cpu.h"
 #include "emu/mmu.h"
+
+// Debug: verify MUL64 results
+void helper_verify_mul64(uint64_t a, uint64_t b, uint64_t lo, uint64_t hi) {
+    __uint128_t expected = (__uint128_t)a * (__uint128_t)b;
+    uint64_t exp_lo = (uint64_t)expected;
+    uint64_t exp_hi = (uint64_t)(expected >> 64);
+    if (lo != exp_lo || hi != exp_hi) {
+        fprintf(stderr, "MUL64 WRONG: %#llx * %#llx = %#llx:%#llx (expected %#llx:%#llx)\n",
+                (unsigned long long)a, (unsigned long long)b,
+                (unsigned long long)hi, (unsigned long long)lo,
+                (unsigned long long)exp_hi, (unsigned long long)exp_lo);
+    }
+}
+
+// Debug: verify ADC64 results
+void helper_verify_adc64(uint64_t a, uint64_t b, uint64_t cf_in, uint64_t result, uint64_t cf_out) {
+    __uint128_t expected = (__uint128_t)a + (__uint128_t)b + (__uint128_t)cf_in;
+    uint64_t exp_result = (uint64_t)expected;
+    uint64_t exp_cf = (uint64_t)(expected >> 64);
+    if (result != exp_result || cf_out != exp_cf) {
+        fprintf(stderr, "ADC64 WRONG: %#llx + %#llx + %llu = %#llx cf=%llu (expected %#llx cf=%llu)\n",
+                (unsigned long long)a, (unsigned long long)b, (unsigned long long)cf_in,
+                (unsigned long long)result, (unsigned long long)cf_out,
+                (unsigned long long)exp_result, (unsigned long long)exp_cf);
+    }
+}
 #include "emu/cpuid.h"
 
 void helper_cpuid(
@@ -17,7 +44,10 @@ void helper_cpuid(
     dword_t b32 = (dword_t)cpu->rbx;
     dword_t c32 = (dword_t)cpu->rcx;
     dword_t d32 = (dword_t)cpu->rdx;
+    dword_t input_leaf = a32;
     do_cpuid(&a32, &b32, &c32, &d32);
+    fprintf(stderr, "[CPUID] leaf=%u: eax=%#x ebx=%#x ecx=%#x edx=%#x\n",
+           input_leaf, a32, b32, c32, d32);
     cpu->rax = a32;
     cpu->rbx = b32;
     cpu->rcx = c32;
@@ -569,6 +599,30 @@ void helper_psllq(struct cpu_state *cpu, int xmm_idx, uint8_t imm) {
     memcpy(&cpu->xmm[xmm_idx], qw, 16);
 }
 
+// PSRLDQ xmm, imm8 - Packed Shift Right Logical Double Quadword (byte shift)
+void helper_psrldq(struct cpu_state *cpu, int xmm_idx, uint8_t imm) {
+    uint8_t src[16], dst[16];
+    memcpy(src, &cpu->xmm[xmm_idx], 16);
+    memset(dst, 0, 16);
+    if (imm < 16) {
+        for (int i = 0; i < 16 - imm; i++)
+            dst[i] = src[i + imm];
+    }
+    memcpy(&cpu->xmm[xmm_idx], dst, 16);
+}
+
+// PSLLDQ xmm, imm8 - Packed Shift Left Logical Double Quadword (byte shift)
+void helper_pslldq(struct cpu_state *cpu, int xmm_idx, uint8_t imm) {
+    uint8_t src[16], dst[16];
+    memcpy(src, &cpu->xmm[xmm_idx], 16);
+    memset(dst, 0, 16);
+    if (imm < 16) {
+        for (int i = 0; i < 16 - imm; i++)
+            dst[i + imm] = src[i];
+    }
+    memcpy(&cpu->xmm[xmm_idx], dst, 16);
+}
+
 // ORPS/ORPD xmm, xmm - Bitwise OR of packed values (128-bit OR)
 void helper_orps(struct cpu_state *cpu, int dst_idx, int src_idx) {
     uint64_t dst[2], src[2];
@@ -915,408 +969,503 @@ static void dump_hex(const char *label, uint8_t *buf, int len) {
 }
 
 void helper_trace_regs(struct cpu_state *cpu, uint64_t guest_ip) {
-    uint64_t lib_base = 0x7effffb2f000ULL;
-    uint64_t offset = guest_ip - lib_base;
+    // APK signature verification tracing
+    // libapk.so.2.14.0 base address (from mmap log)
+    uint64_t apk_base = 0x7effffa41000ULL;  // mmap_text(0x7effffa4a000) - text_vaddr(0x9000)
+    uint64_t offset = guest_ip - apk_base;
 
-    // x25519_scalar_mult entry: rdi=out, rsi=point, rdx=scalar
-    if (offset == 0xdb636ULL) {
-        fprintf(stderr, "X25519 ENTRY: out=%#llx point=%#llx scalar=%#llx\n",
-               (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi,
-               (unsigned long long)cpu->rdx);
-        void *h_point = mmu_translate(cpu->mmu, (addr_t)cpu->rsi, MEM_READ);
-        void *h_scalar = mmu_translate(cpu->mmu, (addr_t)cpu->rdx, MEM_READ);
-        if (h_point) dump_hex("  POINT", (uint8_t*)h_point, 32);
-        if (h_scalar) dump_hex("  SCALAR", (uint8_t*)h_scalar, 32);
+    // Log ALL trace hits for debugging
+    fprintf(stderr, "[APK-TRACE] ip=%#llx offset=%#llx\n",
+           (unsigned long long)guest_ip, (unsigned long long)offset);
+
+    // mpart_cb entry (0x10011)
+    // At entry: rdi=sign_ctx (saved to rbx), esi=part, rcx=data.ptr, edx=data.len
+    if (offset == 0x10011ULL) {
+        uint32_t part = (uint32_t)(cpu->rsi & 0xFFFFFFFF);
+        // Read flags byte from sign_ctx+0x14 (rdi points to sign_ctx at entry)
+        uint64_t sctx = cpu->rdi;
+        void *flags_ptr = mmu_translate(cpu->mmu, (addr_t)(sctx + 0x14), MEM_READ);
+        uint8_t flags = flags_ptr ? *(uint8_t*)flags_ptr : 0xFF;
+        void *algo_ptr = mmu_translate(cpu->mmu, (addr_t)(sctx + 0x04), MEM_READ);
+        uint32_t algo = algo_ptr ? *(uint32_t*)algo_ptr : 0;
+        void *action_ptr = mmu_translate(cpu->mmu, (addr_t)(sctx + 0x00), MEM_READ);
+        uint32_t action = action_ptr ? *(uint32_t*)action_ptr : 0;
+        const char *part_name = (part == 1) ? "DATA" : (part == 2) ? "BOUNDARY" : (part == 3) ? "END" : "?";
+        fprintf(stderr, "[APK] mpart_cb: part=%s(%d) flags=0x%02x algo=%d action=%d data.len=%u sctx=%#llx\n",
+               part_name, part, flags, algo, action,
+               (uint32_t)(cpu->rdx & 0xFFFFFFFF),
+               (unsigned long long)sctx);
     }
 
-    // fe_frombytes combining code start (0xdbc18: mov rdi, r10)
-    // At this point: r10=load_7(s+0), rsi=load_6(s+7)<<5, r8=load_7(s+13)*4,
-    //                r9=load_6(s+20)<<7, rax=load_6(s+26)
-    if (offset == 0xdbc18ULL) {
-        fprintf(stderr, "FE_FROMBYTES at 0xdbc18:\n");
-        // Dump point data bytes from r14
-        void *point_host = mmu_translate(cpu->mmu, (addr_t)cpu->r14, MEM_READ);
-        if (point_host) {
-            uint8_t *s = (uint8_t *)point_host;
-            dump_hex("  POINT_DATA", s, 32);
-            // Compute expected register values from actual point data
-            // load_7_bytes(s+0): edx=s[4], eax=s[5], ecx=*(uint32_t*)(s)
-            //   rax = (s[6]<<48) | (s[5]<<40) | (s[4]<<32) | *(uint32_t*)(s)
-            uint64_t exp_r10 = ((uint64_t)s[6] << 48) | ((uint64_t)s[5] << 40) |
-                               ((uint64_t)s[4] << 32) | *(uint32_t*)(s);
-            // load_6_bytes(s+7): eax=s[11], edx=s[12], ecx=*(uint32_t*)(s+7)
-            //   rax = (s[12]<<40) | (s[11]<<32) | *(uint32_t*)(s+7), then <<5
-            uint64_t exp_rsi = (((uint64_t)s[12] << 40) | ((uint64_t)s[11] << 32) |
-                                *(uint32_t*)(s+7)) << 5;
-            // load_7_bytes(s+13) * 4
-            uint64_t load7_13 = ((uint64_t)s[19] << 48) | ((uint64_t)s[18] << 40) |
-                                ((uint64_t)s[17] << 32) | *(uint32_t*)(s+13);
-            uint64_t exp_r8 = load7_13 * 4;
-            // load_6_bytes(s+20) << 7
-            uint64_t exp_r9 = (((uint64_t)s[25] << 40) | ((uint64_t)s[24] << 32) |
-                               *(uint32_t*)(s+20)) << 7;
-            // load_6_bytes(s+26)
-            uint64_t exp_rax = ((uint64_t)s[31] << 40) | ((uint64_t)s[30] << 32) |
-                               *(uint32_t*)(s+26);
-            fprintf(stderr, "  r10 = %#018llx  expect %#018llx  %s\n",
-                   (unsigned long long)cpu->r10, (unsigned long long)exp_r10,
-                   cpu->r10 == exp_r10 ? "OK" : "MISMATCH!");
-            fprintf(stderr, "  rsi = %#018llx  expect %#018llx  %s\n",
-                   (unsigned long long)cpu->rsi, (unsigned long long)exp_rsi,
-                   cpu->rsi == exp_rsi ? "OK" : "MISMATCH!");
-            fprintf(stderr, "  r8  = %#018llx  expect %#018llx  %s\n",
-                   (unsigned long long)cpu->r8, (unsigned long long)exp_r8,
-                   cpu->r8 == exp_r8 ? "OK" : "MISMATCH!");
-            fprintf(stderr, "  r9  = %#018llx  expect %#018llx  %s\n",
-                   (unsigned long long)cpu->r9, (unsigned long long)exp_r9,
-                   cpu->r9 == exp_r9 ? "OK" : "MISMATCH!");
-            fprintf(stderr, "  rax = %#018llx  expect %#018llx  %s\n",
-                   (unsigned long long)cpu->rax, (unsigned long long)exp_rax,
-                   cpu->rax == exp_rax ? "OK" : "MISMATCH!");
+    // -129 ("BAD signature") return at 0x10059
+    if (offset == 0x10059ULL) {
+        fprintf(stderr, "[APK] *** BAD SIGNATURE (-129) RETURN at 0x10059 ***\n");
+        // rbx = sign_ctx at this point
+        uint64_t sctx = cpu->rbx;
+        void *flags_ptr = mmu_translate(cpu->mmu, (addr_t)(sctx + 0x14), MEM_READ);
+        uint8_t flags = flags_ptr ? *(uint8_t*)flags_ptr : 0xFF;
+        void *algo_ptr = mmu_translate(cpu->mmu, (addr_t)(sctx + 0x04), MEM_READ);
+        uint32_t algo = algo_ptr ? *(uint32_t*)algo_ptr : 0;
+        fprintf(stderr, "[APK]   sctx=%#llx flags=0x%02x algo=%d ebp(part)=%d\n",
+               (unsigned long long)sctx, flags, algo,
+               (int32_t)(cpu->rbp & 0xFFFFFFFF));
+    }
+
+    // First memcmp (data hash check) at 0x100eb
+    // rdi=computed, rsi=expected(sctx+0x15), rdx=length
+    if (offset == 0x100ebULL) {
+        int len = (int)(cpu->rdx & 0xFF);
+        if (len > 64) len = 64;
+        fprintf(stderr, "[APK] memcmp#1 (data hash): computed=%#llx expected=%#llx len=%d\n",
+               (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi, len);
+        // Read hash bytes directly from sctx (rbx=sctx)
+        uint64_t sctx = cpu->rbx;
+        fprintf(stderr, "[APK]   sctx=%#llx rbx=%#llx rdi=%#llx rbp=%#llx\n",
+               (unsigned long long)sctx, (unsigned long long)cpu->rbx,
+               (unsigned long long)cpu->rdi, (unsigned long long)cpu->rbp);
+        // Read expected hash from sctx+0x15
+        fprintf(stderr, "[APK]   EXPECTED(sctx+0x15): ");
+        for (int i = 0; i < len; i++) {
+            void *bp = mmu_translate(cpu->mmu, (addr_t)(sctx + 0x15 + i), MEM_READ);
+            if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+            else { fprintf(stderr, "??"); }
         }
-        fprintf(stderr, "  r14 = %#018llx  rdi = %#018llx\n",
-                (unsigned long long)cpu->r14, (unsigned long long)cpu->rdi);
-    }
-
-    // After x25519_scalar_mult returns: rbx = output buffer
-    if (offset == 0xdea36ULL) {
-        void *host_out = mmu_translate(cpu->mmu, (addr_t)cpu->rbx, MEM_READ);
-        if (host_out) {
-            dump_hex("X25519 OUTPUT", (uint8_t*)host_out, 32);
+        fprintf(stderr, "\n");
+        // Read computed hash from rdi
+        fprintf(stderr, "[APK]   COMPUTED(rdi): ");
+        for (int i = 0; i < len; i++) {
+            void *bp = mmu_translate(cpu->mmu, (addr_t)(cpu->rdi + i), MEM_READ);
+            if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+            else { fprintf(stderr, "??"); }
         }
-        fprintf(stderr, "  rax=%#llx (return value)\n", (unsigned long long)cpu->rax);
+        fprintf(stderr, "\n");
     }
 
-    // Montgomery ladder loop head: dump bit index, bit value, swap flag, field elements
-    if (offset == 0xdbd13ULL) {
-        static int ladder_iter = 0;
-        // At this point: eax = previous_bit (just loaded from [rsp+0x1c])
-        //                ebp = bit counter (254 down to 0)
-        // Field elements on stack: x2 at rsp+0x48, z2 at rsp+0x70, x3 at rsp+0x98, z3 at rsp+0xC0
-        uint64_t rsp_val = cpu->rsp;
-        int32_t bit_index = (int32_t)(cpu->rbp & 0xFFFFFFFF);  // ebp
-        uint32_t prev_bit = (uint32_t)(cpu->rax & 0x1);
+    // Second memcmp (checksum check) at 0x1021c
+    // rdi=computed(r12), rsi=expected(sctx+0x55), rdx=length(from 0x69)
+    if (offset == 0x1021cULL) {
+        int len = (int)(cpu->rdx & 0xFF);
+        if (len > 64) len = 64;
+        fprintf(stderr, "[APK] memcmp#2 (checksum): computed=%#llx expected=%#llx len=%d\n",
+               (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi, len);
+        uint64_t sctx = cpu->rbx;
+        // Read expected hash from sctx+0x55
+        fprintf(stderr, "[APK]   EXPECTED(sctx+0x55): ");
+        for (int i = 0; i < len; i++) {
+            void *bp = mmu_translate(cpu->mmu, (addr_t)(sctx + 0x55 + i), MEM_READ);
+            if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+            else { fprintf(stderr, "??"); }
+        }
+        fprintf(stderr, "\n");
+        // Read computed hash from rdi
+        fprintf(stderr, "[APK]   COMPUTED(rdi): ");
+        for (int i = 0; i < len; i++) {
+            void *bp = mmu_translate(cpu->mmu, (addr_t)(cpu->rdi + i), MEM_READ);
+            if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+            else { fprintf(stderr, "??"); }
+        }
+        fprintf(stderr, "\n");
+    }
 
-        // Read first limb of each field element from guest stack
-        uint64_t x2_0 = 0, z2_0 = 0, x3_0 = 0, z3_0 = 0;
-        void *p;
-        p = mmu_translate(cpu->mmu, (addr_t)(rsp_val + 0x48), MEM_READ);
-        if (p) x2_0 = *(uint64_t*)p;
-        p = mmu_translate(cpu->mmu, (addr_t)(rsp_val + 0x70), MEM_READ);
-        if (p) z2_0 = *(uint64_t*)p;
-        p = mmu_translate(cpu->mmu, (addr_t)(rsp_val + 0x98), MEM_READ);
-        if (p) x3_0 = *(uint64_t*)p;
-        p = mmu_translate(cpu->mmu, (addr_t)(rsp_val + 0xC0), MEM_READ);
-        if (p) z3_0 = *(uint64_t*)p;
+    // VERIFY_IDENTITY path (0x10247): EVP_DigestFinal_ex → sctx+0x55
+    if (offset == 0x10247ULL) {
+        fprintf(stderr, "[APK] verify_identity path at 0x10247 (ip=%#llx)\n",
+               (unsigned long long)guest_ip);
+    }
 
-        fprintf(stderr, "LADDER[%3d] bit_idx=%d prev_bit=%u x2[0]=%013llx z2[0]=%013llx x3[0]=%013llx z3[0]=%013llx\n",
-               ladder_iter, bit_index, prev_bit,
-               (unsigned long long)x2_0, (unsigned long long)z2_0,
-               (unsigned long long)x3_0, (unsigned long long)z3_0);
+    // -ECANCELED return at 0x10273
+    if (offset == 0x10273ULL) {
+        fprintf(stderr, "[APK] -ECANCELED (-125) return at 0x10273\n");
+        uint64_t sctx = cpu->rbx;
+        void *flags_ptr = mmu_translate(cpu->mmu, (addr_t)(sctx + 0x14), MEM_READ);
+        uint8_t flags = flags_ptr ? *(uint8_t*)flags_ptr : 0xFF;
+        fprintf(stderr, "[APK]   flags=0x%02x (has_data_checksum=%d)\n",
+               flags, (flags >> 2) & 1);
+    }
 
-        // For first 3 iterations, dump all 5 limbs of all 4 field elements
-        if (ladder_iter < 3 || bit_index <= 1) {
-            for (int fe = 0; fe < 4; fe++) {
-                uint64_t fe_offset = (fe == 0) ? 0x48 : (fe == 1) ? 0x70 : (fe == 2) ? 0x98 : 0xC0;
-                const char *fe_name = (fe == 0) ? "x2" : (fe == 1) ? "z2" : (fe == 2) ? "x3" : "z3";
-                uint64_t limbs[5] = {0};
-                for (int j = 0; j < 5; j++) {
-                    p = mmu_translate(cpu->mmu, (addr_t)(rsp_val + fe_offset + j*8), MEM_READ);
-                    if (p) limbs[j] = *(uint64_t*)p;
+    // algo dispatch at 0x10127 (skip sig verification, go to algo switch)
+    if (offset == 0x10127ULL) {
+        fprintf(stderr, "[APK] algo dispatch at 0x10127\n");
+        uint64_t sctx = cpu->rbx;
+        void *algo_ptr = mmu_translate(cpu->mmu, (addr_t)(sctx + 0x04), MEM_READ);
+        uint32_t algo = algo_ptr ? *(uint32_t*)algo_ptr : 0;
+        fprintf(stderr, "[APK]   algo=%d\n", algo);
+    }
+
+    // apk_pkg_read after apk_tar_parse returns (0x11a4d)
+    // eax = return value from tar_parse
+    if (offset == 0x11a4dULL) {
+        fprintf(stderr, "[APK] apk_pkg_read: tar_parse returned %d (0x%x)\n",
+               (int32_t)(cpu->rax & 0xFFFFFFFF),
+               (uint32_t)(cpu->rax & 0xFFFFFFFF));
+    }
+
+    // apk_pkg_read error path at 0x11ab3 (-ENOMSG = -95)
+    if (offset == 0x11ab3ULL) {
+        fprintf(stderr, "[APK] apk_pkg_read: returning -95 (ENOMSG)\n");
+    }
+
+    // process_file entry (0x11199)
+    if (offset == 0x11199ULL) {
+        // rdi=sign_ctx, rsi=file_info, rdx=istream
+        fprintf(stderr, "[APK] process_file: sctx=%#llx fi=%#llx\n",
+               (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi);
+    }
+
+    // EVP_DigestUpdate at 0x102bf (BOUNDARY+data_started / DATA path)
+    // At this point: rdi=ctx, rsi=data.ptr(r12), rdx=data.len
+    if (offset == 0x102bfULL) {
+        uint64_t data_ptr = cpu->rsi;
+        uint64_t data_len = cpu->rdx;
+        uint64_t ctx = cpu->rdi;
+        fprintf(stderr, "[APK] EVP_DigestUpdate@0x102bf: ptr=%#llx len=%llu ctx=%#llx\n",
+               (unsigned long long)data_ptr, (unsigned long long)data_len,
+               (unsigned long long)ctx);
+        // Check SHA256 state at algctx (ctx+0x38) to detect corruption
+        if (ctx) {
+            void *algctx_ptr = mmu_translate(cpu->mmu, (addr_t)(ctx + 0x38), MEM_READ);
+            uint64_t algctx = algctx_ptr ? *(uint64_t*)algctx_ptr : 0;
+            if (algctx && data_len == 29063) {
+                // SHA256 IV check: first 32 bytes should be the standard IV
+                static const uint8_t sha256_iv[] = {
+                    0x67,0xe6,0x09,0x6a, 0x85,0xae,0x67,0xbb,
+                    0x72,0xf3,0x6e,0x3c, 0x3a,0xf5,0x4f,0xa5,
+                    0x7f,0x52,0x0e,0x51, 0x8c,0x68,0x05,0x9b,
+                    0xab,0xd9,0x83,0x1f, 0x19,0xcd,0xe0,0x5b
+                };
+                int corrupted = 0;
+                fprintf(stderr, "[APK]   SHA256 state at algctx=%#llx: ", (unsigned long long)algctx);
+                for (int i = 0; i < 32; i++) {
+                    void *bp = mmu_translate(cpu->mmu, (addr_t)(algctx + i), MEM_READ);
+                    uint8_t b = bp ? *(uint8_t*)bp : 0xFF;
+                    fprintf(stderr, "%02x", b);
+                    if (b != sha256_iv[i]) corrupted = 1;
+                    if ((i % 4) == 3) fprintf(stderr, " ");
                 }
-                fprintf(stderr, "  %s: [%013llx, %013llx, %013llx, %013llx, %013llx]\n",
-                       fe_name,
-                       (unsigned long long)limbs[0], (unsigned long long)limbs[1],
-                       (unsigned long long)limbs[2], (unsigned long long)limbs[3],
-                       (unsigned long long)limbs[4]);
-            }
-        }
-        ladder_iter++;
-    }
-
-    // Montgomery ladder loop exit: dump final x2, z2 before inversion
-    if (offset == 0xdbe85ULL) {
-        uint64_t rsp_val = cpu->rsp;
-        fprintf(stderr, "LADDER EXIT: ebp=%d\n", (int32_t)(cpu->rbp & 0xFFFFFFFF));
-        for (int fe = 0; fe < 2; fe++) {
-            uint64_t fe_offset = (fe == 0) ? 0x48 : 0x70;
-            const char *fe_name = (fe == 0) ? "x2_final" : "z2_final";
-            uint64_t limbs[5] = {0};
-            void *p;
-            for (int j = 0; j < 5; j++) {
-                p = mmu_translate(cpu->mmu, (addr_t)(rsp_val + fe_offset + j*8), MEM_READ);
-                if (p) limbs[j] = *(uint64_t*)p;
-            }
-            fprintf(stderr, "  %s: [%013llx, %013llx, %013llx, %013llx, %013llx]\n",
-                   fe_name,
-                   (unsigned long long)limbs[0], (unsigned long long)limbs[1],
-                   (unsigned long long)limbs[2], (unsigned long long)limbs[3],
-                   (unsigned long long)limbs[4]);
-        }
-    }
-
-    // AES_encrypt entry: rdi=in, rsi=out, rdx=key_schedule
-    // Only trace first 2 calls per connection
-    {
-        static int aes_trace_count = 0;
-        if (offset == 0x4a5a0ULL && aes_trace_count < 20) {
-            aes_trace_count++;
-            fprintf(stderr, "AES_encrypt #%d: in=%#llx out=%#llx key=%#llx\n",
-                   aes_trace_count,
-                   (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi,
-                   (unsigned long long)cpu->rdx);
-            void *h_in = mmu_translate(cpu->mmu, (addr_t)cpu->rdi, MEM_READ);
-            if (h_in) dump_hex("  AES INPUT", (uint8_t*)h_in, 16);
-        }
-    }
-
-    // AES_encrypt return: dump output
-    {
-        static int aes_ret_count = 0;
-        if (offset == 0x4a653ULL && aes_ret_count < 30) {
-            aes_ret_count++;
-            // r9 = output pointer (from movq 0x10(%rsp), %r9 at 0x4a61f)
-            fprintf(stderr, "AES_encrypt #%d OUTPUT: r9=%#llx\n",
-                   aes_ret_count, (unsigned long long)cpu->r9);
-            void *h_out = mmu_translate(cpu->mmu, (addr_t)cpu->r9, MEM_READ);
-            if (h_out) dump_hex("  AES OUTPUT", (uint8_t*)h_out, 16);
-        }
-    }
-
-
-    // CRYPTO_gcm128_init ENTRY: rdi=ctx, rsi=key, rdx=encrypt_fn
-    if (offset == 0x224851ULL) {
-        fprintf(stderr, "GCM INIT ENTRY: ctx=%#llx key=%#llx encrypt_fn=%#llx\n",
-               (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi,
-               (unsigned long long)cpu->rdx);
-    }
-
-    // CRYPTO_gcm128_init: just before callq *%r8 (AES encrypt call)
-    if (offset == 0x22487eULL) {
-        fprintf(stderr, "GCM INIT CALL AES: in=%#llx out=%#llx key=%#llx fn=%#llx\n",
-               (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi,
-               (unsigned long long)cpu->rdx, (unsigned long long)cpu->r8);
-        void *h_in = mmu_translate(cpu->mmu, (addr_t)cpu->rdi, MEM_READ);
-        if (h_in) dump_hex("  H INPUT (should be 0)", (uint8_t*)h_in, 16);
-        void *h_key = mmu_translate(cpu->mmu, (addr_t)cpu->rdx, MEM_READ);
-        if (h_key) dump_hex("  AES KEY SCHED (first 32 bytes)", (uint8_t*)h_key, 32);
-        // Also dump the number of rounds (at offset 0xf0 in AES_KEY)
-        void *h_nr = mmu_translate(cpu->mmu, (addr_t)(cpu->rdx + 0xf0), MEM_READ);
-        if (h_nr) fprintf(stderr, "  AES rounds: %d\n", *(int*)h_nr);
-    }
-
-    // CRYPTO_gcm128_init: after H = AES_K(0^128) computed
-    // At this point: rbx=ctx, rax=[ctx+0x50] (just loaded H high qword)
-    if (offset == 0x224881ULL) {
-        fprintf(stderr, "GCM INIT: ctx=%#llx (rbx)\n", (unsigned long long)cpu->rbx);
-        void *h_val = mmu_translate(cpu->mmu, (addr_t)(cpu->rbx + 0x50), MEM_READ);
-        if (h_val) dump_hex("  H value (AES_K(0))", (uint8_t*)h_val, 16);
-        // Also dump EK0 at ctx+0x20 and GHASH accum at ctx+0x40
-        void *ek0_init = mmu_translate(cpu->mmu, (addr_t)(cpu->rbx + 0x20), MEM_READ);
-        if (ek0_init) dump_hex("  EK0 at init", (uint8_t*)ek0_init, 16);
-    }
-
-    // CRYPTO_gcm128_setiv: after setting counter block
-    // At offset 0x224a51: movl %ebp, 0xc(%rbx) - stores final counter
-    if (offset == 0x224a54ULL) {
-        fprintf(stderr, "GCM SETIV: ctx=%#llx (rbx)\n", (unsigned long long)cpu->rbx);
-        void *ctr_block = mmu_translate(cpu->mmu, (addr_t)cpu->rbx, MEM_READ);
-        if (ctr_block) dump_hex("  Counter block J0", (uint8_t*)ctr_block, 16);
-        // Also dump EK0 at ctx+0x20
-        void *ek0 = mmu_translate(cpu->mmu, (addr_t)(cpu->rbx + 0x20), MEM_READ);
-        if (ek0) dump_hex("  EK0 (encrypted J0)", (uint8_t*)ek0, 16);
-    }
-
-
-    // gcm_ghash_4bit entry: rdi=Xi, rsi=Htable, rdx=data, rcx=len
-    if (offset == 0x225ae0ULL) {
-        static int ghash_count = 0;
-        ghash_count++;
-        if (ghash_count <= 6) {
-            uint64_t len = cpu->rcx;
-            fprintf(stderr, "GHASH #%d: Xi=%#llx Htable=%#llx data=%#llx len=%llu\n",
-                   ghash_count, (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi,
-                   (unsigned long long)cpu->rdx, (unsigned long long)len);
-            void *xi = mmu_translate(cpu->mmu, (addr_t)cpu->rdi, MEM_READ);
-            if (xi) dump_hex("  Xi INPUT", (uint8_t*)xi, 16);
-            // Dump ALL input data (up to 64 bytes for visibility)
-            int dump_len = len < 64 ? (int)len : 64;
-            void *data = mmu_translate(cpu->mmu, (addr_t)cpu->rdx, MEM_READ);
-            if (data) dump_hex("  DATA", (uint8_t*)data, dump_len);
-            if (ghash_count == 1) {
-                void *htable = mmu_translate(cpu->mmu, (addr_t)cpu->rsi, MEM_READ);
-                if (htable) dump_hex("  Htable[0:32]", (uint8_t*)htable, 32);
-            }
-        }
-    }
-
-    // gcm_ghash_4bit loop HEAD: xor r9, [r14]
-    // At this point: r8=Xi_high, r9=Xi_low, r14=input_ptr
-    if (offset == 0x225dd0ULL) {
-        static int ghash_loop_count = 0;
-        static int ghash_call_iter = 0;  // iteration within current GHASH call
-        // Track which GHASH call we're in
-        static uint64_t last_r15 = 0;
-        if (cpu->r15 != last_r15) {
-            ghash_call_iter = 0;  // new call
-            last_r15 = cpu->r15;
-        }
-        int total_iters = (int)((cpu->r15 - cpu->r14) / 16) + 1;
-        int iters_left = (int)((cpu->r15 - cpu->r14) / 16);
-        // Trace first 5, every 50th, and last 3
-        if (ghash_loop_count < 5 || (ghash_call_iter % 50 == 0) || iters_left <= 3) {
-            fprintf(stderr, "GHASH_LOOP[%d] (call_iter=%d, left=%d) HEAD: r8=%016llx r9=%016llx r14=%#llx\n",
-                   ghash_loop_count, ghash_call_iter, iters_left,
-                   (unsigned long long)cpu->r8, (unsigned long long)cpu->r9,
-                   (unsigned long long)cpu->r14);
-            void *inp = mmu_translate(cpu->mmu, (addr_t)cpu->r14, MEM_READ);
-            if (inp) dump_hex("  INPUT_BLOCK", (uint8_t*)inp, 16);
-        }
-        ghash_loop_count++;
-        ghash_call_iter++;
-    }
-
-    // gcm_ghash_4bit loop TAIL: cmp r14, r15
-    if (offset == 0x2262abULL) {
-        static int ghash_tail_count = 0;
-        int iters_left = (int)((cpu->r15 - cpu->r14) / 16);
-        // Trace first 5, every 50th, and last 3
-        if (ghash_tail_count < 5 || (ghash_tail_count % 50 == 0) || iters_left <= 3) {
-            fprintf(stderr, "GHASH_LOOP[%d] (left=%d) TAIL: r8=%016llx r9=%016llx\n",
-                   ghash_tail_count, iters_left,
-                   (unsigned long long)cpu->r8, (unsigned long long)cpu->r9);
-        }
-        ghash_tail_count++;
-    }
-
-    // gcm_ghash_4bit EXIT: after mov [rdi+8], r8 and mov [rdi], r9
-    if (offset == 0x2262bbULL) {
-        static int ghash_exit_count = 0;
-        ghash_exit_count++;
-        fprintf(stderr, "GHASH_EXIT #%d: rdi=%#llx\n", ghash_exit_count,
-               (unsigned long long)cpu->rdi);
-        void *xi = mmu_translate(cpu->mmu, (addr_t)cpu->rdi, MEM_READ);
-        if (xi) dump_hex("  Xi OUTPUT", (uint8_t*)xi, 16);
-    }
-
-    // ASN1_item_d2i: rdi=pval, rsi=const unsigned char **in, rdx=len, rcx=it
-    if (offset == 0x706fcULL) {
-        static int asn1_count = 0;
-        asn1_count++;
-        // Only trace X509 item (rcx == X509_it result) and keep it concise
-        if (asn1_count <= 200) {
-            void *in_ptr = mmu_translate(cpu->mmu, (addr_t)cpu->rsi, MEM_READ);
-            if (in_ptr) {
-                uint64_t data_ptr = *(uint64_t*)in_ptr;
-                void *data = mmu_translate(cpu->mmu, (addr_t)data_ptr, MEM_READ);
-                if (data) {
-                    uint8_t *der = (uint8_t*)data;
-                    // Only trace for SEQUENCE tag (top-level cert) with reasonable length
-                    if (der[0] == 0x30 && cpu->rdx > 100) {
-                        fprintf(stderr, "ASN1_item_d2i #%d: len=%lld DER[0:32]=",
-                               asn1_count, (long long)cpu->rdx);
-                        for (int i = 0; i < 32 && i < (int)cpu->rdx; i++)
-                            fprintf(stderr, "%02x", der[i]);
-                        fprintf(stderr, "\n");
-                    }
+                fprintf(stderr, "\n");
+                if (corrupted) {
+                    fprintf(stderr, "[APK]   *** SHA256 STATE CORRUPTED BEFORE DIGESTUPDATE! ***\n");
+                } else {
+                    fprintf(stderr, "[APK]   SHA256 IV intact before DigestUpdate\n");
                 }
+                // Also dump Nl, Nh, num counters (after h[8])
+                fprintf(stderr, "[APK]   counters (Nl,Nh,data[0..3],num,md_len): ");
+                for (int i = 32; i < 64; i++) {
+                    void *bp = mmu_translate(cpu->mmu, (addr_t)(algctx + i), MEM_READ);
+                    if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+                    else fprintf(stderr, "??");
+                    if ((i % 4) == 3) fprintf(stderr, " ");
+                }
+                fprintf(stderr, "\n");
+            }
+        }
+        // Read first 16 bytes of data
+        fprintf(stderr, "[APK]   first 16 bytes: ");
+        for (int i = 0; i < 16 && (uint64_t)i < data_len; i++) {
+            void *bp = mmu_translate(cpu->mmu, (addr_t)(data_ptr + i), MEM_READ);
+            if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+            else { fprintf(stderr, "??"); }
+        }
+        fprintf(stderr, "\n");
+        // For the tree package data (29063 bytes), dump full data to file for verification
+        if (data_len == 29063) {
+            FILE *dumpf = fopen("/tmp/apk_data_dump.bin", "wb");
+            if (dumpf) {
+                uint32_t checksum = 0;
+                for (uint64_t off = 0; off < data_len; ) {
+                    addr_t guest_addr = (addr_t)(data_ptr + off);
+                    void *host_ptr = mmu_translate(cpu->mmu, guest_addr, MEM_READ);
+                    if (!host_ptr) { fprintf(stderr, "[APK]   mmu_translate failed at off=%llu\n", (unsigned long long)off); break; }
+                    uint64_t page_remaining = 4096 - (guest_addr & 0xFFF);
+                    uint64_t data_remaining = data_len - off;
+                    uint64_t chunk = (page_remaining < data_remaining) ? page_remaining : data_remaining;
+                    fwrite(host_ptr, 1, chunk, dumpf);
+                    // Compute simple checksum
+                    for (uint64_t j = 0; j < chunk; j++)
+                        checksum += ((uint8_t*)host_ptr)[j];
+                    off += chunk;
+                }
+                fclose(dumpf);
+                fprintf(stderr, "[APK]   dumped %llu bytes to /tmp/apk_data_dump.bin, checksum=0x%08x\n",
+                       (unsigned long long)data_len, checksum);
             }
         }
     }
 
-    // ERR_set_error: rdi=lib, rsi=reason, rdx=fmt
-    if (offset == 0x133ae8ULL) {
-        static int err_count = 0;
-        err_count++;
-        if (err_count <= 500) {
-            fprintf(stderr, "OpenSSL ERR #%d: lib=%lld reason=%lld\n",
-                   err_count, (long long)cpu->rdi, (long long)cpu->rsi);
-        }
+    // EVP_DigestUpdate at 0x1008a (main body - control hash / END path)
+    // At this point: rdi=[rbx+0x70]=ctx, rsi=r12=data.ptr, rdx is passed from earlier
+    if (offset == 0x1008aULL) {
+        uint64_t data_ptr = cpu->rsi;
+        // rdx may not be set properly here; r12 holds data.ptr but rdx was passed through
+        // Actually looking at disasm: at 0x1008a, rdi=[rbx+0x70], rsi=r12, rdx=original from entry
+        // BUT for END path, rdx was never explicitly set to data.len... hmm
+        // Let's just log what we can
+        fprintf(stderr, "[APK] EVP_DigestUpdate@0x1008a: rdi=%#llx rsi(data)=%#llx\n",
+               (unsigned long long)cpu->rdi, (unsigned long long)data_ptr);
     }
 
-    // c2i_ibuf entry: after mov r10,rcx; mov rax,rdx
-    // At this point: rdx=cont, rcx=plen, rdi=out_buf, rsi=pneg
-    if (offset == 0x60228ULL) {
-        static int c2i_count = 0;
-        c2i_count++;
-        if (c2i_count <= 200) {
-            // rdx = cont (not yet moved to rax at trace point, but register state is at entry)
-            // Actually at 0x60228, the instruction is mov r10,rcx. rdx still has cont.
-            uint64_t cont = cpu->rdx;
-            int64_t plen = (int64_t)cpu->rcx;
-            void *data = mmu_translate(cpu->mmu, (addr_t)cont, MEM_READ);
-            if (data && plen > 0 && plen < 32) {
-                uint8_t *p = (uint8_t*)data;
-                fprintf(stderr, "c2i_ibuf #%d: plen=%lld data=", c2i_count, (long long)plen);
-                for (int i = 0; i < (int)plen && i < 20; i++)
-                    fprintf(stderr, "%02x", p[i]);
+    // EVP_DigestInit_ex at 0x10288 (common tail - reinit for next phase)
+    // rdi=[rbx+0x70]=ctx, rsi=[rbx+0x08]=EVP_MD*, rdx=0
+    if (offset == 0x10288ULL) {
+        uint64_t ctx = cpu->rdi;
+        // Read flags at ctx+0x18 (unsigned long = 8 bytes on x86_64)
+        void *flags_ptr = mmu_translate(cpu->mmu, (addr_t)(ctx + 0x18), MEM_READ);
+        uint64_t flags = 0;
+        if (flags_ptr) flags = *(uint64_t*)flags_ptr;
+        int no_init = (flags >> 8) & 1;
+        fprintf(stderr, "[APK] EVP_DigestInit_ex@0x10288: ctx=%#llx evp_md=%#llx flags=0x%llx NO_INIT=%d ONESHOT=%d\n",
+               (unsigned long long)ctx, (unsigned long long)cpu->rsi,
+               (unsigned long long)flags, no_init, (int)(flags & 1));
+        // Also dump first 96 bytes of ctx to see structure
+        fprintf(stderr, "[APK]   ctx dump: ");
+        for (int i = 0; i < 96; i++) {
+            void *bp = mmu_translate(cpu->mmu, (addr_t)(ctx + i), MEM_READ);
+            if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+            else fprintf(stderr, "??");
+            if ((i % 8) == 7) fprintf(stderr, " ");
+        }
+        fprintf(stderr, "\n");
+    }
+
+    // After EVP_DigestInit_ex returns at 0x1028e
+    // eax = return value (1=success, 0=failure)
+    if (offset == 0x1028eULL) {
+        int ret = (int)(cpu->rax & 0xFFFFFFFF);
+        uint64_t ctx = cpu->rdi;  // rdi was set at 0x1028e: mov rdi, [rbx+0x70]
+        // Actually at 0x1028e, rdi is being reloaded from [rbx+0x70]
+        // Let me read rbx+0x70 to get ctx
+        uint64_t sctx = cpu->rbx;
+        void *ctx_ptr = mmu_translate(cpu->mmu, (addr_t)(sctx + 0x70), MEM_READ);
+        ctx = ctx_ptr ? *(uint64_t*)ctx_ptr : 0;
+        fprintf(stderr, "[APK] EVP_DigestInit_ex returned %d, ctx=%#llx\n", ret, (unsigned long long)ctx);
+        if (ctx) {
+            // Dump ctx after init
+            fprintf(stderr, "[APK]   ctx after init: ");
+            for (int i = 0; i < 96; i++) {
+                void *bp = mmu_translate(cpu->mmu, (addr_t)(ctx + i), MEM_READ);
+                if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+                else fprintf(stderr, "??");
+                if ((i % 8) == 7) fprintf(stderr, " ");
+            }
+            fprintf(stderr, "\n");
+            // Read algctx at ctx+0x38 (offset 56)
+            void *algctx_ptr = mmu_translate(cpu->mmu, (addr_t)(ctx + 0x38), MEM_READ);
+            uint64_t algctx = algctx_ptr ? *(uint64_t*)algctx_ptr : 0;
+            fprintf(stderr, "[APK]   algctx=%#llx\n", (unsigned long long)algctx);
+            if (algctx) {
+                // Dump first 64 bytes of algctx (should contain SHA256 state h[0..7])
+                // SHA256 IV in LE: 67e6096a 85ae67bb 72f36e3c 3af54fa5 7f520e51 8c68059b abd9831f 19cde05b
+                fprintf(stderr, "[APK]   algctx dump (expect SHA256 IV): ");
+                for (int i = 0; i < 64; i++) {
+                    void *bp = mmu_translate(cpu->mmu, (addr_t)(algctx + i), MEM_READ);
+                    if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+                    else fprintf(stderr, "??");
+                    if ((i % 4) == 3) fprintf(stderr, " ");
+                }
                 fprintf(stderr, "\n");
             }
         }
     }
 
-    // c2i_ibuf illegal padding error: ERR_new call at 0x60296
-    // At this point: rax=cont, r10=plen (maybe), ecx=movsbl(cont[0])
-    if (offset == 0x60296ULL) {
-        fprintf(stderr, "*** c2i_ibuf ILLEGAL PADDING ERROR ***\n");
-        fprintf(stderr, "  rax=%#llx rcx=%#llx rdx=%#llx rsi=%#llx rdi=%#llx r10=%#llx\n",
-               (unsigned long long)cpu->rax, (unsigned long long)cpu->rcx,
-               (unsigned long long)cpu->rdx, (unsigned long long)cpu->rsi,
-               (unsigned long long)cpu->rdi, (unsigned long long)cpu->r10);
-        // rax should still point to cont
-        void *data = mmu_translate(cpu->mmu, (addr_t)cpu->rax, MEM_READ);
-        if (data) {
-            uint8_t *p = (uint8_t*)data;
-            int plen = (int)cpu->r10;
-            if (plen > 20) plen = 20;
-            if (plen <= 0) plen = 8;
-            fprintf(stderr, "  cont bytes: ");
-            for (int i = 0; i < plen; i++)
-                fprintf(stderr, "%02x", p[i]);
-            fprintf(stderr, "\n");
-        }
-    }
-
-    // X509_PUBKEY_get0: rdi=const X509_PUBKEY *key
-    if (offset == 0x2af699ULL) {
-        static int pubkey_count = 0;
-        pubkey_count++;
-        fprintf(stderr, "X509_PUBKEY_get0 #%d: key=%#llx\n",
-               pubkey_count, (unsigned long long)cpu->rdi);
-    }
-
-    // d2i_X509: rdi=X509**, rsi=const unsigned char **in, rdx=len
-    if (offset == 0x2b0c25ULL) {
-        static int d2i_count = 0;
-        d2i_count++;
-        fprintf(stderr, "d2i_X509 #%d: a=%#llx in=%#llx len=%lld\n",
-               d2i_count, (unsigned long long)cpu->rdi,
-               (unsigned long long)cpu->rsi, (long long)cpu->rdx);
-        // Dereference *in to get the data pointer
-        void *in_ptr = mmu_translate(cpu->mmu, (addr_t)cpu->rsi, MEM_READ);
-        if (in_ptr) {
-            uint64_t data_ptr = *(uint64_t*)in_ptr;
-            fprintf(stderr, "  *in=%#llx\n", (unsigned long long)data_ptr);
-            void *data = mmu_translate(cpu->mmu, (addr_t)data_ptr, MEM_READ);
-            if (data) {
-                int dump_len = cpu->rdx < 64 ? (int)cpu->rdx : 64;
-                dump_hex("  DER data (first 64)", (uint8_t*)data, dump_len);
+    // After EVP_DigestUpdate returns at 0x102c5 - dump SHA256 state
+    if (offset == 0x102c5ULL) {
+        // rbx = sctx, ctx is at [rbx+0x70]
+        uint64_t sctx = cpu->rbx;
+        void *ctx_ptr = mmu_translate(cpu->mmu, (addr_t)(sctx + 0x70), MEM_READ);
+        uint64_t ctx = ctx_ptr ? *(uint64_t*)ctx_ptr : 0;
+        if (ctx) {
+            void *algctx_ptr = mmu_translate(cpu->mmu, (addr_t)(ctx + 0x38), MEM_READ);
+            uint64_t algctx = algctx_ptr ? *(uint64_t*)algctx_ptr : 0;
+            if (algctx) {
+                fprintf(stderr, "[APK] after DigestUpdate@0x102c5: algctx=%#llx\n",
+                       (unsigned long long)algctx);
+                // Dump h[0..7] (32 bytes) - should show intermediate SHA256 state
+                fprintf(stderr, "[APK]   h[0..7]: ");
+                for (int i = 0; i < 32; i++) {
+                    void *bp = mmu_translate(cpu->mmu, (addr_t)(algctx + i), MEM_READ);
+                    if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+                    else fprintf(stderr, "??");
+                    if ((i % 4) == 3) fprintf(stderr, " ");
+                }
+                fprintf(stderr, "\n");
+                // Dump Nl, Nh, num, md_len
+                fprintf(stderr, "[APK]   counters: ");
+                for (int i = 32; i < 56; i++) {
+                    void *bp = mmu_translate(cpu->mmu, (addr_t)(algctx + i), MEM_READ);
+                    if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+                    else fprintf(stderr, "??");
+                    if ((i % 4) == 3) fprintf(stderr, " ");
+                }
+                fprintf(stderr, "\n");
+                // Reference after processing 29063 bytes:
+                // After 453 blocks (28992 bytes) by Update, then Final processes remaining
+                // Full data SHA256 should be: 2ea9e4bca97b173e256ff21b3cf013d52810d73142951cffaed9a0f17b6a16dc
             }
         }
     }
 
-    // CRYPTO_gcm128_finish -> CRYPTO_memcmp: rdi=computed, rsi=expected, rdx=len
-    if (offset == 0x2258daULL) {
-        uint64_t tag_len = cpu->rdx;
-        fprintf(stderr, "GCM TAG CHECK: computed=%#llx expected=%#llx len=%llu\n",
+    // sha256_block_data_order traces (libcrypto)
+    uint64_t crypto_base = 0x7effffa89000ULL; // APK run: mmap 0x7effffada000 - text_vaddr 0x51000
+    uint64_t crypto_offset = guest_ip - crypto_base;
+
+    // Dispatch entry at 0x27f3c0
+    if (crypto_offset == 0x27f3c0ULL) {
+        fprintf(stderr, "[SHA256] sha256_block_data_order ENTRY: rdi(ctx)=%#llx rsi(data)=%#llx rdx(blocks)=%llu\n",
                (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi,
-               (unsigned long long)tag_len);
-        void *h_computed = mmu_translate(cpu->mmu, (addr_t)cpu->rdi, MEM_READ);
-        void *h_expected = mmu_translate(cpu->mmu, (addr_t)cpu->rsi, MEM_READ);
-        if (h_computed && tag_len <= 16) dump_hex("  COMPUTED TAG", (uint8_t*)h_computed, (int)tag_len);
-        if (h_expected && tag_len <= 16) dump_hex("  EXPECTED TAG", (uint8_t*)h_expected, (int)tag_len);
+               (unsigned long long)cpu->rdx);
+        // Dump first 32 bytes of ctx (h[0..7])
+        fprintf(stderr, "[SHA256]   ctx h[0..7]: ");
+        for (int i = 0; i < 32; i++) {
+            void *bp = mmu_translate(cpu->mmu, (addr_t)(cpu->rdi + i), MEM_READ);
+            if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+            else fprintf(stderr, "??");
+            if ((i % 4) == 3) fprintf(stderr, " ");
+        }
+        fprintf(stderr, "\n");
+        // Dump first 16 bytes of data
+        fprintf(stderr, "[SHA256]   data[0..15]: ");
+        for (int i = 0; i < 16; i++) {
+            void *bp = mmu_translate(cpu->mmu, (addr_t)(cpu->rsi + i), MEM_READ);
+            if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+            else fprintf(stderr, "??");
+        }
+        fprintf(stderr, "\n");
     }
 
+    // SSSE3 entry at 0x280900
+    if (crypto_offset == 0x280900ULL) {
+        fprintf(stderr, "[SHA256] SSSE3 path taken!\n");
+    }
+
+    // Basic entry at 0x27f41e
+    if (crypto_offset == 0x27f41eULL) {
+        fprintf(stderr, "[SHA256] BASIC path taken!\n");
+    }
+
+
+    // Common tail entry at 0x1027e
+    if (offset == 0x1027eULL) {
+        fprintf(stderr, "[APK] common_tail@0x1027e: rbx(sctx)=%#llx\n",
+               (unsigned long long)cpu->rbx);
+        uint64_t sctx = cpu->rbx;
+        void *flags_ptr = mmu_translate(cpu->mmu, (addr_t)(sctx + 0x14), MEM_READ);
+        uint8_t flags = flags_ptr ? *(uint8_t*)flags_ptr : 0xFF;
+        fprintf(stderr, "[APK]   flags=0x%02x\n", flags);
+    }
+
+    // algo==1 entry at 0x10161: check pkey
+    if (offset == 0x10161ULL) {
+        uint64_t sctx = cpu->rbx;
+        void *pkey_ptr = mmu_translate(cpu->mmu, (addr_t)(sctx + 0x88), MEM_READ);
+        uint64_t pkey = pkey_ptr ? *(uint64_t*)pkey_ptr : 0;
+        void *sig_ptr = mmu_translate(cpu->mmu, (addr_t)(sctx + 0x80), MEM_READ);
+        uint64_t sig = sig_ptr ? *(uint64_t*)sig_ptr : 0;
+        void *siglen_ptr = mmu_translate(cpu->mmu, (addr_t)(sctx + 0x78), MEM_READ);
+        uint32_t siglen = siglen_ptr ? *(uint32_t*)siglen_ptr : 0;
+        fprintf(stderr, "[APK] algo==1 entry: pkey=%#llx sig=%#llx siglen=%u\n",
+               (unsigned long long)pkey, (unsigned long long)sig, siglen);
+    }
+
+    // EVP_VerifyFinal call at 0x1017b
+    if (offset == 0x1017bULL) {
+        fprintf(stderr, "[APK] EVP_VerifyFinal: ctx(rdi)=%#llx sig(rsi)=%#llx siglen(edx)=%u pkey(rcx)=%#llx\n",
+               (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi,
+               (uint32_t)(cpu->rdx & 0xFFFFFFFF), (unsigned long long)cpu->rcx);
+        // Dump first 16 bytes of signature
+        fprintf(stderr, "[APK]   sig[0..15]: ");
+        for (int i = 0; i < 16; i++) {
+            void *bp = mmu_translate(cpu->mmu, (addr_t)(cpu->rsi + i), MEM_READ);
+            if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+            else fprintf(stderr, "??");
+        }
+        fprintf(stderr, "\n");
+    }
+
+    // After EVP_VerifyFinal returns at 0x10181
+    if (offset == 0x10181ULL) {
+        fprintf(stderr, "[APK] EVP_VerifyFinal returned: eax=%d\n",
+               (int32_t)(cpu->rax & 0xFFFFFFFF));
+    }
+
+    // Inside EVP_VerifyFinal_ex (crypto offsets):
+    // After EVP_MD_CTX_test_flags at crypto 0x15a49d
+    if (crypto_offset == 0x15a49dULL) {
+        fprintf(stderr, "[VERIFY] test_flags(0x200) returned: eax=%d\n",
+               (int32_t)(cpu->rax & 0xFFFFFFFF));
+    }
+
+    // After EVP_MD_CTX_copy_ex at crypto 0x15a53b
+    if (crypto_offset == 0x15a53bULL) {
+        fprintf(stderr, "[VERIFY] EVP_MD_CTX_copy_ex returned: eax=%d\n",
+               (int32_t)(cpu->rax & 0xFFFFFFFF));
+    }
+
+    // Before EVP_DigestFinal_ex (copy path) at crypto 0x15a54f
+    if (crypto_offset == 0x15a54fULL) {
+        // rdi = ctx (either temp copy or original)
+        uint64_t ctx = cpu->rdi;
+        fprintf(stderr, "[VERIFY] before DigestFinal_ex: ctx(rdi)=%#llx\n",
+               (unsigned long long)ctx);
+        if (ctx) {
+            void *algctx_ptr = mmu_translate(cpu->mmu, (addr_t)(ctx + 0x38), MEM_READ);
+            uint64_t algctx = algctx_ptr ? *(uint64_t*)algctx_ptr : 0;
+            fprintf(stderr, "[VERIFY]   algctx=%#llx\n", (unsigned long long)algctx);
+            if (algctx) {
+                // Dump SHA1 state: h[0..4]=20 bytes, Nl=4, Nh=4, data[0..63]=64, num=4
+                fprintf(stderr, "[VERIFY]   SHA1 h[0..4]: ");
+                for (int i = 0; i < 20; i++) {
+                    void *bp = mmu_translate(cpu->mmu, (addr_t)(algctx + i), MEM_READ);
+                    if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+                    if ((i % 4) == 3) fprintf(stderr, " ");
+                }
+                fprintf(stderr, "\n");
+                // Nl, Nh at offset 20
+                void *nl_ptr = mmu_translate(cpu->mmu, (addr_t)(algctx + 20), MEM_READ);
+                void *nh_ptr = mmu_translate(cpu->mmu, (addr_t)(algctx + 24), MEM_READ);
+                uint32_t nl = nl_ptr ? *(uint32_t*)nl_ptr : 0;
+                uint32_t nh = nh_ptr ? *(uint32_t*)nh_ptr : 0;
+                fprintf(stderr, "[VERIFY]   Nl=%#x (%u bits = %u bytes) Nh=%#x\n",
+                       nl, nl, nl/8, nh);
+                // num at offset 20+8+64=92
+                void *num_ptr = mmu_translate(cpu->mmu, (addr_t)(algctx + 92), MEM_READ);
+                uint32_t num = num_ptr ? *(uint32_t*)num_ptr : 0;
+                fprintf(stderr, "[VERIFY]   num=%u (buffered bytes)\n", num);
+                // Dump buffered data (first 64 bytes at offset 28)
+                if (num > 0) {
+                    fprintf(stderr, "[VERIFY]   buffered data: ");
+                    for (uint32_t i = 0; i < num && i < 64; i++) {
+                        void *bp = mmu_translate(cpu->mmu, (addr_t)(algctx + 28 + i), MEM_READ);
+                        if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+                    }
+                    fprintf(stderr, "\n");
+                }
+            }
+        }
+    }
+
+    // After EVP_DigestFinal_ex (copy path) at crypto 0x15a555
+    if (crypto_offset == 0x15a555ULL) {
+        fprintf(stderr, "[VERIFY] EVP_DigestFinal_ex returned: eax=%d\n",
+               (int32_t)(cpu->rax & 0xFFFFFFFF));
+        // Dump hash from [rsp+0x28] - need guest rsp
+        uint64_t rsp = cpu->rsp;
+        uint32_t hash_len = 0;
+        void *hlen_ptr = mmu_translate(cpu->mmu, (addr_t)(rsp + 0x24), MEM_READ);
+        if (hlen_ptr) hash_len = *(uint32_t*)hlen_ptr;
+        fprintf(stderr, "[VERIFY]   hash_len=%u hash: ", hash_len);
+        for (uint32_t i = 0; i < hash_len && i < 32; i++) {
+            void *bp = mmu_translate(cpu->mmu, (addr_t)(rsp + 0x28 + i), MEM_READ);
+            if (bp) fprintf(stderr, "%02x", *(uint8_t*)bp);
+            else fprintf(stderr, "??");
+        }
+        fprintf(stderr, "\n");
+    }
+
+    // After EVP_PKEY_verify at crypto 0x15a5b7
+    if (crypto_offset == 0x15a5b7ULL) {
+        fprintf(stderr, "[VERIFY] EVP_PKEY_verify returned: eax=%d\n",
+               (int32_t)(cpu->rax & 0xFFFFFFFF));
+    }
 }
 
 #endif

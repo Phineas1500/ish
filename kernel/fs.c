@@ -401,6 +401,19 @@ dword_t sys__llseek(fd_t f, dword_t off_high, dword_t off_low, addr_t res_addr, 
     return 0;
 }
 
+#ifdef ISH_GUEST_64BIT
+sqword_t sys_lseek(fd_t f, sqword_t off, dword_t whence) {
+    struct fd *fd = f_get(f);
+    if (fd == NULL)
+        return _EBADF;
+    if (!fd->ops->lseek)
+        return _ESPIPE;
+    lock(&fd->lock);
+    off_t res = fd->ops->lseek(fd, off, whence);
+    unlock(&fd->lock);
+    return res;
+}
+#else
 dword_t sys_lseek(fd_t f, dword_t off, dword_t whence) {
     struct fd *fd = f_get(f);
     if (fd == NULL)
@@ -414,6 +427,7 @@ dword_t sys_lseek(fd_t f, dword_t off, dword_t whence) {
         return _EOVERFLOW;
     return res;
 }
+#endif
 
 dword_t sys_pread(fd_t f, addr_t buf_addr, dword_t size, off_t_ off) {
     STRACE("pread(%d, 0x%x, %d, %d)", f, buf_addr, size, off);
@@ -879,6 +893,34 @@ dword_t sys_lchown(addr_t path_addr, uid_t_ owner, uid_t_ group) {
     return sys_fchownat(AT_FDCWD_, path_addr, owner, group, AT_SYMLINK_NOFOLLOW_);
 }
 
+#ifdef ISH_GUEST_64BIT
+dword_t sys_truncate64(addr_t path_addr, qword_t size) {
+    char path[MAX_PATH];
+    if (user_read_string(path_addr, path, sizeof(path)))
+        return _EFAULT;
+    return generic_setattrat(NULL, path, make_attr(size, size), true);
+}
+
+dword_t sys_ftruncate64(fd_t f, qword_t size) {
+    struct fd *fd = f_get(f);
+    if (fd == NULL)
+        return _EBADF;
+    return generic_fsetattr(fd, make_attr(size, size));
+}
+
+dword_t sys_fallocate(fd_t f, dword_t UNUSED(mode), qword_t offset, qword_t len) {
+    struct fd *fd = f_get(f);
+    if (fd == NULL)
+        return _EBADF;
+    struct statbuf statbuf;
+    int err = fd->mount->fs->fstat(fd, &statbuf);
+    if (err < 0)
+        return err;
+    if ((uint64_t) offset + (uint64_t) len > statbuf.size)
+        return generic_fsetattr(fd, make_attr(size, offset + len));
+    return 0;
+}
+#else
 dword_t sys_truncate64(addr_t path_addr, dword_t size_low, dword_t size_high) {
     off_t_ size = ((qword_t) size_high << 32) | size_low;
     char path[MAX_PATH];
@@ -909,6 +951,7 @@ dword_t sys_fallocate(fd_t f, dword_t UNUSED(mode), dword_t offset_low, dword_t 
         return generic_fsetattr(fd, make_attr(size, offset + len));
     return 0;
 }
+#endif
 
 dword_t sys_mkdirat(fd_t at_f, addr_t path_addr, mode_t_ mode) {
     char path[MAX_PATH];
