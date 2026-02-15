@@ -452,6 +452,7 @@ extern void gadget_movd_reg_xmm(void);   // movd r32, xmm
 extern void gadget_movd_mem_xmm(void);   // movd m32, xmm
 // SSE packed integer operations
 extern void gadget_punpckldq(void);
+extern void gadget_pcmpeqb(void);
 extern void gadget_pcmpeqd(void);
 extern void gadget_pcmpgtd(void);
 extern void gadget_pand(void);
@@ -470,6 +471,7 @@ extern void gadget_por_mem(void);
 extern void gadget_orps_mem(void);
 extern void gadget_paddd_mem(void);
 extern void gadget_psubd_mem(void);
+extern void gadget_pcmpeqb_mem(void);
 extern void gadget_pcmpeqd_mem(void);
 extern void gadget_pcmpgtd_mem(void);
 extern void gadget_punpckldq_mem(void);
@@ -5174,6 +5176,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         return 0;
       }
       int not_size = inst.operands[0].size;
+      GEN(gadget_save_addr);
       if (not_size == size64_64) {
         GEN(load64_gadgets[9]);
       } else if (not_size == size64_32) {
@@ -5185,6 +5188,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       }
       GEN(state->orig_ip);
       GEN(not_size == size64_32 ? gadget_not32 : gadget_not64);
+      GEN(gadget_restore_addr);
       if (not_size == size64_64) {
         GEN(store64_gadgets[9]);
       } else if (not_size == size64_32) {
@@ -5226,6 +5230,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         return 0;
       }
       int neg_size = inst.operands[0].size;
+      GEN(gadget_save_addr);
       if (neg_size == size64_64) {
         GEN(load64_gadgets[9]);
       } else if (neg_size == size64_32) {
@@ -5242,6 +5247,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         case size64_32: GEN(gadget_neg32); break;
         default:        GEN(gadget_neg64); break;
       }
+      GEN(gadget_restore_addr);
       if (neg_size == size64_64) {
         GEN(store64_gadgets[9]);
       } else if (neg_size == size64_32) {
@@ -6377,6 +6383,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
   case ZYDIS_MNEMONIC_PUNPCKLDQ:
   case ZYDIS_MNEMONIC_PUNPCKHQDQ:
+  case ZYDIS_MNEMONIC_PCMPEQB:
   case ZYDIS_MNEMONIC_PCMPEQD:
   case ZYDIS_MNEMONIC_PCMPGTD:
   case ZYDIS_MNEMONIC_PAND:
@@ -6396,6 +6403,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         switch (inst.mnemonic) {
           case ZYDIS_MNEMONIC_PUNPCKLDQ:  gadget = gadget_punpckldq; break;
           case ZYDIS_MNEMONIC_PUNPCKHQDQ: gadget = gadget_punpckhqdq; break;
+          case ZYDIS_MNEMONIC_PCMPEQB:    gadget = gadget_pcmpeqb; break;
           case ZYDIS_MNEMONIC_PCMPEQD:    gadget = gadget_pcmpeqd; break;
           case ZYDIS_MNEMONIC_PCMPGTD:    gadget = gadget_pcmpgtd; break;
           case ZYDIS_MNEMONIC_PAND:        gadget = gadget_pand; break;
@@ -6420,6 +6428,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         switch (inst.mnemonic) {
           case ZYDIS_MNEMONIC_PUNPCKLDQ:  gadget = gadget_punpckldq_mem; break;
           case ZYDIS_MNEMONIC_PUNPCKHQDQ: gadget = gadget_punpckhqdq_mem; break;
+          case ZYDIS_MNEMONIC_PCMPEQB:    gadget = gadget_pcmpeqb_mem; break;
           case ZYDIS_MNEMONIC_PCMPEQD:    gadget = gadget_pcmpeqd_mem; break;
           case ZYDIS_MNEMONIC_PCMPGTD:    gadget = gadget_pcmpgtd_mem; break;
           case ZYDIS_MNEMONIC_PAND:        gadget = gadget_pand_mem; break;

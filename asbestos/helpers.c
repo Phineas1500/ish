@@ -530,6 +530,16 @@ void helper_pcmpeqd(struct cpu_state *cpu, int dst_idx, int src_idx) {
     memcpy(&cpu->xmm[dst_idx], result, 16);
 }
 
+// PCMPEQB xmm, xmm - Compare packed bytes for equality
+void helper_pcmpeqb(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint8_t dst[16], src[16], result[16];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 16; i++)
+        result[i] = (dst[i] == src[i]) ? 0xFF : 0;
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
 // PAND xmm, xmm - Bitwise AND of packed 128-bit values
 void helper_pand(struct cpu_state *cpu, int dst_idx, int src_idx) {
     uint64_t dst[2], src[2];
@@ -740,6 +750,15 @@ void helper_pcmpeqd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
     memcpy(src, src_addr, 16);
     for (int i = 0; i < 4; i++)
         result[i] = (dst[i] == src[i]) ? 0xFFFFFFFF : 0;
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+void helper_pcmpeqb_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint8_t dst[16], src[16], result[16];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    for (int i = 0; i < 16; i++)
+        result[i] = (dst[i] == src[i]) ? 0xFF : 0;
     memcpy(&cpu->xmm[dst_idx], result, 16);
 }
 

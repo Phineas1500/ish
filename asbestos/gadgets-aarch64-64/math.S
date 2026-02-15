@@ -3355,6 +3355,7 @@ NAME(imul32_r8_r15_gadgets):
 
 sse_xmm_xmm_op punpckldq
 sse_xmm_xmm_op punpckhqdq
+sse_xmm_xmm_op pcmpeqb
 sse_xmm_xmm_op pcmpeqd
 sse_xmm_xmm_op pcmpgtd
 sse_xmm_xmm_op pand
@@ -3384,6 +3385,7 @@ sse_xmm_mem_op por
 sse_xmm_mem_op orps
 sse_xmm_mem_op paddd
 sse_xmm_mem_op psubd
+sse_xmm_mem_op pcmpeqb
 sse_xmm_mem_op pcmpeqd
 sse_xmm_mem_op pcmpgtd
 sse_xmm_mem_op punpckldq
