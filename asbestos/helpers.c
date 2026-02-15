@@ -560,12 +560,36 @@ void helper_psubd(struct cpu_state *cpu, int dst_idx, int src_idx) {
     memcpy(&cpu->xmm[dst_idx], dst, 16);
 }
 
+// PCMPGTD xmm, xmm - Compare packed doublewords for greater than (signed)
+void helper_pcmpgtd(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    int32_t dst[4], src[4];
+    uint32_t result[4];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 4; i++)
+        result[i] = (dst[i] > src[i]) ? 0xFFFFFFFF : 0;
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
 // PSHUFD xmm, xmm/m128, imm8 - Shuffle packed doublewords
 void helper_pshufd(struct cpu_state *cpu, int dst_idx, int src_idx, uint8_t imm) {
     uint32_t src[4], result[4];
     memcpy(src, &cpu->xmm[src_idx], 16);
     result[0] = src[(imm >> 0) & 3];
     result[1] = src[(imm >> 2) & 3];
+    result[2] = src[(imm >> 4) & 3];
+    result[3] = src[(imm >> 6) & 3];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// SHUFPS xmm, xmm, imm8 - Shuffle packed single-precision floats
+// Low 2 dwords from dst, high 2 dwords from src
+void helper_shufps(struct cpu_state *cpu, int dst_idx, int src_idx, uint8_t imm) {
+    uint32_t dst[4], src[4], result[4];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    result[0] = dst[(imm >> 0) & 3];
+    result[1] = dst[(imm >> 2) & 3];
     result[2] = src[(imm >> 4) & 3];
     result[3] = src[(imm >> 6) & 3];
     memcpy(&cpu->xmm[dst_idx], result, 16);
@@ -716,6 +740,16 @@ void helper_pcmpeqd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
     memcpy(src, src_addr, 16);
     for (int i = 0; i < 4; i++)
         result[i] = (dst[i] == src[i]) ? 0xFFFFFFFF : 0;
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+void helper_pcmpgtd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    int32_t dst[4], src[4];
+    uint32_t result[4];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    for (int i = 0; i < 4; i++)
+        result[i] = (dst[i] > src[i]) ? 0xFFFFFFFF : 0;
     memcpy(&cpu->xmm[dst_idx], result, 16);
 }
 

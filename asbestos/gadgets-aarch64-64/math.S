@@ -3208,6 +3208,70 @@ NAME(imul32_r8_r15_gadgets):
     gret 2
     write_bullshit 64, movsd_mem_xmm
 
+// MOVHPS xmm, m64 - Load 64 bits from memory to XMM high, low preserved
+// _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
+.gadget movhps_load
+    read_prep 64, movhps_load
+    ldr _xtmp, [_addr]         // Load 64 bits from memory
+
+    // Store to XMM register HIGH half
+    ldr x8, [_ip]              // XMM register index
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[n]
+    str _xtmp, [x8, 8]         // Store to high 64 bits (low preserved)
+    gret 2
+    read_bullshit 64, movhps_load
+
+// MOVHPS m64, xmm - Store XMM high 64 bits to memory
+// _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
+.gadget movhps_store
+    // Load XMM high 64 bits
+    ldr x8, [_ip]              // XMM register index
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[n]
+    ldr _xtmp, [x8, 8]         // Load high 64 bits
+
+    // Store to memory
+    write_prep 64, movhps_store
+    str _xtmp, [_addr]         // Store 64 bits to memory
+    write_done 64, movhps_store
+    gret 2
+    write_bullshit 64, movhps_store
+
+// MOVLPS xmm, m64 - Load 64 bits from memory to XMM low, high preserved
+// _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
+.gadget movlps_load
+    read_prep 64, movlps_load
+    ldr _xtmp, [_addr]         // Load 64 bits from memory
+
+    // Store to XMM register LOW half
+    ldr x8, [_ip]              // XMM register index
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[n]
+    str _xtmp, [x8]            // Store to low 64 bits (high preserved)
+    gret 2
+    read_bullshit 64, movlps_load
+
+// MOVLPS m64, xmm - Store XMM low 64 bits to memory
+// _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
+.gadget movlps_store
+    // Load XMM low 64 bits
+    ldr x8, [_ip]              // XMM register index
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[n]
+    ldr _xtmp, [x8]            // Load low 64 bits
+
+    // Store to memory
+    write_prep 64, movlps_store
+    str _xtmp, [_addr]         // Store 64 bits to memory
+    write_done 64, movlps_store
+    gret 2
+    write_bullshit 64, movlps_store
+
 // ============================================================
 // MOVD - Move Doubleword (32-bit) between GPR/memory and XMM
 // ============================================================
@@ -3292,6 +3356,7 @@ NAME(imul32_r8_r15_gadgets):
 sse_xmm_xmm_op punpckldq
 sse_xmm_xmm_op punpckhqdq
 sse_xmm_xmm_op pcmpeqd
+sse_xmm_xmm_op pcmpgtd
 sse_xmm_xmm_op pand
 sse_xmm_xmm_op pandn
 sse_xmm_xmm_op por
@@ -3320,6 +3385,7 @@ sse_xmm_mem_op orps
 sse_xmm_mem_op paddd
 sse_xmm_mem_op psubd
 sse_xmm_mem_op pcmpeqd
+sse_xmm_mem_op pcmpgtd
 sse_xmm_mem_op punpckldq
 sse_xmm_mem_op punpckhqdq
 
@@ -3398,6 +3464,20 @@ sse_xmm_mem_op punpckhqdq
     ldr x2, [_ip, 8]           // src XMM index
     ldr x3, [_ip, 16]          // imm8
     bl NAME(helper_pshufd)
+    restore_c
+    gret 3
+
+// SHUFPS xmm, xmm, imm8 - Shuffle packed single-precision floats
+// result[0] = dst[imm[1:0]], result[1] = dst[imm[3:2]]
+// result[2] = src[imm[5:4]], result[3] = src[imm[7:6]]
+// [_ip] = dst XMM index, [_ip+8] = src XMM index, [_ip+16] = imm8
+.gadget shufps
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    ldr x2, [_ip, 8]           // src XMM index
+    ldr x3, [_ip, 16]          // imm8
+    bl NAME(helper_shufps)
     restore_c
     gret 3
 

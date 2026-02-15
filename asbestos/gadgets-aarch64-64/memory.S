@@ -20,6 +20,17 @@
     gret 1
     read_bullshit 64, pop
 
+// LEAVE = mov rsp, rbp; pop rbp
+.gadget leave
+    mov rsp, rbp
+    mov _addr, rsp
+    read_prep 64, leave
+    ldr _xtmp, [_addr]
+    mov rbp, _xtmp
+    add rsp, rsp, 8
+    gret 1
+    read_bullshit 64, leave
+
 // Push 32-bit value (for compatibility)
 .gadget push32
     sub _addr, rsp, 4
