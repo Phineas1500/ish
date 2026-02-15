@@ -305,12 +305,18 @@ extern void gadget_store16_mem(void);
 extern void gadget_store8_mem(void);
 
 // DIV/IDIV gadgets
+extern void gadget_div8(void);
+extern void gadget_div16(void);
 extern void gadget_div32(void);
 extern void gadget_div64(void);
+extern void gadget_idiv8(void);
+extern void gadget_idiv16(void);
 extern void gadget_idiv32(void);
 extern void gadget_idiv64(void);
 
 // MUL gadgets (unsigned multiply: RDX:RAX = RAX * r/m)
+extern void gadget_mul8(void);
+extern void gadget_mul16(void);
 extern void gadget_mul32(void);
 extern void gadget_mul64(void);
 
@@ -5571,14 +5577,23 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_DIV:
-    // Unsigned divide: EDX:EAX / src -> EAX (quotient), EDX (remainder)
-    // For 64-bit: RDX:RAX / src -> RAX (quotient), RDX (remainder)
+    // Unsigned divide: 8-bit: AX / r/m8 -> AL=quot, AH=rem
+    // 16-bit: DX:AX / r/m16 -> AX=quot, DX=rem
+    // 32-bit: EDX:EAX / r/m32 -> EAX=quot, EDX=rem
+    // 64-bit: RDX:RAX / r/m64 -> RAX=quot, RDX=rem
     if (inst.operand_count >= 1) {
       // Load divisor into _xtmp
       if (is_gpr(inst.operands[0].type)) {
         gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
         if (load)
           GEN(load);
+        // High-byte register (AH/BH/CH/DH): shift right by 8
+        if (inst.operands[0].size == size64_8 &&
+            inst.raw_operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+            zydis_is_high_byte_reg(inst.raw_operands[0].reg.value)) {
+          GEN(gadget_lea_lsr64_imm);
+          GEN(8);
+        }
       } else if (is_mem(inst.operands[0].type)) {
         if (!gen_addr(state, &inst.operands[0], &inst)) {
           g(interrupt);
@@ -5587,7 +5602,11 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(state->orig_ip);
           return 0;
         }
-        if (inst.operands[0].size == size64_32) {
+        if (inst.operands[0].size == size64_8) {
+          GEN(gadget_load8_mem);
+        } else if (inst.operands[0].size == size64_16) {
+          GEN(gadget_load16_mem);
+        } else if (inst.operands[0].size == size64_32) {
           GEN(load32_gadgets[9]); // load32_mem
         } else {
           GEN(load64_gadgets[9]); // load64_mem
@@ -5600,8 +5619,12 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(state->orig_ip);
         return 0;
       }
-      // Perform division (RAX/RDX are implicitly used)
-      if (inst.operands[0].size == size64_32) {
+      // Perform division
+      if (inst.operands[0].size == size64_8) {
+        GEN(gadget_div8);
+      } else if (inst.operands[0].size == size64_16) {
+        GEN(gadget_div16);
+      } else if (inst.operands[0].size == size64_32) {
         GEN(gadget_div32);
       } else {
         GEN(gadget_div64);
@@ -5616,13 +5639,23 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_IDIV:
-    // Signed divide: EDX:EAX / src -> EAX (quotient), EDX (remainder)
+    // Signed divide: 8-bit: AX / r/m8 -> AL=quot, AH=rem
+    // 16-bit: DX:AX / r/m16 -> AX=quot, DX=rem
+    // 32-bit: EDX:EAX / r/m32 -> EAX=quot, EDX=rem
+    // 64-bit: RDX:RAX / r/m64 -> RAX=quot, RDX=rem
     if (inst.operand_count >= 1) {
       // Load divisor into _xtmp
       if (is_gpr(inst.operands[0].type)) {
         gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
         if (load)
           GEN(load);
+        // High-byte register (AH/BH/CH/DH): shift right by 8
+        if (inst.operands[0].size == size64_8 &&
+            inst.raw_operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+            zydis_is_high_byte_reg(inst.raw_operands[0].reg.value)) {
+          GEN(gadget_lea_lsr64_imm);
+          GEN(8);
+        }
       } else if (is_mem(inst.operands[0].type)) {
         if (!gen_addr(state, &inst.operands[0], &inst)) {
           g(interrupt);
@@ -5631,7 +5664,11 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(state->orig_ip);
           return 0;
         }
-        if (inst.operands[0].size == size64_32) {
+        if (inst.operands[0].size == size64_8) {
+          GEN(gadget_load8_mem);
+        } else if (inst.operands[0].size == size64_16) {
+          GEN(gadget_load16_mem);
+        } else if (inst.operands[0].size == size64_32) {
           GEN(load32_gadgets[9]); // load32_mem
         } else {
           GEN(load64_gadgets[9]); // load64_mem
@@ -5645,7 +5682,11 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         return 0;
       }
       // Perform signed division
-      if (inst.operands[0].size == size64_32) {
+      if (inst.operands[0].size == size64_8) {
+        GEN(gadget_idiv8);
+      } else if (inst.operands[0].size == size64_16) {
+        GEN(gadget_idiv16);
+      } else if (inst.operands[0].size == size64_32) {
         GEN(gadget_idiv32);
       } else {
         GEN(gadget_idiv64);
@@ -5660,13 +5701,23 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_MUL:
-    // Unsigned multiply: RDX:RAX = RAX * r/m
+    // Unsigned multiply: 8-bit: AL * r/m8 -> AX
+    // 16-bit: AX * r/m16 -> DX:AX
+    // 32-bit: EAX * r/m32 -> EDX:EAX
+    // 64-bit: RAX * r/m64 -> RDX:RAX
     if (inst.operand_count >= 1) {
       // Load multiplier into _xtmp
       if (is_gpr(inst.operands[0].type)) {
         gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
         if (load)
           GEN(load);
+        // High-byte register (AH/BH/CH/DH): shift right by 8
+        if (inst.operands[0].size == size64_8 &&
+            inst.raw_operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+            zydis_is_high_byte_reg(inst.raw_operands[0].reg.value)) {
+          GEN(gadget_lea_lsr64_imm);
+          GEN(8);
+        }
       } else if (is_mem(inst.operands[0].type)) {
         if (!gen_addr(state, &inst.operands[0], &inst)) {
           g(interrupt);
@@ -5675,7 +5726,11 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(state->orig_ip);
           return 0;
         }
-        if (inst.operands[0].size == size64_32) {
+        if (inst.operands[0].size == size64_8) {
+          GEN(gadget_load8_mem);
+        } else if (inst.operands[0].size == size64_16) {
+          GEN(gadget_load16_mem);
+        } else if (inst.operands[0].size == size64_32) {
           GEN(load32_gadgets[9]); // load32_mem
         } else {
           GEN(load64_gadgets[9]); // load64_mem
@@ -5688,8 +5743,12 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(state->orig_ip);
         return 0;
       }
-      // Perform unsigned multiplication (RAX * _xtmp -> RDX:RAX)
-      if (inst.operands[0].size == size64_32) {
+      // Perform unsigned multiplication
+      if (inst.operands[0].size == size64_8) {
+        GEN(gadget_mul8);
+      } else if (inst.operands[0].size == size64_16) {
+        GEN(gadget_mul16);
+      } else if (inst.operands[0].size == size64_32) {
         GEN(gadget_mul32);
       } else {
         GEN(gadget_mul64);

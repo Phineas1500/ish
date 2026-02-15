@@ -625,7 +625,7 @@ int_t sys_recvfrom(fd_t sock_fd, addr_t buffer_addr, dword_t len, dword_t flags,
         return errno_map();
     }
 
-    if (user_write(buffer_addr, buffer, len)) {
+    if (user_write(buffer_addr, buffer, res)) {
         free(buffer);
         return _EFAULT;
     }

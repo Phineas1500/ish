@@ -1507,6 +1507,33 @@ NAME(xor32_r8_r15_gadgets):
 
 // DIV32: Unsigned divide EDX:EAX by _xtmp (32-bit divisor)
 // Input: _xtmp = divisor, rax = low 32 bits of dividend, rdx = high 32 bits
+// DIV8: Unsigned divide AX by _xtmp[7:0]
+// Output: AL = quotient, AH = remainder (in rax, preserving bits 63:16)
+.gadget div8
+    and w8, w20, #0xffff        // w8 = AX (low 16 bits of RAX)
+    and w9, _tmp, #0xff        // w9 = divisor (low 8 bits)
+    udiv w10, w8, w9            // w10 = quotient
+    msub w11, w10, w9, w8       // w11 = remainder
+    // Write AL = quotient, AH = remainder, preserve bits 63:16
+    bfi x20, x10, #0, #8       // bits 7:0 = quotient
+    bfi x20, x11, #8, #8       // bits 15:8 = remainder
+    gret
+
+// DIV16: Unsigned divide DX:AX by _xtmp[15:0]
+// Output: AX = quotient (in rax), DX = remainder (in rdx), preserving bits 63:16
+.gadget div16
+    and w8, w23, #0xffff        // w8 = DX low 16 bits
+    lsl w8, w8, #16
+    and w9, w20, #0xffff        // w9 = AX low 16 bits
+    orr w8, w8, w9              // w8 = DX:AX as 32-bit unsigned
+    and w9, _tmp, #0xffff      // w9 = divisor low 16 bits
+    udiv w10, w8, w9            // quotient
+    msub w11, w10, w9, w8       // remainder
+    bfi x20, x10, #0, #16      // AX = quotient (preserve upper bits of rax)
+    bfi x23, x11, #0, #16      // DX = remainder (preserve upper bits of rdx)
+    gret
+
+// DIV32: Unsigned divide EDX:EAX by _xtmp (32-bit divisor)
 // Output: rax = quotient, rdx = remainder
 // Note: Uses 64-bit division since EDX:EAX fits in 64 bits
 .gadget div32
@@ -1544,6 +1571,31 @@ NAME(xor32_r8_r15_gadgets):
     ldr rdx, [_cpu, CPU_rdx]
     gret
 
+// IDIV8: Signed divide AX by _xtmp[7:0]
+// Output: AL = quotient, AH = remainder (in rax, preserving bits 63:16)
+.gadget idiv8
+    sxth w8, w20                // w8 = sign-extend AX (16-bit) to 32-bit
+    sxtb w9, _tmp               // w9 = sign-extend divisor (8-bit)
+    sdiv w10, w8, w9            // signed quotient
+    msub w11, w10, w9, w8       // signed remainder
+    bfi x20, x10, #0, #8       // AL = quotient
+    bfi x20, x11, #8, #8       // AH = remainder
+    gret
+
+// IDIV16: Signed divide DX:AX by _xtmp[15:0]
+// Output: AX = quotient, DX = remainder, preserving bits 63:16
+.gadget idiv16
+    and w8, w23, #0xffff        // DX low 16 bits
+    lsl w8, w8, #16
+    and w9, w20, #0xffff        // AX low 16 bits
+    orr w8, w8, w9              // DX:AX as 32-bit signed
+    sxth w9, _tmp               // sign-extend 16-bit divisor
+    sdiv w10, w8, w9            // signed quotient
+    msub w11, w10, w9, w8       // signed remainder
+    bfi x20, x10, #0, #16      // AX = quotient
+    bfi x23, x11, #0, #16      // DX = remainder
+    gret
+
 // IDIV32: Signed divide EDX:EAX by _xtmp (32-bit divisor)
 .gadget idiv32
     // Combine EDX:EAX into a 64-bit signed value
@@ -1575,6 +1627,39 @@ NAME(xor32_r8_r15_gadgets):
     // Reload results from cpu_state
     ldr rax, [_cpu, CPU_rax]
     ldr rdx, [_cpu, CPU_rdx]
+    gret
+
+// MUL32: Unsigned multiply EAX * _xtmp -> EDX:EAX
+// MUL8: Unsigned multiply AL * _xtmp[7:0] -> AX
+.gadget mul8
+    and w8, w20, #0xff          // w8 = AL
+    and w9, _tmp, #0xff         // w9 = operand (low 8 bits)
+    mul w10, w8, w9             // w10 = result (16-bit fits in 32-bit)
+    // Write AX = result, preserve bits 63:16
+    bfi x20, x10, #0, #16      // AX = result
+    // CF/OF set if AH (high byte of result) is non-zero
+    lsr w8, w10, #8
+    and w8, w8, #0xff
+    cmp w8, #0
+    cset w8, ne
+    strb w8, [_cpu, CPU_cf]
+    strb w8, [_cpu, CPU_of]
+    gret
+
+// MUL16: Unsigned multiply AX * _xtmp[15:0] -> DX:AX
+.gadget mul16
+    and w8, w20, #0xffff        // w8 = AX
+    and w9, _tmp, #0xffff       // w9 = operand low 16 bits
+    mul w10, w8, w9             // w10 = 32-bit result
+    // AX = low 16 bits, DX = high 16 bits
+    bfi x20, x10, #0, #16      // AX = low 16 bits (preserve upper RAX)
+    lsr w11, w10, #16
+    bfi x23, x11, #0, #16      // DX = high 16 bits (preserve upper RDX)
+    // CF/OF set if DX (high half) is non-zero
+    cmp w11, #0
+    cset w8, ne
+    strb w8, [_cpu, CPU_cf]
+    strb w8, [_cpu, CPU_of]
     gret
 
 // MUL32: Unsigned multiply EAX * _xtmp -> EDX:EAX
