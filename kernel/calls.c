@@ -556,6 +556,27 @@ void handle_interrupt(int interrupt) {
         if (syscall_num == 3) // close
           fprintf(stderr, "  [fs] pid=%d close(%lld) = %lld\n",
                   current->pid, (long long)cpu->rdi, (long long)result);
+        // Trace fstat with file size
+        if (syscall_num == 5 && result == 0) { // fstat
+          // Read back the stat struct to get the file size (offset 48 = size_64)
+          uint64_t fsize = 0;
+          user_get(cpu->rsi + 48, fsize);
+          fprintf(stderr, "  [fs] pid=%d fstat(fd=%lld) = %lld (size=%llu)\n",
+                  current->pid, (long long)cpu->rdi, (long long)result,
+                  (unsigned long long)fsize);
+        } else if (syscall_num == 5) {
+          fprintf(stderr, "  [fs] pid=%d fstat(fd=%lld) = %lld\n",
+                  current->pid, (long long)cpu->rdi, (long long)result);
+        }
+        // Trace lseek
+        if (syscall_num == 8) // lseek
+          fprintf(stderr, "  [fs] pid=%d lseek(fd=%lld, off=%lld, whence=%lld) = %lld\n",
+                  current->pid, (long long)cpu->rdi, (long long)cpu->rsi,
+                  (long long)cpu->rdx, (long long)result);
+        // Trace brk
+        if (syscall_num == 12) // brk
+          fprintf(stderr, "  [mem] pid=%d brk(%#llx) = %#llx\n",
+                  current->pid, (unsigned long long)cpu->rdi, (unsigned long long)(uint64_t)result);
         // Trace getrandom
         if (syscall_num == 318)
           fprintf(stderr, "  [rng] pid=%d getrandom(len=%lld, flags=%lld) = %lld\n",
@@ -664,14 +685,23 @@ void handle_interrupt(int interrupt) {
       fprintf(stderr, "  r12=%#llx r13=%#llx r14=%#llx r15=%#llx\n",
              (unsigned long long)cpu->r12, (unsigned long long)cpu->r13,
              (unsigned long long)cpu->r14, (unsigned long long)cpu->r15);
-      // Dump instruction bytes at fault IP
-      fprintf(stderr, "  insn bytes at ip:");
-      for (int i = 0; i < 16; i++) {
+      // Dump instruction bytes around fault IP (64 before + 64 after)
+      fprintf(stderr, "  insn bytes at ip-64:");
+      for (int i = -64; i < 64; i++) {
         uint8_t b;
         if (user_get(CPU_IP(cpu) + i, b)) break;
+        if (i == 0) fprintf(stderr, " |");
         fprintf(stderr, " %02x", b);
+        if (i == -1) fprintf(stderr, " |");
       }
       fprintf(stderr, "\n");
+      // Dump XMM registers (critical for SIMD loop debugging)
+      for (int xi = 0; xi < 8; xi++) {
+        uint8_t *xb = (uint8_t *)&cpu->xmm[xi];
+        fprintf(stderr, "  xmm%d:", xi);
+        for (int j = 0; j < 16; j++) fprintf(stderr, " %02x", xb[j]);
+        fprintf(stderr, "\n");
+      }
       // Dump stack around RSP
       fprintf(stderr, "  stack:");
       for (int i = 0; i < 48; i++) {

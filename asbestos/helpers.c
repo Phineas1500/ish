@@ -744,6 +744,43 @@ void helper_psubd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
     memcpy(&cpu->xmm[dst_idx], dst, 16);
 }
 
+// PADDQ xmm, xmm - Add packed 64-bit integers
+void helper_paddq(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint64_t dst[2], src[2];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 2; i++)
+        dst[i] += src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+void helper_paddq_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint64_t dst[2], src[2];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    for (int i = 0; i < 2; i++)
+        dst[i] += src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+void helper_psubq(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint64_t dst[2], src[2];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 2; i++)
+        dst[i] -= src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+void helper_psubq_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint64_t dst[2], src[2];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    for (int i = 0; i < 2; i++)
+        dst[i] -= src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
 void helper_pcmpeqd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
     uint32_t dst[4], src[4], result[4];
     memcpy(dst, &cpu->xmm[dst_idx], 16);
@@ -788,6 +825,54 @@ void helper_punpckhqdq_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
     result[0] = dst[1];
     result[1] = src[1];
     memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// PSRLW xmm, imm8 - Packed Shift Right Logical Word (16-bit)
+void helper_psrlw(struct cpu_state *cpu, int xmm_idx, uint8_t imm) {
+    uint16_t w[8];
+    memcpy(w, &cpu->xmm[xmm_idx], 16);
+    if (imm >= 16) {
+        memset(w, 0, 16);
+    } else {
+        for (int i = 0; i < 8; i++) w[i] >>= imm;
+    }
+    memcpy(&cpu->xmm[xmm_idx], w, 16);
+}
+
+// PSLLW xmm, imm8 - Packed Shift Left Logical Word (16-bit)
+void helper_psllw(struct cpu_state *cpu, int xmm_idx, uint8_t imm) {
+    uint16_t w[8];
+    memcpy(w, &cpu->xmm[xmm_idx], 16);
+    if (imm >= 16) {
+        memset(w, 0, 16);
+    } else {
+        for (int i = 0; i < 8; i++) w[i] <<= imm;
+    }
+    memcpy(&cpu->xmm[xmm_idx], w, 16);
+}
+
+// PSRAW xmm, imm8 - Packed Shift Right Arithmetic Word (16-bit)
+void helper_psraw(struct cpu_state *cpu, int xmm_idx, uint8_t imm) {
+    int16_t w[8];
+    memcpy(w, &cpu->xmm[xmm_idx], 16);
+    if (imm >= 16) {
+        for (int i = 0; i < 8; i++) w[i] = (w[i] < 0) ? -1 : 0;
+    } else {
+        for (int i = 0; i < 8; i++) w[i] >>= imm;
+    }
+    memcpy(&cpu->xmm[xmm_idx], w, 16);
+}
+
+// PSRAD xmm, imm8 - Packed Shift Right Arithmetic Doubleword
+void helper_psrad(struct cpu_state *cpu, int xmm_idx, uint8_t imm) {
+    int32_t dw[4];
+    memcpy(dw, &cpu->xmm[xmm_idx], 16);
+    if (imm >= 32) {
+        for (int i = 0; i < 4; i++) dw[i] = (dw[i] < 0) ? -1 : 0;
+    } else {
+        for (int i = 0; i < 4; i++) dw[i] >>= imm;
+    }
+    memcpy(&cpu->xmm[xmm_idx], dw, 16);
 }
 
 // PSRLD xmm, imm8 - Packed Shift Right Logical Doubleword
@@ -1013,6 +1098,322 @@ int helper_pmovmskb(struct cpu_state *cpu, int src_idx) {
     return mask;
 }
 
+// CMPSD xmm, xmm/m64, imm8 - Compare Scalar Double-Precision FP
+// Predicate: 0=EQ, 1=LT, 2=LE, 3=UNORD, 4=NEQ, 5=NLT, 6=NLE, 7=ORD
+// Result: all-1s (0xFFFFFFFFFFFFFFFF) or all-0s in dst low qword
+void helper_cmpsd(struct cpu_state *cpu, int dst_idx, int src_idx, uint8_t pred) {
+    double a, b;
+    memcpy(&a, &cpu->xmm[dst_idx], 8);
+    memcpy(&b, &cpu->xmm[src_idx], 8);
+    int result;
+    switch (pred & 7) {
+    case 0: result = (a == b); break;
+    case 1: result = (a < b); break;
+    case 2: result = (a <= b); break;
+    case 3: result = __builtin_isunordered(a, b); break;
+    case 4: result = (a != b); break;
+    case 5: result = !(a < b); break;
+    case 6: result = !(a <= b); break;
+    case 7: result = !__builtin_isunordered(a, b); break;
+    default: result = 0; break;
+    }
+    uint64_t mask = result ? 0xFFFFFFFFFFFFFFFFULL : 0;
+    memcpy(&cpu->xmm[dst_idx], &mask, 8);
+}
+
+void helper_cmpsd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr, uint8_t pred) {
+    double a, b;
+    memcpy(&a, &cpu->xmm[dst_idx], 8);
+    memcpy(&b, src_addr, 8);
+    int result;
+    switch (pred & 7) {
+    case 0: result = (a == b); break;
+    case 1: result = (a < b); break;
+    case 2: result = (a <= b); break;
+    case 3: result = __builtin_isunordered(a, b); break;
+    case 4: result = (a != b); break;
+    case 5: result = !(a < b); break;
+    case 6: result = !(a <= b); break;
+    case 7: result = !__builtin_isunordered(a, b); break;
+    default: result = 0; break;
+    }
+    uint64_t mask = result ? 0xFFFFFFFFFFFFFFFFULL : 0;
+    memcpy(&cpu->xmm[dst_idx], &mask, 8);
+}
+
+// PUNPCKLWD xmm, xmm - Unpack and interleave low words
+void helper_punpcklwd(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint16_t dst[8], src[8], result[8];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    result[0] = dst[0]; result[1] = src[0];
+    result[2] = dst[1]; result[3] = src[1];
+    result[4] = dst[2]; result[5] = src[2];
+    result[6] = dst[3]; result[7] = src[3];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+void helper_punpcklwd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint16_t dst[8], src[8], result[8];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    result[0] = dst[0]; result[1] = src[0];
+    result[2] = dst[1]; result[3] = src[1];
+    result[4] = dst[2]; result[5] = src[2];
+    result[6] = dst[3]; result[7] = src[3];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// PUNPCKLBW xmm, xmm - Unpack and interleave low bytes
+void helper_punpcklbw(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint8_t dst[16], src[16], result[16];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 8; i++) {
+        result[i*2] = dst[i];
+        result[i*2+1] = src[i];
+    }
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+void helper_punpcklbw_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint8_t dst[16], src[16], result[16];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    for (int i = 0; i < 8; i++) {
+        result[i*2] = dst[i];
+        result[i*2+1] = src[i];
+    }
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// PACKUSWB xmm, xmm - Pack with unsigned saturation (words to bytes)
+void helper_packuswb(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    int16_t dst[8], src[8];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    uint8_t result[16];
+    for (int i = 0; i < 8; i++)
+        result[i] = (dst[i] < 0) ? 0 : (dst[i] > 255) ? 255 : (uint8_t)dst[i];
+    for (int i = 0; i < 8; i++)
+        result[i+8] = (src[i] < 0) ? 0 : (src[i] > 255) ? 255 : (uint8_t)src[i];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+void helper_packuswb_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    int16_t dst[8], src[8];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    uint8_t result[16];
+    for (int i = 0; i < 8; i++)
+        result[i] = (dst[i] < 0) ? 0 : (dst[i] > 255) ? 255 : (uint8_t)dst[i];
+    for (int i = 0; i < 8; i++)
+        result[i+8] = (src[i] < 0) ? 0 : (src[i] > 255) ? 255 : (uint8_t)src[i];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// PACKSSWB xmm, xmm - Pack with signed saturation (words to bytes)
+void helper_packsswb(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    int16_t dst[8], src[8];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    int8_t result[16];
+    for (int i = 0; i < 8; i++)
+        result[i] = (dst[i] < -128) ? -128 : (dst[i] > 127) ? 127 : (int8_t)dst[i];
+    for (int i = 0; i < 8; i++)
+        result[i+8] = (src[i] < -128) ? -128 : (src[i] > 127) ? 127 : (int8_t)src[i];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+void helper_packsswb_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    int16_t dst[8], src[8];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    int8_t result[16];
+    for (int i = 0; i < 8; i++)
+        result[i] = (dst[i] < -128) ? -128 : (dst[i] > 127) ? 127 : (int8_t)dst[i];
+    for (int i = 0; i < 8; i++)
+        result[i+8] = (src[i] < -128) ? -128 : (src[i] > 127) ? 127 : (int8_t)src[i];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// PACKSSDW xmm, xmm - Pack with signed saturation (dwords to words)
+void helper_packssdw(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    int32_t dst[4], src[4];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    int16_t result[8];
+    for (int i = 0; i < 4; i++)
+        result[i] = (dst[i] < -32768) ? -32768 : (dst[i] > 32767) ? 32767 : (int16_t)dst[i];
+    for (int i = 0; i < 4; i++)
+        result[i+4] = (src[i] < -32768) ? -32768 : (src[i] > 32767) ? 32767 : (int16_t)src[i];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+void helper_packssdw_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    int32_t dst[4], src[4];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    int16_t result[8];
+    for (int i = 0; i < 4; i++)
+        result[i] = (dst[i] < -32768) ? -32768 : (dst[i] > 32767) ? 32767 : (int16_t)dst[i];
+    for (int i = 0; i < 4; i++)
+        result[i+4] = (src[i] < -32768) ? -32768 : (src[i] > 32767) ? 32767 : (int16_t)src[i];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// PUNPCKHBW xmm, xmm - Unpack and interleave high bytes
+void helper_punpckhbw(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint8_t dst[16], src[16], result[16];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 8; i++) {
+        result[i*2] = dst[i+8];
+        result[i*2+1] = src[i+8];
+    }
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+void helper_punpckhbw_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint8_t dst[16], src[16], result[16];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    for (int i = 0; i < 8; i++) {
+        result[i*2] = dst[i+8];
+        result[i*2+1] = src[i+8];
+    }
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// PUNPCKHWD xmm, xmm - Unpack and interleave high words
+void helper_punpckhwd(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint16_t dst[8], src[8], result[8];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    result[0] = dst[4]; result[1] = src[4];
+    result[2] = dst[5]; result[3] = src[5];
+    result[4] = dst[6]; result[5] = src[6];
+    result[6] = dst[7]; result[7] = src[7];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+void helper_punpckhwd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint16_t dst[8], src[8], result[8];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    result[0] = dst[4]; result[1] = src[4];
+    result[2] = dst[5]; result[3] = src[5];
+    result[4] = dst[6]; result[5] = src[6];
+    result[6] = dst[7]; result[7] = src[7];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// PUNPCKHDQ xmm, xmm - Unpack and interleave high doublewords
+void helper_punpckhdq(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint32_t dst[4], src[4], result[4];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    result[0] = dst[2]; result[1] = src[2];
+    result[2] = dst[3]; result[3] = src[3];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+void helper_punpckhdq_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint32_t dst[4], src[4], result[4];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    result[0] = dst[2]; result[1] = src[2];
+    result[2] = dst[3]; result[3] = src[3];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// PSHUFLW xmm, xmm/m128, imm8 - Shuffle Packed Low Words
+// Shuffles low 4 words, copies high 4 words unchanged
+void helper_pshuflw(struct cpu_state *cpu, int dst_idx, int src_idx, uint8_t imm) {
+    uint16_t src[8], result[8];
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    result[0] = src[(imm >> 0) & 3];
+    result[1] = src[(imm >> 2) & 3];
+    result[2] = src[(imm >> 4) & 3];
+    result[3] = src[(imm >> 6) & 3];
+    result[4] = src[4]; result[5] = src[5];
+    result[6] = src[6]; result[7] = src[7];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+void helper_pshuflw_mem(struct cpu_state *cpu, int dst_idx, void *src_addr, uint8_t imm) {
+    uint16_t src[8], result[8];
+    memcpy(src, src_addr, 16);
+    result[0] = src[(imm >> 0) & 3];
+    result[1] = src[(imm >> 2) & 3];
+    result[2] = src[(imm >> 4) & 3];
+    result[3] = src[(imm >> 6) & 3];
+    result[4] = src[4]; result[5] = src[5];
+    result[6] = src[6]; result[7] = src[7];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// PSHUFHW xmm, xmm/m128, imm8 - Shuffle Packed High Words
+// Copies low 4 words unchanged, shuffles high 4 words
+void helper_pshufhw(struct cpu_state *cpu, int dst_idx, int src_idx, uint8_t imm) {
+    uint16_t src[8], result[8];
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    result[0] = src[0]; result[1] = src[1];
+    result[2] = src[2]; result[3] = src[3];
+    result[4] = src[4 + ((imm >> 0) & 3)];
+    result[5] = src[4 + ((imm >> 2) & 3)];
+    result[6] = src[4 + ((imm >> 4) & 3)];
+    result[7] = src[4 + ((imm >> 6) & 3)];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+void helper_pshufhw_mem(struct cpu_state *cpu, int dst_idx, void *src_addr, uint8_t imm) {
+    uint16_t src[8], result[8];
+    memcpy(src, src_addr, 16);
+    result[0] = src[0]; result[1] = src[1];
+    result[2] = src[2]; result[3] = src[3];
+    result[4] = src[4 + ((imm >> 0) & 3)];
+    result[5] = src[4 + ((imm >> 2) & 3)];
+    result[6] = src[4 + ((imm >> 4) & 3)];
+    result[7] = src[4 + ((imm >> 6) & 3)];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// SHUFPS xmm, m128, imm8 - memory form
+void helper_shufps_mem(struct cpu_state *cpu, int dst_idx, void *src_addr, uint8_t imm) {
+    uint32_t dst[4], src[4], result[4];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    result[0] = dst[(imm >> 0) & 3];
+    result[1] = dst[(imm >> 2) & 3];
+    result[2] = src[(imm >> 4) & 3];
+    result[3] = src[(imm >> 6) & 3];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// SHUFPD xmm, xmm/m128, imm8 - Shuffle Packed Double-Precision
+// dst[0] = (imm8[0]) ? dst[1] : dst[0]
+// dst[1] = (imm8[1]) ? src[1] : src[0]
+void helper_shufpd(struct cpu_state *cpu, int dst_idx, int src_idx, uint8_t imm) {
+    uint64_t dst[2], src[2];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    uint64_t result[2];
+    result[0] = (imm & 1) ? dst[1] : dst[0];
+    result[1] = (imm & 2) ? src[1] : src[0];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+void helper_shufpd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr, uint8_t imm) {
+    uint64_t dst[2], src[2];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    uint64_t result[2];
+    result[0] = (imm & 1) ? dst[1] : dst[0];
+    result[1] = (imm & 2) ? src[1] : src[0];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
 // Diagnostic helper: dump x25519 inputs and output
 static void dump_hex(const char *label, uint8_t *buf, int len) {
     fprintf(stderr, "%s: ", label);
@@ -1021,15 +1422,47 @@ static void dump_hex(const char *label, uint8_t *buf, int len) {
     fprintf(stderr, "\n");
 }
 
-void helper_trace_regs(struct cpu_state *cpu, uint64_t guest_ip) {
-    // APK signature verification tracing
-    // libapk.so.2.14.0 base address (from mmap log)
-    uint64_t apk_base = 0x7effffa41000ULL;  // mmap_text(0x7effffa4a000) - text_vaddr(0x9000)
-    uint64_t offset = guest_ip - apk_base;
+static int trace_call_count = 0;
+static int trace_in_call3 = 0;
 
-    // Log ALL trace hits for debugging
-    fprintf(stderr, "[APK-TRACE] ip=%#llx offset=%#llx\n",
-           (unsigned long long)guest_ip, (unsigned long long)offset);
+void helper_trace_regs(struct cpu_state *cpu, uint64_t guest_ip) {
+    // Track which call to cpp_classify_number we're in
+    if (guest_ip == 0x216d8c0ULL) {
+        trace_call_count++;
+        trace_in_call3 = (trace_call_count == 3) ? 1 : 0;
+    }
+    // Only log during call 3 (the one processing "1L") and at the IMAGINARY check
+    if (!trace_in_call3 && guest_ip != 0x2170979ULL)
+        return;
+    // For IMAGINARY check, only show call 3's
+    if (guest_ip == 0x2170979ULL && trace_call_count != 3)
+        return;
+
+    fprintf(stderr, "[TRACE] ip=%#llx rax=%#llx rbx=%#llx rcx=%#llx rdx=%#llx\n",
+           (unsigned long long)guest_ip,
+           (unsigned long long)cpu->rax, (unsigned long long)cpu->rbx,
+           (unsigned long long)cpu->rcx, (unsigned long long)cpu->rdx);
+    fprintf(stderr, "[TRACE]  rsi=%#llx rdi=%#llx rbp=%#llx rsp=%#llx\n",
+           (unsigned long long)cpu->rsi, (unsigned long long)cpu->rdi,
+           (unsigned long long)cpu->rbp, (unsigned long long)cpu->rsp);
+    fprintf(stderr, "[TRACE]  r8=%#llx r9=%#llx r10=%#llx r11=%#llx\n",
+           (unsigned long long)cpu->r8, (unsigned long long)cpu->r9,
+           (unsigned long long)cpu->r10, (unsigned long long)cpu->r11);
+    fprintf(stderr, "[TRACE]  r12=%#llx r13=%#llx r14=%#llx r15=%#llx\n",
+           (unsigned long long)cpu->r12, (unsigned long long)cpu->r13,
+           (unsigned long long)cpu->r14, (unsigned long long)cpu->r15);
+
+    // At 0x2170979: caller checks CPP_N_IMAGINARY
+    if (guest_ip == 0x2170979ULL) {
+        uint32_t result = (uint32_t)(cpu->rax & 0xFFFFFFFF);
+        fprintf(stderr, "[TRACE] CPP_N_IMAGINARY check: eax=%#x (IMAGINARY=%s)\n",
+               result, (result & 0x2000) ? "YES" : "no");
+    }
+    return;
+
+    // APK signature verification tracing (disabled - kept for reference)
+    uint64_t apk_base = 0x7effffa41000ULL;
+    uint64_t offset = guest_ip - apk_base;
 
     // mpart_cb entry (0x10011)
     // At entry: rdi=sign_ctx (saved to rbx), esi=part, rcx=data.ptr, edx=data.len

@@ -54,6 +54,7 @@ struct pt_hash_entry {
 struct mem {
     struct pt_hash_entry **hash_table;  // Hash table of page entries
     int pages_mapped;  // Count of mapped pages
+    page_t mmap_cursor;  // Next page to try for downward mmap allocation
 
     struct mmu mmu;
     wrlock_t lock;
@@ -97,6 +98,8 @@ void mem_next_page(struct mem *mem, page_t *page);
 #define P_ANONYMOUS (1 << 6)
 // mapping was created with MAP_SHARED, should not CoW
 #define P_SHARED (1 << 7)
+// auto-mapped guard page for SIMD over-reads (should not trigger further auto-mapping)
+#define P_GUARD (1 << 8)
 
 bool pt_is_hole(struct mem *mem, page_t start, pages_t pages);
 page_t pt_find_hole(struct mem *mem, pages_t size);

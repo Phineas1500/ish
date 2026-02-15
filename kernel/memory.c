@@ -31,6 +31,7 @@ static inline size_t page_hash(page_t page) {
 void mem_init(struct mem *mem) {
   mem->hash_table = calloc(MEM_HASH_SIZE, sizeof(struct pt_hash_entry *));
   mem->pages_mapped = 0;
+  mem->mmap_cursor = 0x7f0000000ULL; // Start at top of mmap region
   mem->mmu.ops = &mem_mmu_ops;
   mem->mmu.asbestos = asbestos_new(&mem->mmu);
   mem->mmu.changes = 0;
@@ -196,10 +197,11 @@ page_t pt_find_hole(struct mem *mem, pages_t size) {
   bool in_hole = false;
 
 #ifdef ISH_GUEST_64BIT
-  // For 64-bit, search in typical mmap region (below stack, above heap)
-  // Linux x86_64 typically uses 0x7f0000000000 - 0x7fffffffffff for mmap
-  // We'll use a smaller range for efficiency
-  page_t search_start = 0x7f0000000ULL; // ~127 TB
+  // For 64-bit, use cursor-based downward allocation like Linux's mmap.
+  // This avoids re-using freed gaps between existing mappings, which
+  // prevents SIMD over-read issues where code reads past buffer ends
+  // into unmapped holes.
+  page_t search_start = mem->mmap_cursor;
   page_t search_end = 0x400000ULL;      // 16 GB (above typical heap)
 #else
   page_t search_start = 0xf7ffd;
@@ -213,8 +215,14 @@ page_t pt_find_hole(struct mem *mem, pages_t size) {
     }
     if (mem_pt(mem, page) != NULL)
       in_hole = false;
-    else if (hole_end - page == size)
+    else if (hole_end - page == size) {
+#ifdef ISH_GUEST_64BIT
+      // Move cursor below this allocation for next time
+      if (page > 0)
+        mem->mmap_cursor = page - 1;
+#endif
       return page;
+    }
   }
   return BAD_PAGE;
 }
@@ -396,6 +404,41 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
 
   if (entry == NULL) {
     // page does not exist
+#ifdef ISH_GUEST_64BIT
+    // Auto-map guard pages for SIMD over-reads (e.g., GCC's _cpp_clean_line
+    // using MOVDQA to scan for \n, \r, \\, ?). Fill with '\n' bytes so SIMD
+    // scans that look for line-ending characters stop immediately.
+    // Only map if previous page is real (non-guard) to prevent cascade.
+    if (type == MEM_READ && page > 0) {
+      struct pt_entry *prev = mem_pt(mem, page - 1);
+      if (prev != NULL && !(prev->flags & P_GUARD)) {
+        read_wrunlock(&mem->lock);
+        write_wrlock(&mem->lock);
+        // Map multiple guard pages: SIMD loops may have lookahead loads
+        // (e.g., MOVDQA [rax+0x10] prefetches next block before checking
+        // current), so we need extra pages beyond the first.
+        int guard_pages = 1;
+        for (int i = 1; i < 4; i++) {
+          if (mem_pt(mem, page + i) == NULL)
+            guard_pages = i + 1;
+          else
+            break;
+        }
+        void *guard_mem = mmap(NULL, guard_pages * PAGE_SIZE,
+                               PROT_READ | PROT_WRITE,
+                               MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
+        if (guard_mem != MAP_FAILED) {
+          memset(guard_mem, '\n', guard_pages * PAGE_SIZE);
+          pt_map(mem, page, guard_pages, guard_mem, 0, P_READ | P_GUARD);
+        }
+        write_wrunlock(&mem->lock);
+        read_wrlock(&mem->lock);
+        entry = mem_pt(mem, page);
+        if (entry != NULL)
+          goto have_entry;
+      }
+    }
+#endif
     // look to see if the next VM region is willing to grow down
     page_t p = page + 1;
 #ifdef ISH_GUEST_64BIT
@@ -429,6 +472,7 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
     entry = mem_pt(mem, page);
   }
 
+have_entry:
   if (entry != NULL && (type == MEM_WRITE || type == MEM_WRITE_PTRACE)) {
     // if page is unwritable, well tough luck
     if (type != MEM_WRITE_PTRACE && !(entry->flags & P_WRITE))

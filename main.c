@@ -6,15 +6,13 @@
 #include "kernel/task.h"
 #include "xX_main_Xx.h"
 
-static void sigsegv_handler(int sig) {
-    (void)sig;
+static void crash_handler(int sig) {
     void *array[50];
     int size;
-    fprintf(stderr, "\n=== SIGSEGV caught ===\n");
+    fprintf(stderr, "\n=== Signal %d caught ===\n", sig);
     size = backtrace(array, 50);
     fprintf(stderr, "Backtrace (%d frames):\n", size);
     backtrace_symbols_fd(array, size, 2);
-    // Print CPU register state
     if (current) {
         struct cpu_state *cpu = &current->cpu;
 #ifdef ISH_GUEST_64BIT
@@ -38,11 +36,15 @@ static void sigsegv_handler(int sig) {
 #endif
     }
     fprintf(stderr, "======================\n");
-    _exit(139);
+    _exit(128 + sig);
 }
 
 int main(int argc, char *const argv[]) {
-    signal(SIGSEGV, sigsegv_handler);
+    signal(SIGSEGV, crash_handler);
+    signal(SIGBUS, crash_handler);
+    signal(SIGABRT, crash_handler);
+    signal(SIGILL, crash_handler);
+    signal(SIGFPE, crash_handler);
     char envp[100] = {0};
     if (getenv("TERM"))
         strcpy(envp, getenv("TERM") - strlen("TERM") - 1);

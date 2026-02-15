@@ -2710,6 +2710,98 @@ NAME(xor32_r8_r15_gadgets):
     gret
 
 // ============================================================
+// TZCNT - Count Trailing Zeros (BMI1)
+// Unlike BSF, TZCNT defines the result for zero input and sets flags differently:
+// ZF = (result == 0), CF = (source == 0)
+// ============================================================
+
+.gadget tzcnt64
+    cbz _xtmp, 1f               // Source is zero?
+    rbit x9, _xtmp              // Reverse bits
+    clz x9, x9                  // Count trailing zeros
+    mov _xtmp, x9               // Result = count
+    str _xtmp, [_cpu, CPU_res]  // ZF = (result == 0)
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    strb wzr, [_cpu, CPU_cf]    // CF = 0 (source was non-zero)
+    gret
+1:  // Source is zero: result = 64, CF=1, ZF=0
+    mov _xtmp, 64
+    str _xtmp, [_cpu, CPU_res]  // 64 != 0, so ZF = 0
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    mov w10, 1
+    strb w10, [_cpu, CPU_cf]    // CF = 1 (source was zero)
+    gret
+
+.gadget tzcnt32
+    uxtw _xtmp, _tmp            // Zero extend
+    cbz _xtmp, 1f
+    rbit w9, _tmp               // Reverse 32 bits
+    clz w9, w9                  // Count trailing zeros
+    uxtw _xtmp, w9              // Result zero extended
+    str _xtmp, [_cpu, CPU_res]  // ZF = (result == 0)
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    strb wzr, [_cpu, CPU_cf]    // CF = 0
+    gret
+1:  mov _xtmp, 32               // Result = 32
+    str _xtmp, [_cpu, CPU_res]  // ZF = 0 (32 != 0)
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    mov w10, 1
+    strb w10, [_cpu, CPU_cf]    // CF = 1
+    gret
+
+// ============================================================
+// LZCNT - Count Leading Zeros (ABM/BMI1)
+// ZF = (result == 0), CF = (source == 0)
+// ============================================================
+
+.gadget lzcnt64
+    cbz _xtmp, 1f
+    clz x9, _xtmp               // Count leading zeros
+    mov _xtmp, x9
+    str _xtmp, [_cpu, CPU_res]  // ZF = (result == 0)
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    strb wzr, [_cpu, CPU_cf]    // CF = 0
+    gret
+1:  mov _xtmp, 64               // Result = 64
+    str _xtmp, [_cpu, CPU_res]  // ZF = 0
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    mov w10, 1
+    strb w10, [_cpu, CPU_cf]    // CF = 1
+    gret
+
+.gadget lzcnt32
+    uxtw _xtmp, _tmp
+    cbz _xtmp, 1f
+    clz w9, _tmp
+    uxtw _xtmp, w9
+    str _xtmp, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    strb wzr, [_cpu, CPU_cf]
+    gret
+1:  mov _xtmp, 32
+    str _xtmp, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    mov w10, 1
+    strb w10, [_cpu, CPU_cf]
+    gret
+
+// ============================================================
 // Zero/Sign extend gadgets
 // ============================================================
 
@@ -2735,6 +2827,12 @@ NAME(xor32_r8_r15_gadgets):
 
 .gadget sign_extend32
     sxtw _xtmp, _tmp
+    gret
+
+// CWDE: Sign extend AX (16-bit) to EAX (32-bit), zero-extended to RAX
+// Writing to _tmp (w0) automatically zero-extends to _xtmp (x0)
+.gadget cwde
+    sxth _tmp, _tmp
     gret
 
 // CDQ: Sign extend EAX to EDX:EAX (EDX = sign_extend(EAX[31]))
@@ -3293,6 +3391,50 @@ NAME(imul32_r8_r15_gadgets):
     gret 2
     write_bullshit 64, movsd_mem_xmm
 
+// MOVSS xmm, xmm - Move low 32 bits, preserve upper 96 bits of dst
+// _xtmp = src XMM index, [_ip] = dst XMM index
+.gadget movss_xmm_xmm
+    lsl x8, _xtmp, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr w10, [x8]              // Load src low 32 bits
+
+    ldr x9, [_ip]              // Destination XMM index
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    str w10, [x9]              // Store to dst low 32 bits (upper preserved)
+    gret 1
+
+// MOVSS xmm, m32 - Load 32 bits from memory to XMM low, zero upper
+.gadget movss_xmm_mem
+    read_prep 32, movss_xmm_mem
+    ldr _tmp, [_addr]          // Load 32 bits from memory
+
+    ldr x8, [_ip]
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    str wzr, [x8, 4]           // Zero bits 63:32
+    str _tmp, [x8]             // Store 32-bit float to low dword
+    str xzr, [x8, 8]           // Zero high 64 bits
+    gret 2
+    read_bullshit 32, movss_xmm_mem
+
+// MOVSS m32, xmm - Store XMM low 32 bits to memory
+.gadget movss_mem_xmm
+    ldr x8, [_ip]
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr _tmp, [x8]             // Load low 32 bits
+
+    write_prep 32, movss_mem_xmm
+    str _tmp, [_addr]          // Store 32 bits to memory
+    write_done 32, movss_mem_xmm
+    gret 2
+    write_bullshit 32, movss_mem_xmm
+
 // MOVHPS xmm, m64 - Load 64 bits from memory to XMM high, low preserved
 // _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
 .gadget movhps_load
@@ -3356,6 +3498,42 @@ NAME(imul32_r8_r15_gadgets):
     write_done 64, movlps_store
     gret 2
     write_bullshit 64, movlps_store
+
+// MOVHLPS xmm, xmm - Move high qword of source to low qword of dest
+// [_ip] = dest XMM index, [_ip+8] = source XMM index
+.gadget movhlps
+    // Load source XMM high 64 bits
+    ldr x8, [_ip, 8]           // src XMM index
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr x9, [x8, 8]            // x9 = src high qword
+
+    // Store to dest XMM low 64 bits (high preserved)
+    ldr x8, [_ip]              // dest XMM index
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    str x9, [x8]               // dest low = src high
+    gret 2
+
+// MOVLHPS xmm, xmm - Move low qword of source to high qword of dest
+// [_ip] = dest XMM index, [_ip+8] = source XMM index
+.gadget movlhps
+    // Load source XMM low 64 bits
+    ldr x8, [_ip, 8]           // src XMM index
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr x9, [x8]               // x9 = src low qword
+
+    // Store to dest XMM high 64 bits (low preserved)
+    ldr x8, [_ip]              // dest XMM index
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    str x9, [x8, 8]            // dest high = src low
+    gret 2
 
 // ============================================================
 // MOVD - Move Doubleword (32-bit) between GPR/memory and XMM
@@ -3438,7 +3616,15 @@ NAME(imul32_r8_r15_gadgets):
     gret 2
 .endm
 
+sse_xmm_xmm_op packuswb
+sse_xmm_xmm_op packsswb
+sse_xmm_xmm_op packssdw
+sse_xmm_xmm_op punpcklbw
+sse_xmm_xmm_op punpcklwd
 sse_xmm_xmm_op punpckldq
+sse_xmm_xmm_op punpckhbw
+sse_xmm_xmm_op punpckhwd
+sse_xmm_xmm_op punpckhdq
 sse_xmm_xmm_op punpckhqdq
 sse_xmm_xmm_op pcmpeqb
 sse_xmm_xmm_op pcmpeqd
@@ -3447,6 +3633,8 @@ sse_xmm_xmm_op pand
 sse_xmm_xmm_op pandn
 sse_xmm_xmm_op por
 sse_xmm_xmm_op paddd
+sse_xmm_xmm_op paddq
+sse_xmm_xmm_op psubq
 sse_xmm_xmm_op psubd
 sse_xmm_xmm_op orps
 
@@ -3469,11 +3657,21 @@ sse_xmm_mem_op pandn
 sse_xmm_mem_op por
 sse_xmm_mem_op orps
 sse_xmm_mem_op paddd
+sse_xmm_mem_op paddq
+sse_xmm_mem_op psubq
 sse_xmm_mem_op psubd
 sse_xmm_mem_op pcmpeqb
 sse_xmm_mem_op pcmpeqd
 sse_xmm_mem_op pcmpgtd
+sse_xmm_mem_op packuswb
+sse_xmm_mem_op packsswb
+sse_xmm_mem_op packssdw
+sse_xmm_mem_op punpcklbw
+sse_xmm_mem_op punpcklwd
 sse_xmm_mem_op punpckldq
+sse_xmm_mem_op punpckhbw
+sse_xmm_mem_op punpckhwd
+sse_xmm_mem_op punpckhdq
 sse_xmm_mem_op punpckhqdq
 
 // PSRLDQ xmm, imm8 - Packed Shift Right Logical Double Quadword (byte shift)
@@ -3522,6 +3720,46 @@ sse_xmm_mem_op punpckhqdq
 
 // PSRLD xmm, imm8 - Packed Shift Right Logical Doubleword
 // [_ip] = XMM index, [_ip+8] = imm8
+// PSRLW xmm, imm8 - Packed Shift Right Logical Word
+.gadget psrlw
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    ldr x2, [_ip, 8]
+    bl NAME(helper_psrlw)
+    restore_c
+    gret 2
+
+// PSLLW xmm, imm8 - Packed Shift Left Logical Word
+.gadget psllw
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    ldr x2, [_ip, 8]
+    bl NAME(helper_psllw)
+    restore_c
+    gret 2
+
+// PSRAW xmm, imm8 - Packed Shift Right Arithmetic Word
+.gadget psraw
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    ldr x2, [_ip, 8]
+    bl NAME(helper_psraw)
+    restore_c
+    gret 2
+
+// PSRAD xmm, imm8 - Packed Shift Right Arithmetic Doubleword
+.gadget psrad
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    ldr x2, [_ip, 8]
+    bl NAME(helper_psrad)
+    restore_c
+    gret 2
+
 .gadget psrld
     save_c
     mov x0, _cpu
@@ -3567,6 +3805,52 @@ sse_xmm_mem_op punpckhqdq
     bl NAME(helper_shufps)
     restore_c
     gret 3
+
+// PSHUFLW xmm, xmm, imm8 - Shuffle Packed Low Words
+.gadget pshuflw
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    ldr x2, [_ip, 8]
+    ldr x3, [_ip, 16]
+    bl NAME(helper_pshuflw)
+    restore_c
+    gret 3
+
+.gadget pshuflw_mem
+    read_prep 128, pshuflw_mem
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    mov x2, _addr
+    ldr x3, [_ip, 8]
+    bl NAME(helper_pshuflw_mem)
+    restore_c
+    gret 3
+    read_bullshit 128, pshuflw_mem
+
+// PSHUFHW xmm, xmm, imm8 - Shuffle Packed High Words
+.gadget pshufhw
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    ldr x2, [_ip, 8]
+    ldr x3, [_ip, 16]
+    bl NAME(helper_pshufhw)
+    restore_c
+    gret 3
+
+.gadget pshufhw_mem
+    read_prep 128, pshufhw_mem
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    mov x2, _addr
+    ldr x3, [_ip, 8]
+    bl NAME(helper_pshufhw_mem)
+    restore_c
+    gret 3
+    read_bullshit 128, pshufhw_mem
 
 // PALIGNR xmm, xmm, imm8 - Packed Align Right (SSSE3)
 // [_ip] = dst XMM index, [_ip+8] = src XMM index, [_ip+16] = imm8
@@ -3662,8 +3946,9 @@ sse_xmm_xmm_op movdqa_xmm
     mov x0, _cpu
     ldr x1, [_ip]              // src XMM index
     bl NAME(helper_pmovmskb)
-    mov _xtmp, x0              // Result mask in _xtmp
+    mov x14, x0               // Save result to x14 (not in save_c/restore_c set)
     restore_c
+    mov _xtmp, x14             // Transfer result to _xtmp after restore_c
     gret 1
 
 // ============================================================
@@ -3735,6 +4020,66 @@ sse_xmm_xmm_op movdqa_xmm
     str d0, [x9]               // Store double to low 64 bits
     gret 2
     read_bullshit 32, cvtsi2sd_mem32
+
+// ============================================================
+// CVTSI2SS - Convert Signed Integer to Scalar Single-Precision Float
+// ============================================================
+
+// CVTSI2SS xmm, r64 - Convert 64-bit signed integer to float
+// _xtmp = source integer (64-bit), [_ip] = destination XMM index
+.gadget cvtsi2ss_reg64
+    scvtf s0, _xtmp            // Convert signed int64 to float32
+
+    // Store to XMM register (low 32 bits only, upper 96 bits preserved)
+    ldr x8, [_ip]              // XMM register index
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    str s0, [x8]               // Store float to low 32 bits
+    gret 1
+
+// CVTSI2SS xmm, r32 - Convert 32-bit signed integer to float
+// _xtmp = source integer (32-bit in low word), [_ip] = destination XMM index
+.gadget cvtsi2ss_reg32
+    sxtw x8, w0                // Sign-extend w0
+    scvtf s0, x8               // Convert signed int32 to float32
+
+    ldr x8, [_ip]
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    str s0, [x8]               // Store float to low 32 bits
+    gret 1
+
+// CVTSI2SS xmm, m64 - Convert 64-bit integer from memory to float
+// _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
+.gadget cvtsi2ss_mem64
+    read_prep 64, cvtsi2ss_mem64
+    ldr x8, [_addr]
+    scvtf s0, x8
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    str s0, [x9]
+    gret 2
+    read_bullshit 64, cvtsi2ss_mem64
+
+// CVTSI2SS xmm, m32 - Convert 32-bit integer from memory to float
+// _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
+.gadget cvtsi2ss_mem32
+    read_prep 32, cvtsi2ss_mem32
+    ldrsw x8, [_addr]
+    scvtf s0, x8
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    str s0, [x9]
+    gret 2
+    read_bullshit 32, cvtsi2ss_mem32
 
 // ============================================================
 // CVTTSD2SI - Convert with Truncation Scalar Double to Signed Integer
@@ -3979,6 +4324,151 @@ sse_xmm_xmm_op movdqa_xmm
     gret 2
     read_bullshit 64, divsd_xmm_mem
 
+// MINSD xmm, xmm - Minimum scalar double
+// _xtmp = source XMM index, [_ip] = dest XMM index
+.gadget minsd_xmm_xmm
+    lsl x8, _xtmp, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr d0, [x8]               // src double
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    ldr d1, [x9]               // dst double
+
+    fmin d1, d1, d0            // dst = min(dst, src)
+    str d1, [x9]
+    gret 1
+
+// MINSD xmm, m64
+.gadget minsd_xmm_mem
+    read_prep 64, minsd_xmm_mem
+    ldr d0, [_addr]
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    ldr d1, [x9]
+
+    fmin d1, d1, d0
+    str d1, [x9]
+    gret 2
+    read_bullshit 64, minsd_xmm_mem
+
+// MAXSD xmm, xmm - Maximum scalar double
+.gadget maxsd_xmm_xmm
+    lsl x8, _xtmp, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr d0, [x8]
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    ldr d1, [x9]
+
+    fmax d1, d1, d0
+    str d1, [x9]
+    gret 1
+
+// MAXSD xmm, m64
+.gadget maxsd_xmm_mem
+    read_prep 64, maxsd_xmm_mem
+    ldr d0, [_addr]
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    ldr d1, [x9]
+
+    fmax d1, d1, d0
+    str d1, [x9]
+    gret 2
+    read_bullshit 64, maxsd_xmm_mem
+
+// ============================================================
+// CMPSD xmm, xmm/m64, imm8 - Compare Scalar Double with predicate
+// Uses C helper: helper_cmpsd(cpu, dst_idx, src_idx, pred)
+// ============================================================
+
+// CMPSD xmm, xmm, imm8
+// [_ip] = dst XMM index, [_ip+8] = src XMM index, [_ip+16] = predicate
+.gadget cmpsd_xmm_xmm
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    ldr x2, [_ip, 8]           // src XMM index
+    ldr x3, [_ip, 16]          // predicate imm8
+    bl NAME(helper_cmpsd)
+    restore_c
+    gret 3
+
+// CMPSD xmm, m64, imm8
+// Address already in _addr, [_ip] = dst XMM index, [_ip+8] = predicate, [_ip+16] = orig_ip
+.gadget cmpsd_xmm_mem
+    read_prep 64, cmpsd_xmm_mem
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    mov x2, _addr              // host memory address
+    ldr x3, [_ip, 8]           // predicate imm8
+    bl NAME(helper_cmpsd_mem)
+    restore_c
+    gret 3
+    read_bullshit 64, cmpsd_xmm_mem
+
+// ============================================================
+// SHUFPD xmm, xmm/m128, imm8 - Shuffle Packed Double-Precision
+// Uses C helper: helper_shufpd(cpu, dst_idx, src_idx, imm)
+// ============================================================
+
+// SHUFPD xmm, xmm, imm8
+// [_ip] = dst XMM index, [_ip+8] = src XMM index, [_ip+16] = imm8
+.gadget shufpd_xmm_xmm
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    ldr x2, [_ip, 8]           // src XMM index
+    ldr x3, [_ip, 16]          // imm8
+    bl NAME(helper_shufpd)
+    restore_c
+    gret 3
+
+// SHUFPD xmm, m128, imm8
+// Address already in _addr, [_ip] = dst XMM index, [_ip+8] = imm8, [_ip+16] = orig_ip
+.gadget shufpd_xmm_mem
+    read_prep 128, shufpd_xmm_mem
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    mov x2, _addr              // host memory address
+    ldr x3, [_ip, 8]           // imm8
+    bl NAME(helper_shufpd_mem)
+    restore_c
+    gret 3
+    read_bullshit 128, shufpd_xmm_mem
+
+// ============================================================
+// SHUFPS xmm, m128, imm8 - Shuffle Packed Single-Precision (memory form)
+// ============================================================
+
+.gadget shufps_xmm_mem
+    read_prep 128, shufps_xmm_mem
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    mov x2, _addr
+    ldr x3, [_ip, 8]
+    bl NAME(helper_shufps_mem)
+    restore_c
+    gret 3
+    read_bullshit 128, shufps_xmm_mem
+
 // ============================================================
 // COMISD/UCOMISD - Compare Scalar Double (sets x86 EFLAGS)
 // Result in ZF, PF, CF:
@@ -4130,6 +4620,190 @@ sse_xmm_xmm_op movdqa_xmm
     str w10, [_cpu, CPU_eflags]
     gret 2
     read_bullshit 64, comisd_xmm_mem
+
+// ============================================================
+// Scalar Single-Precision FP Operations (ADDSS, SUBSS, MULSS, DIVSS)
+// ============================================================
+
+// Helper macro for scalar single-precision xmm,xmm ops
+// _xtmp = source XMM index, [_ip] = destination XMM index
+.macro ss_xmm_xmm_op name, insn
+.gadget \name\()_xmm_xmm
+    lsl x8, _xtmp, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr s0, [x8]               // Load src float (low 32 bits)
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    ldr s1, [x9]               // Load dst float (low 32 bits)
+
+    \insn s1, s1, s0           // dst = dst op src
+
+    str s1, [x9]               // Store result to dst low 32 bits
+    gret 1
+.endm
+
+// Helper macro for scalar single-precision xmm,mem ops
+// _addr = GUEST mem addr, [_ip] = XMM index, [_ip+8] = orig_ip
+.macro ss_xmm_mem_op name, insn
+.gadget \name\()_xmm_mem
+    read_prep 32, \name\()_xmm_mem
+    ldr s0, [_addr]            // Load float from memory
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    ldr s1, [x9]               // Load dst float
+
+    \insn s1, s1, s0           // dst = dst op src
+
+    str s1, [x9]               // Store result
+    gret 2
+    read_bullshit 32, \name\()_xmm_mem
+.endm
+
+ss_xmm_xmm_op addss, fadd
+ss_xmm_mem_op addss, fadd
+ss_xmm_xmm_op subss, fsub
+ss_xmm_mem_op subss, fsub
+ss_xmm_xmm_op mulss, fmul
+ss_xmm_mem_op mulss, fmul
+ss_xmm_xmm_op divss, fdiv
+ss_xmm_mem_op divss, fdiv
+
+// CVTSS2SD xmm, xmm - Convert scalar single to scalar double
+// _xtmp = source XMM index, [_ip] = destination XMM index
+.gadget cvtss2sd_xmm_xmm
+    lsl x8, _xtmp, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr s0, [x8]               // Load src float
+    fcvt d0, s0                // Convert float to double
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    str d0, [x9]               // Store double to dst low 64 bits
+    gret 1
+
+// CVTSS2SD xmm, m32 - Convert scalar single from memory to double
+.gadget cvtss2sd_xmm_mem
+    read_prep 32, cvtss2sd_xmm_mem
+    ldr s0, [_addr]
+    fcvt d0, s0                // float → double
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    str d0, [x9]
+    gret 2
+    read_bullshit 32, cvtss2sd_xmm_mem
+
+// CVTSD2SS xmm, xmm - Convert scalar double to scalar single
+// _xtmp = source XMM index, [_ip] = destination XMM index
+.gadget cvtsd2ss_xmm_xmm
+    lsl x8, _xtmp, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr d0, [x8]               // Load src double
+    fcvt s0, d0                // Convert double to float
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    str s0, [x9]               // Store float to dst low 32 bits
+    gret 1
+
+// CVTSD2SS xmm, m64 - Convert scalar double from memory to single
+.gadget cvtsd2ss_xmm_mem
+    read_prep 64, cvtsd2ss_xmm_mem
+    ldr d0, [_addr]
+    fcvt s0, d0                // double → float
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    str s0, [x9]
+    gret 2
+    read_bullshit 64, cvtsd2ss_xmm_mem
+
+// CVTTSS2SI r64, xmm - Convert truncated float to 64-bit signed integer
+.gadget cvttss2si_reg64
+    ldr x8, [_ip]
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr s0, [x8]
+    fcvtzs _xtmp, s0           // Convert float to int64 with truncation
+    gret 1
+
+// CVTTSS2SI r32, xmm - Convert truncated float to 32-bit signed integer
+.gadget cvttss2si_reg32
+    ldr x8, [_ip]
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr s0, [x8]
+    fcvtzs w0, s0              // Convert float to int32 with truncation
+    uxtw _xtmp, w0
+    gret 1
+
+// UCOMISS xmm, xmm - Unordered compare scalar single (sets EFLAGS)
+// _xtmp = second XMM index, [_ip] = first XMM index
+.gadget ucomiss_xmm_xmm
+    // Load first XMM
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    ldr s0, [x9]               // first operand
+
+    // Load second XMM
+    lsl x8, _xtmp, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr s1, [x8]               // second operand
+
+    fcmp s0, s1
+
+    // Set flags (same logic as COMISD)
+    strb wzr, [_cpu, CPU_of]
+    ldr w10, [_cpu, CPU_flags_res]
+    mov w11, (ZF_RES | PF_RES | SF_RES)
+    bic w10, w10, w11
+    str w10, [_cpu, CPU_flags_res]
+    ldr w10, [_cpu, CPU_eflags]
+    mov w11, (ZF_FLAG | PF_FLAG | SF_FLAG)
+    bic w10, w10, w11
+    strb wzr, [_cpu, CPU_cf]
+
+    b.vs .Lucomiss_unord
+    b.eq .Lucomiss_eq
+    b.mi .Lucomiss_lt
+    b .Lucomiss_done
+
+.Lucomiss_unord:
+    mov w11, (ZF_FLAG | PF_FLAG)
+    orr w10, w10, w11
+    mov w11, 1
+    strb w11, [_cpu, CPU_cf]
+    b .Lucomiss_done
+
+.Lucomiss_eq:
+    orr w10, w10, ZF_FLAG
+    b .Lucomiss_done
+
+.Lucomiss_lt:
+    mov w11, 1
+    strb w11, [_cpu, CPU_cf]
+
+.Lucomiss_done:
+    str w10, [_cpu, CPU_eflags]
+    gret 1
 
 // ============================================================================
 // x87 FPU Gadgets

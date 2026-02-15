@@ -19,6 +19,8 @@ static void exit_handler(struct task *task, int code) {
   if (task->parent != NULL)
     return;
   real_tty_reset_term();
+  fprintf(stderr, "EXIT: pid=%d code=0x%x (sig=%d exit=%d)\n",
+          task->pid, code, code & 0x7f, code >> 8);
   if (code & 0xff) {
     // Guest was killed by signal N. Exit with 128+N like a shell would,
     // instead of raise() which kills the host and loses buffered output.

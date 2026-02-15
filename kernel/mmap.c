@@ -27,6 +27,10 @@ struct mm *mm_copy(struct mm *mm) {
     memset(&new_mm->mem.lock, 0, sizeof(new_mm->mem.lock));
     new_mm->refcount = 1;
     mem_init(&new_mm->mem);
+#ifdef ISH_GUEST_64BIT
+    // Inherit parent's mmap cursor so child continues below existing mappings
+    new_mm->mem.mmap_cursor = mm->mem.mmap_cursor;
+#endif
     fd_retain(new_mm->exefile);
     write_wrlock(&mm->mem.lock);
     pt_copy_on_write(&mm->mem, &new_mm->mem, 0, MEM_PAGES);
@@ -99,8 +103,8 @@ static addr_t mmap_common(addr_t addr, dword_t len, dword_t prot, dword_t flags,
     write_wrlock(&current->mem->lock);
     addr_t res = do_mmap(addr, len, prot, flags, fd_no, offset);
     write_wrunlock(&current->mem->lock);
-    if (fd_no >= 0 && (prot & P_EXEC))
-        fprintf(stderr, "  [mmap] pid=%d mmap(fd=%d, len=0x%x, prot=%d) = 0x%llx\n", current->pid, fd_no, len, prot, (unsigned long long)res);
+    fprintf(stderr, "  [mmap] pid=%d mmap(addr=%#llx, fd=%d, len=0x%x, prot=%d, flags=%#x) = 0x%llx\n",
+            current->pid, (unsigned long long)addr, fd_no, len, prot, flags, (unsigned long long)res);
     return res;
 }
 

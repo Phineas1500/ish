@@ -263,6 +263,7 @@ extern void gadget_and32_imm(void);
 extern void gadget_sign_extend8(void);
 extern void gadget_sign_extend16(void);
 extern void gadget_sign_extend32(void);
+extern void gadget_cwde(void);
 extern void gadget_zero_extend8(void);
 extern void gadget_zero_extend16(void);
 extern void gadget_zero_extend32(void);
@@ -405,6 +406,10 @@ extern void gadget_bsf32(void);
 extern void gadget_bsf64(void);
 extern void gadget_bsr32(void);
 extern void gadget_bsr64(void);
+extern void gadget_tzcnt32(void);
+extern void gadget_tzcnt64(void);
+extern void gadget_lzcnt32(void);
+extern void gadget_lzcnt64(void);
 
 // Bit test gadgets
 extern void gadget_bt64_reg(void);
@@ -446,7 +451,12 @@ extern void gadget_single_movsb(void); // Single MOVSB without REP prefix
 extern void gadget_movsd_xmm_xmm(void);  // movsd xmm, xmm
 extern void gadget_movsd_xmm_mem(void);  // movsd xmm, m64
 extern void gadget_movsd_mem_xmm(void);  // movsd m64, xmm
+extern void gadget_movss_xmm_xmm(void);  // movss xmm, xmm
+extern void gadget_movss_xmm_mem(void);  // movss xmm, m32
+extern void gadget_movss_mem_xmm(void);  // movss m32, xmm
 // SSE MOVHPS/MOVLPS - Move High/Low Packed Single-Precision
+extern void gadget_movhlps(void);       // movhlps xmm, xmm
+extern void gadget_movlhps(void);       // movlhps xmm, xmm
 extern void gadget_movhps_load(void);   // movhps xmm, m64
 extern void gadget_movhps_store(void);  // movhps m64, xmm
 extern void gadget_movlps_load(void);   // movlps xmm, m64
@@ -457,12 +467,22 @@ extern void gadget_movd_xmm_mem(void);   // movd xmm, m32
 extern void gadget_movd_reg_xmm(void);   // movd r32, xmm
 extern void gadget_movd_mem_xmm(void);   // movd m32, xmm
 // SSE packed integer operations
+extern void gadget_packuswb(void);
+extern void gadget_packsswb(void);
+extern void gadget_packssdw(void);
+extern void gadget_punpcklbw(void);
+extern void gadget_punpcklwd(void);
 extern void gadget_punpckldq(void);
+extern void gadget_punpckhbw(void);
+extern void gadget_punpckhwd(void);
+extern void gadget_punpckhdq(void);
 extern void gadget_pcmpeqb(void);
 extern void gadget_pcmpeqd(void);
 extern void gadget_pcmpgtd(void);
 extern void gadget_pand(void);
 extern void gadget_paddd(void);
+extern void gadget_paddq(void);
+extern void gadget_psubq(void);
 extern void gadget_psubd(void);
 extern void gadget_orps(void);
 extern void gadget_pshufd(void);
@@ -476,12 +496,26 @@ extern void gadget_pandn_mem(void);
 extern void gadget_por_mem(void);
 extern void gadget_orps_mem(void);
 extern void gadget_paddd_mem(void);
+extern void gadget_paddq_mem(void);
+extern void gadget_psubq_mem(void);
 extern void gadget_psubd_mem(void);
 extern void gadget_pcmpeqb_mem(void);
 extern void gadget_pcmpeqd_mem(void);
 extern void gadget_pcmpgtd_mem(void);
+extern void gadget_packuswb_mem(void);
+extern void gadget_packsswb_mem(void);
+extern void gadget_packssdw_mem(void);
+extern void gadget_punpcklbw_mem(void);
+extern void gadget_punpcklwd_mem(void);
 extern void gadget_punpckldq_mem(void);
+extern void gadget_punpckhbw_mem(void);
+extern void gadget_punpckhwd_mem(void);
+extern void gadget_punpckhdq_mem(void);
 extern void gadget_punpckhqdq_mem(void);
+extern void gadget_psrlw(void);
+extern void gadget_psllw(void);
+extern void gadget_psraw(void);
+extern void gadget_psrad(void);
 extern void gadget_psrld(void);
 extern void gadget_pslld(void);
 extern void gadget_palignr(void);
@@ -499,6 +533,29 @@ extern void gadget_cvtsi2sd_reg64(void); // cvtsi2sd xmm, r64
 extern void gadget_cvtsi2sd_reg32(void); // cvtsi2sd xmm, r32
 extern void gadget_cvtsi2sd_mem64(void); // cvtsi2sd xmm, m64
 extern void gadget_cvtsi2sd_mem32(void); // cvtsi2sd xmm, m32
+// SSE CVTSI2SS - Convert Integer to Scalar Single
+extern void gadget_cvtsi2ss_reg64(void); // cvtsi2ss xmm, r64
+extern void gadget_cvtsi2ss_reg32(void); // cvtsi2ss xmm, r32
+extern void gadget_cvtsi2ss_mem64(void); // cvtsi2ss xmm, m64
+extern void gadget_cvtsi2ss_mem32(void); // cvtsi2ss xmm, m32
+// SSE Scalar Single-Precision Arithmetic
+extern void gadget_addss_xmm_xmm(void);
+extern void gadget_addss_xmm_mem(void);
+extern void gadget_subss_xmm_xmm(void);
+extern void gadget_subss_xmm_mem(void);
+extern void gadget_mulss_xmm_xmm(void);
+extern void gadget_mulss_xmm_mem(void);
+extern void gadget_divss_xmm_xmm(void);
+extern void gadget_divss_xmm_mem(void);
+// SSE Scalar Single/Double Conversions
+extern void gadget_cvtss2sd_xmm_xmm(void);
+extern void gadget_cvtss2sd_xmm_mem(void);
+extern void gadget_cvtsd2ss_xmm_xmm(void);
+extern void gadget_cvtsd2ss_xmm_mem(void);
+extern void gadget_cvttss2si_reg64(void);
+extern void gadget_cvttss2si_reg32(void);
+// SSE UCOMISS - Unordered Compare Scalar Single
+extern void gadget_ucomiss_xmm_xmm(void);
 extern void gadget_cvttsd2si_reg64(void); // cvttsd2si r64, xmm
 extern void gadget_cvttsd2si_reg32(void); // cvttsd2si r32, xmm
 extern void gadget_cvttsd2si_mem64(void); // cvttsd2si r64, m64
@@ -515,6 +572,23 @@ extern void gadget_mulsd_xmm_mem(void);  // mulsd xmm, m64
 // SSE DIVSD - Divide Scalar Double
 extern void gadget_divsd_xmm_xmm(void);  // divsd xmm, xmm
 extern void gadget_divsd_xmm_mem(void);  // divsd xmm, m64
+extern void gadget_minsd_xmm_xmm(void);  // minsd xmm, xmm
+extern void gadget_minsd_xmm_mem(void);  // minsd xmm, m64
+extern void gadget_maxsd_xmm_xmm(void);  // maxsd xmm, xmm
+extern void gadget_maxsd_xmm_mem(void);  // maxsd xmm, m64
+// SSE CMPSD - Compare Scalar Double with predicate
+extern void gadget_cmpsd_xmm_xmm(void);  // cmpsd xmm, xmm, imm8
+extern void gadget_cmpsd_xmm_mem(void);  // cmpsd xmm, m64, imm8
+// SSE SHUFPD - Shuffle Packed Double-Precision
+extern void gadget_shufpd_xmm_xmm(void);  // shufpd xmm, xmm, imm8
+extern void gadget_shufpd_xmm_mem(void);  // shufpd xmm, m128, imm8
+// SSE SHUFPS - Shuffle Packed Single-Precision (memory form)
+extern void gadget_shufps_xmm_mem(void);  // shufps xmm, m128, imm8
+// SSE PSHUFLW/PSHUFHW - Shuffle Packed Words
+extern void gadget_pshuflw(void);
+extern void gadget_pshuflw_mem(void);
+extern void gadget_pshufhw(void);
+extern void gadget_pshufhw_mem(void);
 // SSE COMISD - Compare Scalar Double (sets EFLAGS)
 extern void gadget_comisd_xmm_xmm(void); // comisd xmm, xmm
 extern void gadget_comisd_xmm_mem(void); // comisd xmm, m64
@@ -891,19 +965,26 @@ static inline void gen_store_reg_partial(struct gen_state *state,
   // Only do the merge for non-bitwise instructions.
   // For OR/AND/XOR/NOT, the handler already loads the full register and
   // operates on it, so the result in _xtmp already has upper bits preserved.
-  // For these instructions, gen_store_reg_partial's merge is redundant for
-  // low-byte but WRONG for high-byte (AH/BH/CH/DH) because the computed
-  // result has the modified bits at position [15:8], not [7:0].
+  // EXCEPTION: for high-byte registers (AH/BH/CH/DH), the handler shifts
+  // right by 8 first, so the result needs merge back into bits [15:8].
   // Also skip for instructions that have dedicated 8/16-bit gadgets which
   // already handle the merge (SHL/SHR/SAR 8/16-bit).
   bool do_merge = (size == size64_8 || size == size64_16);
   int mnem = inst->mnemonic;
-  // Skip merge for bitwise ops (they already produce full-register results)
+  bool is_high_byte_dst = (size == size64_8 &&
+      inst->raw_operands[operand_idx].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+      zydis_is_high_byte_reg(inst->raw_operands[operand_idx].reg.value));
+  // Skip merge for bitwise ops on non-high-byte registers
+  // (they already produce full-register results with upper bits preserved)
+  // For high-byte destinations, merge IS needed since the handler shifts
+  // right by 8, losing the upper bits.
   if (mnem == ZYDIS_MNEMONIC_OR || mnem == ZYDIS_MNEMONIC_AND ||
       mnem == ZYDIS_MNEMONIC_XOR || mnem == ZYDIS_MNEMONIC_NOT ||
       mnem == ZYDIS_MNEMONIC_BTS || mnem == ZYDIS_MNEMONIC_BTR ||
-      mnem == ZYDIS_MNEMONIC_BTC)
-    do_merge = false;
+      mnem == ZYDIS_MNEMONIC_BTC) {
+    if (!is_high_byte_dst)
+      do_merge = false;
+  }
   // Skip merge for shift instructions that have dedicated 8/16-bit gadgets
   if (mnem == ZYDIS_MNEMONIC_SHL || mnem == ZYDIS_MNEMONIC_SHR ||
       mnem == ZYDIS_MNEMONIC_SAR)
@@ -2694,6 +2775,13 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     GEN(store64_gadgets[0]); // store64_a
     break;
 
+  case ZYDIS_MNEMONIC_CWDE:
+    // Sign-extend ax to eax (98 without REX.W)
+    GEN(load64_gadgets[0]); // load rax
+    GEN(gadget_cwde);
+    GEN(store64_gadgets[0]); // store rax (zero-extended to 64 bits)
+    break;
+
   case ZYDIS_MNEMONIC_CDQ:
     // Sign extend EAX to EDX:EAX (opcode 99)
     // EDX becomes all 1s if EAX negative, else all 0s
@@ -3196,6 +3284,15 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       if (load)
         GEN(load);
 
+      // Handle high-byte register destination (AH, BH, CH, DH)
+      // Must shift right by 8 to operate on the correct byte
+      if (inst.operands[0].size == size64_8 &&
+          inst.raw_operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+          zydis_is_high_byte_reg(inst.raw_operands[0].reg.value)) {
+        GEN(gadget_lea_lsr64_imm);
+        GEN(8);
+      }
+
       if (inst.operands[1].type == arg64_imm) {
         if (inst.operands[0].size == size64_32) {
           GEN(gadget_and32_imm);
@@ -3373,8 +3470,12 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             // Check if destination is a high-byte register (AH, BH, CH, DH)
             if (inst.raw_operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER &&
                 zydis_is_high_byte_reg(inst.raw_operands[0].reg.value)) {
-              // High-byte register: shift immediate to bits [15:8]
-              imm = imm << 8;
+              // High-byte register: extract AH to low byte first, then OR
+              // with unshifted immediate. gen_store_reg_partial merge8h
+              // will put the result back into bits [15:8].
+              // DON'T shift the immediate - let the merge handle placement.
+              GEN(gadget_lea_lsr64_imm);
+              GEN(8);
             }
           }
           if (inst.operands[0].size == size64_32) {
@@ -3914,6 +4015,52 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       }
 
       gen_store_reg_partial(state, &inst, 0);
+    } else if (is_mem(inst.operands[0].type)) {
+      // ROL [mem], imm/1/cl - read-modify-write
+      if (!gen_addr(state, &inst.operands[0], &inst)) {
+        g(interrupt); GEN(INT_UNDEFINED);
+        GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+      }
+      int rol_mem_size = inst.operands[0].size;
+      GEN(gadget_save_addr);
+      if (rol_mem_size == size64_64) {
+        GEN(load64_gadgets[9]);
+      } else if (rol_mem_size == size64_32) {
+        GEN(load32_gadgets[9]);
+      } else if (rol_mem_size == size64_16) {
+        GEN(gadget_load16_mem);
+      } else {
+        GEN(gadget_load8_mem);
+      }
+      GEN(state->orig_ip);
+      // Apply rotate
+      if (inst.operand_count == 1 || (inst.operands[1].type == arg64_imm && inst.operands[1].imm == 1)) {
+        GEN(rol_mem_size == size64_32 ? gadget_rol32_one : gadget_rol64_one);
+      } else if (inst.operands[1].type == arg64_imm) {
+        if (rol_mem_size == size64_16) {
+          GEN(gadget_rol16_imm);
+        } else {
+          GEN(rol_mem_size == size64_32 ? gadget_rol32_imm : gadget_rol64_imm);
+        }
+        GEN(inst.operands[1].imm);
+      } else if (inst.operands[1].type == arg64_rcx) {
+        GEN(rol_mem_size == size64_32 ? gadget_rol32_cl : gadget_rol64_cl);
+      } else {
+        g(interrupt); GEN(INT_UNDEFINED);
+        GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+      }
+      // Store back
+      GEN(gadget_restore_addr);
+      if (rol_mem_size == size64_64) {
+        GEN(store64_gadgets[9]);
+      } else if (rol_mem_size == size64_32) {
+        GEN(store32_gadgets[9]);
+      } else if (rol_mem_size == size64_16) {
+        GEN(gadget_store16_mem);
+      } else {
+        GEN(gadget_store8_mem);
+      }
+      GEN(state->orig_ip);
     } else {
       g(interrupt);
       GEN(INT_UNDEFINED);
@@ -3961,6 +4108,52 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       }
 
       gen_store_reg_partial(state, &inst, 0);
+    } else if (is_mem(inst.operands[0].type)) {
+      // ROR [mem], imm/1/cl - read-modify-write
+      if (!gen_addr(state, &inst.operands[0], &inst)) {
+        g(interrupt); GEN(INT_UNDEFINED);
+        GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+      }
+      int ror_mem_size = inst.operands[0].size;
+      GEN(gadget_save_addr);
+      if (ror_mem_size == size64_64) {
+        GEN(load64_gadgets[9]);
+      } else if (ror_mem_size == size64_32) {
+        GEN(load32_gadgets[9]);
+      } else if (ror_mem_size == size64_16) {
+        GEN(gadget_load16_mem);
+      } else {
+        GEN(gadget_load8_mem);
+      }
+      GEN(state->orig_ip);
+      // Apply rotate
+      if (inst.operand_count == 1 || (inst.operands[1].type == arg64_imm && inst.operands[1].imm == 1)) {
+        GEN(ror_mem_size == size64_32 ? gadget_ror32_one : gadget_ror64_one);
+      } else if (inst.operands[1].type == arg64_imm) {
+        if (ror_mem_size == size64_16) {
+          GEN(gadget_ror16_imm);
+        } else {
+          GEN(ror_mem_size == size64_32 ? gadget_ror32_imm : gadget_ror64_imm);
+        }
+        GEN(inst.operands[1].imm);
+      } else if (inst.operands[1].type == arg64_rcx) {
+        GEN(ror_mem_size == size64_32 ? gadget_ror32_cl : gadget_ror64_cl);
+      } else {
+        g(interrupt); GEN(INT_UNDEFINED);
+        GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+      }
+      // Store back
+      GEN(gadget_restore_addr);
+      if (ror_mem_size == size64_64) {
+        GEN(store64_gadgets[9]);
+      } else if (ror_mem_size == size64_32) {
+        GEN(store32_gadgets[9]);
+      } else if (ror_mem_size == size64_16) {
+        GEN(gadget_store16_mem);
+      } else {
+        GEN(gadget_store8_mem);
+      }
+      GEN(state->orig_ip);
     } else {
       g(interrupt);
       GEN(INT_UNDEFINED);
@@ -4081,14 +4274,102 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     }
     break;
 
+  case ZYDIS_MNEMONIC_TZCNT:
+    // TZCNT dst, src - Count Trailing Zeros (BMI1)
+    // Different flag semantics from BSF: ZF = (result==0), CF = (source==0)
+    if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
+      if (is_gpr(inst.operands[1].type)) {
+        gadget_t load = get_load64_reg_gadget(inst.operands[1].type);
+        if (load)
+          GEN(load);
+      } else if (is_mem(inst.operands[1].type)) {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt); GEN(INT_UNDEFINED);
+          GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        if (inst.operands[0].size == size64_64) {
+          GEN(load64_gadgets[9]);
+        } else if (inst.operands[0].size == size64_32) {
+          GEN(load32_gadgets[9]);
+        } else {
+          GEN(gadget_load16_mem);
+        }
+        GEN(state->orig_ip);
+      } else {
+        g(interrupt); GEN(INT_UNDEFINED);
+        GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+      }
+
+      bool is_32bit = (inst.operands[0].size == size64_32);
+      GEN(is_32bit ? gadget_tzcnt32 : gadget_tzcnt64);
+
+      gen_store_reg_partial(state, &inst, 0);
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED);
+      GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_LZCNT:
+    // LZCNT dst, src - Count Leading Zeros (ABM/BMI1)
+    // ZF = (result==0), CF = (source==0)
+    if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
+      if (is_gpr(inst.operands[1].type)) {
+        gadget_t load = get_load64_reg_gadget(inst.operands[1].type);
+        if (load)
+          GEN(load);
+      } else if (is_mem(inst.operands[1].type)) {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt); GEN(INT_UNDEFINED);
+          GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        if (inst.operands[0].size == size64_64) {
+          GEN(load64_gadgets[9]);
+        } else if (inst.operands[0].size == size64_32) {
+          GEN(load32_gadgets[9]);
+        } else {
+          GEN(gadget_load16_mem);
+        }
+        GEN(state->orig_ip);
+      } else {
+        g(interrupt); GEN(INT_UNDEFINED);
+        GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+      }
+
+      bool is_32bit = (inst.operands[0].size == size64_32);
+      GEN(is_32bit ? gadget_lzcnt32 : gadget_lzcnt64);
+
+      gen_store_reg_partial(state, &inst, 0);
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED);
+      GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+
   case ZYDIS_MNEMONIC_BSF:
     // BSF dst, src - Bit Scan Forward (find lowest set bit)
-    if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type) &&
-        is_gpr(inst.operands[1].type)) {
-      // Load source into _xtmp
-      gadget_t load = get_load64_reg_gadget(inst.operands[1].type);
-      if (load)
-        GEN(load);
+    if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
+      if (is_gpr(inst.operands[1].type)) {
+        gadget_t load = get_load64_reg_gadget(inst.operands[1].type);
+        if (load)
+          GEN(load);
+      } else if (is_mem(inst.operands[1].type)) {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt); GEN(INT_UNDEFINED);
+          GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        if (inst.operands[0].size == size64_64) {
+          GEN(load64_gadgets[9]); // load64_mem
+        } else if (inst.operands[0].size == size64_32) {
+          GEN(load32_gadgets[9]); // load32_mem
+        } else {
+          GEN(gadget_load16_mem);
+        }
+        GEN(state->orig_ip);
+      } else {
+        g(interrupt); GEN(INT_UNDEFINED);
+        GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+      }
 
       bool is_32bit = (inst.operands[0].size == size64_32);
       GEN(is_32bit ? gadget_bsf32 : gadget_bsf64);
@@ -4105,12 +4386,28 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
   case ZYDIS_MNEMONIC_BSR:
     // BSR dst, src - Bit Scan Reverse (find highest set bit)
-    if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type) &&
-        is_gpr(inst.operands[1].type)) {
-      // Load source into _xtmp
-      gadget_t load = get_load64_reg_gadget(inst.operands[1].type);
-      if (load)
-        GEN(load);
+    if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
+      if (is_gpr(inst.operands[1].type)) {
+        gadget_t load = get_load64_reg_gadget(inst.operands[1].type);
+        if (load)
+          GEN(load);
+      } else if (is_mem(inst.operands[1].type)) {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt); GEN(INT_UNDEFINED);
+          GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        if (inst.operands[0].size == size64_64) {
+          GEN(load64_gadgets[9]); // load64_mem
+        } else if (inst.operands[0].size == size64_32) {
+          GEN(load32_gadgets[9]); // load32_mem
+        } else {
+          GEN(gadget_load16_mem);
+        }
+        GEN(state->orig_ip);
+      } else {
+        g(interrupt); GEN(INT_UNDEFINED);
+        GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+      }
 
       bool is_32bit = (inst.operands[0].size == size64_32);
       GEN(is_32bit ? gadget_bsr32 : gadget_bsr64);
@@ -4906,8 +5203,9 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(state->orig_ip);
         return 0;
       }
-    } else if (inst.operand_count >= 2 && inst.operands[0].type == arg64_mem) {
+    } else if (inst.operand_count >= 2 && is_mem(inst.operands[0].type)) {
       // Memory form - need to read, modify, write
+      // Must save guest address since read_prep replaces _addr with host address
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -4915,7 +5213,8 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(state->orig_ip);
         return 0;
       }
-      GEN(load64_gadgets[9]); // load64_mem
+      GEN(gadget_save_addr); // Save guest address for store
+      GEN(load64_gadgets[9]); // load64_mem (clobbers _addr with host addr)
       GEN(state->orig_ip);
       GEN(gadget_save_xtmp_to_x8);
 
@@ -4942,6 +5241,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         }
 
         if (inst.mnemonic != ZYDIS_MNEMONIC_BT) {
+          GEN(gadget_restore_addr); // Restore guest address
           GEN(store64_gadgets[9]); // store64_mem
           GEN(state->orig_ip);
         }
@@ -4965,6 +5265,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(inst.operands[1].imm);
 
         if (inst.mnemonic != ZYDIS_MNEMONIC_BT) {
+          GEN(gadget_restore_addr); // Restore guest address
           GEN(store64_gadgets[9]); // store64_mem
           GEN(state->orig_ip);
         }
@@ -6004,6 +6305,156 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     }
     break;
 
+  case ZYDIS_MNEMONIC_CVTSI2SS:
+    // CVTSI2SS xmm, r/m32 or r/m64 - Convert integer to scalar single
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      bool is_64bit = false;
+      if (is_gpr(inst.operands[1].type)) {
+        enum arg64 op = inst.operands[1].type;
+        is_64bit = (op >= arg64_rax && op <= arg64_rdi) ||
+                   (op >= arg64_r8 && op <= arg64_r15);
+      } else {
+        is_64bit = (code[0] == 0x48 ||
+                    (code[0] == 0xf2 && code[1] == 0x48) ||
+                    (code[0] == 0xf3 && code[1] == 0x48));
+      }
+
+      if (is_gpr(inst.operands[1].type)) {
+        gadget_t load = get_load64_reg_gadget(inst.operands[1].type);
+        if (load) {
+          GEN(load);
+        }
+        GEN(is_64bit ? gadget_cvtsi2ss_reg64 : gadget_cvtsi2ss_reg32);
+        GEN(dst_xmm);
+      } else {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        GEN(is_64bit ? gadget_cvtsi2ss_mem64 : gadget_cvtsi2ss_mem32);
+        GEN(dst_xmm);
+        GEN(state->orig_ip);
+      }
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_ADDSS:
+  case ZYDIS_MNEMONIC_SUBSS:
+  case ZYDIS_MNEMONIC_MULSS:
+  case ZYDIS_MNEMONIC_DIVSS: {
+    // Scalar single-precision float ops
+    gadget_t xmm_gadget, mem_gadget;
+    switch (inst.mnemonic) {
+      case ZYDIS_MNEMONIC_ADDSS: xmm_gadget = gadget_addss_xmm_xmm; mem_gadget = gadget_addss_xmm_mem; break;
+      case ZYDIS_MNEMONIC_SUBSS: xmm_gadget = gadget_subss_xmm_xmm; mem_gadget = gadget_subss_xmm_mem; break;
+      case ZYDIS_MNEMONIC_MULSS: xmm_gadget = gadget_mulss_xmm_xmm; mem_gadget = gadget_mulss_xmm_mem; break;
+      default:                   xmm_gadget = gadget_divss_xmm_xmm; mem_gadget = gadget_divss_xmm_mem; break;
+    }
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      if (is_xmm(inst.operands[1].type)) {
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        GEN(load64_gadgets[8]);
+        GEN(src_xmm);
+        GEN(xmm_gadget);
+        GEN(dst_xmm);
+      } else {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt); GEN(INT_UNDEFINED); GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        GEN(mem_gadget);
+        GEN(dst_xmm);
+        GEN(state->orig_ip);
+      }
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED); GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+  }
+
+  case ZYDIS_MNEMONIC_CVTSS2SD:
+    // CVTSS2SD xmm, xmm/m32 - Convert scalar single to double
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      if (is_xmm(inst.operands[1].type)) {
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        GEN(load64_gadgets[8]); GEN(src_xmm);
+        GEN(gadget_cvtss2sd_xmm_xmm); GEN(dst_xmm);
+      } else {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt); GEN(INT_UNDEFINED); GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        GEN(gadget_cvtss2sd_xmm_mem); GEN(dst_xmm); GEN(state->orig_ip);
+      }
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED); GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_CVTSD2SS:
+    // CVTSD2SS xmm, xmm/m64 - Convert scalar double to single
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      if (is_xmm(inst.operands[1].type)) {
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        GEN(load64_gadgets[8]); GEN(src_xmm);
+        GEN(gadget_cvtsd2ss_xmm_xmm); GEN(dst_xmm);
+      } else {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt); GEN(INT_UNDEFINED); GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        GEN(gadget_cvtsd2ss_xmm_mem); GEN(dst_xmm); GEN(state->orig_ip);
+      }
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED); GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_CVTTSS2SI:
+    // CVTTSS2SI r, xmm - Convert truncated float to integer
+    if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type) &&
+        is_xmm(inst.operands[1].type)) {
+      int src_xmm = get_xmm_index(inst.operands[1].type);
+      enum arg64 op = inst.operands[0].type;
+      bool is_64bit = (op >= arg64_rax && op <= arg64_rdi) ||
+                      (op >= arg64_r8 && op <= arg64_r15);
+      GEN(is_64bit ? gadget_cvttss2si_reg64 : gadget_cvttss2si_reg32);
+      GEN(src_xmm);
+      enum arg64 dst = inst.operands[0].type;
+      if (dst >= arg64_r8 && dst <= arg64_r15) {
+        GEN(store64_r8_r15[dst - arg64_r8]);
+      } else {
+        GEN(is_64bit ? store64_gadgets[dst] : store32_gadgets[dst]);
+      }
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED); GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_UCOMISS:
+  case ZYDIS_MNEMONIC_COMISS:
+    // UCOMISS/COMISS xmm, xmm - Compare scalar single (sets EFLAGS)
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type) &&
+        is_xmm(inst.operands[1].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      int src_xmm = get_xmm_index(inst.operands[1].type);
+      GEN(load64_gadgets[8]); GEN(src_xmm);
+      GEN(gadget_ucomiss_xmm_xmm); GEN(dst_xmm);
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED); GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+
   case ZYDIS_MNEMONIC_ADDSD:
     // ADDSD xmm, xmm/m64 - Add Scalar Double-Precision Floating-Point
     if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
@@ -6135,6 +6586,103 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       return 0;
     }
     break;
+
+  case ZYDIS_MNEMONIC_MINSD:
+  case ZYDIS_MNEMONIC_MAXSD: {
+    // MINSD/MAXSD xmm, xmm/m64
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      bool is_min = (inst.mnemonic == ZYDIS_MNEMONIC_MINSD);
+      if (is_xmm(inst.operands[1].type)) {
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        GEN(load64_gadgets[8]);
+        GEN(src_xmm);
+        GEN(is_min ? gadget_minsd_xmm_xmm : gadget_maxsd_xmm_xmm);
+        GEN(dst_xmm);
+      } else if (is_mem(inst.operands[1].type)) {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt); GEN(INT_UNDEFINED);
+          GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        GEN(is_min ? gadget_minsd_xmm_mem : gadget_maxsd_xmm_mem);
+        GEN(dst_xmm);
+        GEN(state->orig_ip);
+      } else {
+        g(interrupt); GEN(INT_UNDEFINED);
+        GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+      }
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED);
+      GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+  }
+
+  case ZYDIS_MNEMONIC_CMPSD: {
+    // CMPSD xmm, xmm/m64, imm8 - Compare Scalar Double with predicate
+    // Writes all-1s or all-0s to dst low qword based on predicate comparison
+    if (inst.operand_count >= 3 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      // imm8 predicate is operand[2]
+      uint8_t pred = inst.operands[2].imm;
+      if (is_xmm(inst.operands[1].type)) {
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        GEN(gadget_cmpsd_xmm_xmm);
+        GEN(dst_xmm);
+        GEN(src_xmm);
+        GEN(pred);
+      } else if (is_mem(inst.operands[1].type)) {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt); GEN(INT_UNDEFINED);
+          GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        GEN(gadget_cmpsd_xmm_mem);
+        GEN(dst_xmm);
+        GEN(pred);
+        GEN(state->orig_ip);
+      } else {
+        g(interrupt); GEN(INT_UNDEFINED);
+        GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+      }
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED);
+      GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+  }
+
+  case ZYDIS_MNEMONIC_SHUFPD:
+  case ZYDIS_MNEMONIC_SHUFPS: {
+    // SHUFPD/SHUFPS xmm, xmm/m128, imm8 - Shuffle Packed FP
+    bool is_pd = (inst.mnemonic == ZYDIS_MNEMONIC_SHUFPD);
+    if (inst.operand_count >= 3 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      uint8_t imm = inst.operands[2].imm;
+      if (is_xmm(inst.operands[1].type)) {
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        GEN(is_pd ? gadget_shufpd_xmm_xmm : gadget_shufps);
+        GEN(dst_xmm);
+        GEN(src_xmm);
+        GEN(imm);
+      } else if (is_mem(inst.operands[1].type)) {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt); GEN(INT_UNDEFINED);
+          GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        GEN(is_pd ? gadget_shufpd_xmm_mem : gadget_shufps_xmm_mem);
+        GEN(dst_xmm);
+        GEN(imm);
+        GEN(state->orig_ip);
+      } else {
+        g(interrupt); GEN(INT_UNDEFINED);
+        GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+      }
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED);
+      GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+  }
 
   case ZYDIS_MNEMONIC_COMISD:
   case ZYDIS_MNEMONIC_UCOMISD:
@@ -6309,6 +6857,73 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     }
     break;
 
+  case ZYDIS_MNEMONIC_MOVSS:
+    // MOVSS xmm, xmm/m32 or MOVSS m32, xmm - Move Scalar Single-Precision
+    if (inst.operand_count >= 2 &&
+        (is_xmm(inst.operands[0].type) || is_xmm(inst.operands[1].type))) {
+      if (is_xmm(inst.operands[0].type) && is_xmm(inst.operands[1].type)) {
+        // xmm, xmm: copy low 32 bits, preserve upper 96 bits of dest
+        int dst_xmm = get_xmm_index(inst.operands[0].type);
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        GEN(load64_gadgets[8]); // load64_imm
+        GEN(src_xmm);
+        GEN(gadget_movss_xmm_xmm);
+        GEN(dst_xmm);
+      } else if (is_xmm(inst.operands[0].type)) {
+        // xmm, m32: load 32-bit float, zero upper bits
+        int dst_xmm = get_xmm_index(inst.operands[0].type);
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt); GEN(INT_UNDEFINED);
+          GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        GEN(gadget_movss_xmm_mem);
+        GEN(dst_xmm);
+        GEN(state->orig_ip);
+      } else {
+        // m32, xmm: store low 32-bit float to memory
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        if (!gen_addr(state, &inst.operands[0], &inst)) {
+          g(interrupt); GEN(INT_UNDEFINED);
+          GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        GEN(gadget_movss_mem_xmm);
+        GEN(src_xmm);
+        GEN(state->orig_ip);
+      }
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED);
+      GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_MOVHLPS:
+    // MOVHLPS xmm, xmm - Move high qword of src to low qword of dst
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type) && is_xmm(inst.operands[1].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      int src_xmm = get_xmm_index(inst.operands[1].type);
+      GEN(gadget_movhlps);
+      GEN(dst_xmm);
+      GEN(src_xmm);
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED);
+      GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_MOVLHPS:
+    // MOVLHPS xmm, xmm - Move low qword of src to high qword of dst
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type) && is_xmm(inst.operands[1].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      int src_xmm = get_xmm_index(inst.operands[1].type);
+      GEN(gadget_movlhps);
+      GEN(dst_xmm);
+      GEN(src_xmm);
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED);
+      GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+
   case ZYDIS_MNEMONIC_MOVHPS:
   case ZYDIS_MNEMONIC_MOVHPD:
     // MOVHPS/MOVHPD xmm, m64 or m64, xmm - Move high 64 bits
@@ -6440,7 +7055,15 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     }
     break;
 
+  case ZYDIS_MNEMONIC_PACKUSWB:
+  case ZYDIS_MNEMONIC_PACKSSWB:
+  case ZYDIS_MNEMONIC_PACKSSDW:
+  case ZYDIS_MNEMONIC_PUNPCKLBW:
+  case ZYDIS_MNEMONIC_PUNPCKLWD:
   case ZYDIS_MNEMONIC_PUNPCKLDQ:
+  case ZYDIS_MNEMONIC_PUNPCKHBW:
+  case ZYDIS_MNEMONIC_PUNPCKHWD:
+  case ZYDIS_MNEMONIC_PUNPCKHDQ:
   case ZYDIS_MNEMONIC_PUNPCKHQDQ:
   case ZYDIS_MNEMONIC_PCMPEQB:
   case ZYDIS_MNEMONIC_PCMPEQD:
@@ -6449,9 +7072,13 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
   case ZYDIS_MNEMONIC_PANDN:
   case ZYDIS_MNEMONIC_POR:
   case ZYDIS_MNEMONIC_PADDD:
+  case ZYDIS_MNEMONIC_PADDQ:
+  case ZYDIS_MNEMONIC_PSUBQ:
   case ZYDIS_MNEMONIC_PSUBD:
   case ZYDIS_MNEMONIC_ORPS:
-  case ZYDIS_MNEMONIC_ORPD: {
+  case ZYDIS_MNEMONIC_ORPD:
+  case ZYDIS_MNEMONIC_ANDPD:
+  case ZYDIS_MNEMONIC_ANDPS: {
     // Packed SSE2 integer/bitwise xmm, xmm/m128 operations
     if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
       int dst_xmm = get_xmm_index(inst.operands[0].type);
@@ -6460,7 +7087,15 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         int src_xmm = get_xmm_index(inst.operands[1].type);
         gadget_t gadget;
         switch (inst.mnemonic) {
+          case ZYDIS_MNEMONIC_PACKUSWB:    gadget = gadget_packuswb; break;
+          case ZYDIS_MNEMONIC_PACKSSWB:    gadget = gadget_packsswb; break;
+          case ZYDIS_MNEMONIC_PACKSSDW:    gadget = gadget_packssdw; break;
+          case ZYDIS_MNEMONIC_PUNPCKLBW:   gadget = gadget_punpcklbw; break;
+          case ZYDIS_MNEMONIC_PUNPCKLWD:   gadget = gadget_punpcklwd; break;
           case ZYDIS_MNEMONIC_PUNPCKLDQ:  gadget = gadget_punpckldq; break;
+          case ZYDIS_MNEMONIC_PUNPCKHBW:   gadget = gadget_punpckhbw; break;
+          case ZYDIS_MNEMONIC_PUNPCKHWD:   gadget = gadget_punpckhwd; break;
+          case ZYDIS_MNEMONIC_PUNPCKHDQ:  gadget = gadget_punpckhdq; break;
           case ZYDIS_MNEMONIC_PUNPCKHQDQ: gadget = gadget_punpckhqdq; break;
           case ZYDIS_MNEMONIC_PCMPEQB:    gadget = gadget_pcmpeqb; break;
           case ZYDIS_MNEMONIC_PCMPEQD:    gadget = gadget_pcmpeqd; break;
@@ -6469,9 +7104,13 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           case ZYDIS_MNEMONIC_PANDN:       gadget = gadget_pandn; break;
           case ZYDIS_MNEMONIC_POR:         gadget = gadget_por; break;
           case ZYDIS_MNEMONIC_PADDD:       gadget = gadget_paddd; break;
+          case ZYDIS_MNEMONIC_PADDQ:       gadget = gadget_paddq; break;
+          case ZYDIS_MNEMONIC_PSUBQ:       gadget = gadget_psubq; break;
           case ZYDIS_MNEMONIC_PSUBD:       gadget = gadget_psubd; break;
           case ZYDIS_MNEMONIC_ORPS:        gadget = gadget_orps; break;
           case ZYDIS_MNEMONIC_ORPD:        gadget = gadget_orps; break;
+          case ZYDIS_MNEMONIC_ANDPD:       gadget = gadget_pand; break;
+          case ZYDIS_MNEMONIC_ANDPS:       gadget = gadget_pand; break;
           default: gadget = gadget_punpckldq; break; // unreachable
         }
         GEN(gadget);
@@ -6485,7 +7124,15 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         }
         gadget_t gadget;
         switch (inst.mnemonic) {
+          case ZYDIS_MNEMONIC_PACKUSWB:    gadget = gadget_packuswb_mem; break;
+          case ZYDIS_MNEMONIC_PACKSSWB:    gadget = gadget_packsswb_mem; break;
+          case ZYDIS_MNEMONIC_PACKSSDW:    gadget = gadget_packssdw_mem; break;
+          case ZYDIS_MNEMONIC_PUNPCKLBW:   gadget = gadget_punpcklbw_mem; break;
+          case ZYDIS_MNEMONIC_PUNPCKLWD:   gadget = gadget_punpcklwd_mem; break;
           case ZYDIS_MNEMONIC_PUNPCKLDQ:  gadget = gadget_punpckldq_mem; break;
+          case ZYDIS_MNEMONIC_PUNPCKHBW:   gadget = gadget_punpckhbw_mem; break;
+          case ZYDIS_MNEMONIC_PUNPCKHWD:   gadget = gadget_punpckhwd_mem; break;
+          case ZYDIS_MNEMONIC_PUNPCKHDQ:  gadget = gadget_punpckhdq_mem; break;
           case ZYDIS_MNEMONIC_PUNPCKHQDQ: gadget = gadget_punpckhqdq_mem; break;
           case ZYDIS_MNEMONIC_PCMPEQB:    gadget = gadget_pcmpeqb_mem; break;
           case ZYDIS_MNEMONIC_PCMPEQD:    gadget = gadget_pcmpeqd_mem; break;
@@ -6494,9 +7141,13 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           case ZYDIS_MNEMONIC_PANDN:       gadget = gadget_pandn_mem; break;
           case ZYDIS_MNEMONIC_POR:         gadget = gadget_por_mem; break;
           case ZYDIS_MNEMONIC_PADDD:       gadget = gadget_paddd_mem; break;
+          case ZYDIS_MNEMONIC_PADDQ:       gadget = gadget_paddq_mem; break;
+          case ZYDIS_MNEMONIC_PSUBQ:       gadget = gadget_psubq_mem; break;
           case ZYDIS_MNEMONIC_PSUBD:       gadget = gadget_psubd_mem; break;
           case ZYDIS_MNEMONIC_ORPS:        gadget = gadget_orps_mem; break;
           case ZYDIS_MNEMONIC_ORPD:        gadget = gadget_orps_mem; break;
+          case ZYDIS_MNEMONIC_ANDPD:       gadget = gadget_pand_mem; break;
+          case ZYDIS_MNEMONIC_ANDPS:       gadget = gadget_pand_mem; break;
           default: gadget = gadget_pand_mem; break; // unreachable
         }
         GEN(gadget);
@@ -6529,21 +7180,38 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     }
     break;
 
-  case ZYDIS_MNEMONIC_SHUFPS:
-    // SHUFPS xmm, xmm, imm8 - Shuffle packed single-precision floats
-    if (inst.operand_count >= 3 && is_xmm(inst.operands[0].type) &&
-        is_xmm(inst.operands[1].type) && inst.operands[2].type == arg64_imm) {
+  case ZYDIS_MNEMONIC_PSHUFLW:
+  case ZYDIS_MNEMONIC_PSHUFHW: {
+    // PSHUFLW/PSHUFHW xmm, xmm/m128, imm8
+    bool is_low = (inst.mnemonic == ZYDIS_MNEMONIC_PSHUFLW);
+    if (inst.operand_count >= 3 && is_xmm(inst.operands[0].type)) {
       int dst_xmm = get_xmm_index(inst.operands[0].type);
-      int src_xmm = get_xmm_index(inst.operands[1].type);
-      GEN(gadget_shufps);
-      GEN(dst_xmm);
-      GEN(src_xmm);
-      GEN(inst.operands[2].imm & 0xFF);
+      uint8_t imm = inst.operands[2].imm;
+      if (is_xmm(inst.operands[1].type)) {
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        GEN(is_low ? gadget_pshuflw : gadget_pshufhw);
+        GEN(dst_xmm);
+        GEN(src_xmm);
+        GEN(imm);
+      } else if (is_mem(inst.operands[1].type)) {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt); GEN(INT_UNDEFINED);
+          GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        GEN(is_low ? gadget_pshuflw_mem : gadget_pshufhw_mem);
+        GEN(dst_xmm);
+        GEN(imm);
+        GEN(state->orig_ip);
+      } else {
+        g(interrupt); GEN(INT_UNDEFINED);
+        GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+      }
     } else {
       g(interrupt); GEN(INT_UNDEFINED);
       GEN(state->orig_ip); GEN(state->orig_ip); return 0;
     }
     break;
+  }
 
   case ZYDIS_MNEMONIC_PALIGNR:
     // PALIGNR xmm, xmm, imm8 - Packed Align Right (SSSE3)
@@ -6612,6 +7280,10 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
   case ZYDIS_MNEMONIC_PSRLQ:
   case ZYDIS_MNEMONIC_PSLLQ:
+  case ZYDIS_MNEMONIC_PSRLW:
+  case ZYDIS_MNEMONIC_PSLLW:
+  case ZYDIS_MNEMONIC_PSRAW:
+  case ZYDIS_MNEMONIC_PSRAD:
   case ZYDIS_MNEMONIC_PSRLD:
   case ZYDIS_MNEMONIC_PSLLD:
   case ZYDIS_MNEMONIC_PSRLDQ:
@@ -6624,6 +7296,10 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       switch (inst.mnemonic) {
         case ZYDIS_MNEMONIC_PSRLQ: gadget = gadget_psrlq; break;
         case ZYDIS_MNEMONIC_PSLLQ: gadget = gadget_psllq; break;
+        case ZYDIS_MNEMONIC_PSRLW: gadget = gadget_psrlw; break;
+        case ZYDIS_MNEMONIC_PSLLW: gadget = gadget_psllw; break;
+        case ZYDIS_MNEMONIC_PSRAW: gadget = gadget_psraw; break;
+        case ZYDIS_MNEMONIC_PSRAD: gadget = gadget_psrad; break;
         case ZYDIS_MNEMONIC_PSRLD: gadget = gadget_psrld; break;
         case ZYDIS_MNEMONIC_PSLLD: gadget = gadget_pslld; break;
         case ZYDIS_MNEMONIC_PSRLDQ: gadget = gadget_psrldq; break;
