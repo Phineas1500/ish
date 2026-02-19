@@ -397,10 +397,11 @@ static int elf_exec64(struct fd *fd, const char *file, struct exec_args argv,
   current->mm->vdso = 0;
 
   // STACK TIME - 64-bit uses higher addresses
-  // Allocate 18 pages of stack: 16 for data + 2 guard pages at top for safety
-  // Some code accesses above RSP temporarily
+  // Allocate 2048 pages (8MB) of stack - matches Linux default stack rlimit.
+  // The dynamic linker maps libraries just below the stack, so we need enough
+  // pages to prevent the stack from growing into library read-only pages.
   err = _ENOMEM;
-#define INIT_STACK_PAGES 18
+#define INIT_STACK_PAGES 2048
   page_t stack_page = pt_find_hole(current->mem, INIT_STACK_PAGES);
   if (stack_page == BAD_PAGE)
     goto beyond_hope;
