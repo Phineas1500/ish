@@ -482,8 +482,12 @@ extern void gadget_pcmpeqb(void);
 extern void gadget_pcmpeqd(void);
 extern void gadget_pcmpgtd(void);
 extern void gadget_pand(void);
+extern void gadget_paddb(void);
+extern void gadget_paddw(void);
 extern void gadget_paddd(void);
 extern void gadget_paddq(void);
+extern void gadget_psubb(void);
+extern void gadget_psubw(void);
 extern void gadget_psubq(void);
 extern void gadget_psubd(void);
 extern void gadget_orps(void);
@@ -497,8 +501,12 @@ extern void gadget_pand_mem(void);
 extern void gadget_pandn_mem(void);
 extern void gadget_por_mem(void);
 extern void gadget_orps_mem(void);
+extern void gadget_paddb_mem(void);
+extern void gadget_paddw_mem(void);
 extern void gadget_paddd_mem(void);
 extern void gadget_paddq_mem(void);
+extern void gadget_psubb_mem(void);
+extern void gadget_psubw_mem(void);
 extern void gadget_psubq_mem(void);
 extern void gadget_psubd_mem(void);
 extern void gadget_pcmpeqb_mem(void);
@@ -526,6 +534,9 @@ extern void gadget_sha256rnds2(void);
 extern void gadget_sha256msg1(void);
 extern void gadget_sha256msg2(void);
 extern void gadget_pmovmskb(void);
+extern void gadget_pextrw(void);
+extern void gadget_pinsrw_reg(void);
+extern void gadget_pinsrw_mem(void);
 extern void gadget_psrlq(void);
 extern void gadget_psllq(void);
 extern void gadget_psrldq(void);
@@ -661,6 +672,10 @@ extern void gadget_jmp_s(void);
 extern void gadget_jmp_p(void);
 extern void gadget_jmp_sxo(void);
 extern void gadget_jmp_sxoz(void);
+extern void gadget_jmp_rcxz(void);
+extern void gadget_loop(void);
+extern void gadget_loope(void);
+extern void gadget_loopne(void);
 
 // Conditional move gadgets (condition true = use source)
 extern void gadget_cmov_o(void);
@@ -1945,6 +1960,30 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       GEN(state->orig_ip);
       GEN(state->orig_ip);
       return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_JRCXZ:
+  case ZYDIS_MNEMONIC_LOOP:
+  case ZYDIS_MNEMONIC_LOOPE:
+  case ZYDIS_MNEMONIC_LOOPNE:
+    if (inst.operand_count > 0 && inst.operands[0].type == arg64_imm) {
+      int64_t target = state->ip + inst.operands[0].imm;
+      int64_t not_target = state->ip;
+      gadget_t gadget = NULL;
+      switch (inst.mnemonic) {
+      case ZYDIS_MNEMONIC_JRCXZ:  gadget = gadget_jmp_rcxz; break;
+      case ZYDIS_MNEMONIC_LOOP:   gadget = gadget_loop; break;
+      case ZYDIS_MNEMONIC_LOOPE:  gadget = gadget_loope; break;
+      case ZYDIS_MNEMONIC_LOOPNE: gadget = gadget_loopne; break;
+      default: break;
+      }
+      GEN(gadget);
+      GEN(target | (1ul << 63));
+      GEN(not_target | (1ul << 63));
+      state->jump_ip[0] = state->size - 2;
+      state->jump_ip[1] = state->size - 1;
+      end_block = true;
     }
     break;
 
@@ -7148,8 +7187,12 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
   case ZYDIS_MNEMONIC_PAND:
   case ZYDIS_MNEMONIC_PANDN:
   case ZYDIS_MNEMONIC_POR:
+  case ZYDIS_MNEMONIC_PADDB:
+  case ZYDIS_MNEMONIC_PADDW:
   case ZYDIS_MNEMONIC_PADDD:
   case ZYDIS_MNEMONIC_PADDQ:
+  case ZYDIS_MNEMONIC_PSUBB:
+  case ZYDIS_MNEMONIC_PSUBW:
   case ZYDIS_MNEMONIC_PSUBQ:
   case ZYDIS_MNEMONIC_PSUBD:
   case ZYDIS_MNEMONIC_ORPS:
@@ -7180,8 +7223,12 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           case ZYDIS_MNEMONIC_PAND:        gadget = gadget_pand; break;
           case ZYDIS_MNEMONIC_PANDN:       gadget = gadget_pandn; break;
           case ZYDIS_MNEMONIC_POR:         gadget = gadget_por; break;
+          case ZYDIS_MNEMONIC_PADDB:       gadget = gadget_paddb; break;
+          case ZYDIS_MNEMONIC_PADDW:       gadget = gadget_paddw; break;
           case ZYDIS_MNEMONIC_PADDD:       gadget = gadget_paddd; break;
           case ZYDIS_MNEMONIC_PADDQ:       gadget = gadget_paddq; break;
+          case ZYDIS_MNEMONIC_PSUBB:       gadget = gadget_psubb; break;
+          case ZYDIS_MNEMONIC_PSUBW:       gadget = gadget_psubw; break;
           case ZYDIS_MNEMONIC_PSUBQ:       gadget = gadget_psubq; break;
           case ZYDIS_MNEMONIC_PSUBD:       gadget = gadget_psubd; break;
           case ZYDIS_MNEMONIC_ORPS:        gadget = gadget_orps; break;
@@ -7217,8 +7264,12 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           case ZYDIS_MNEMONIC_PAND:        gadget = gadget_pand_mem; break;
           case ZYDIS_MNEMONIC_PANDN:       gadget = gadget_pandn_mem; break;
           case ZYDIS_MNEMONIC_POR:         gadget = gadget_por_mem; break;
+          case ZYDIS_MNEMONIC_PADDB:       gadget = gadget_paddb_mem; break;
+          case ZYDIS_MNEMONIC_PADDW:       gadget = gadget_paddw_mem; break;
           case ZYDIS_MNEMONIC_PADDD:       gadget = gadget_paddd_mem; break;
           case ZYDIS_MNEMONIC_PADDQ:       gadget = gadget_paddq_mem; break;
+          case ZYDIS_MNEMONIC_PSUBB:       gadget = gadget_psubb_mem; break;
+          case ZYDIS_MNEMONIC_PSUBW:       gadget = gadget_psubw_mem; break;
           case ZYDIS_MNEMONIC_PSUBQ:       gadget = gadget_psubq_mem; break;
           case ZYDIS_MNEMONIC_PSUBD:       gadget = gadget_psubd_mem; break;
           case ZYDIS_MNEMONIC_ORPS:        gadget = gadget_orps_mem; break;
@@ -7405,6 +7456,61 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(store64_r8_r15[dst - arg64_r8]);
       } else {
         GEN(store32_gadgets[dst]);
+      }
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED);
+      GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_PEXTRW:
+    // PEXTRW r32, xmm, imm8 - Extract word from XMM
+    if (inst.operand_count >= 3 && is_gpr(inst.operands[0].type) &&
+        is_xmm(inst.operands[1].type)) {
+      int src_xmm = get_xmm_index(inst.operands[1].type);
+      int64_t imm = inst.operands[2].imm;
+      GEN(gadget_pextrw);
+      GEN(src_xmm);
+      GEN(imm);
+      // Store result to GPR (32-bit zero-extended)
+      enum arg64 dst = inst.operands[0].type;
+      if (dst >= arg64_r8 && dst <= arg64_r15) {
+        GEN(store64_r8_r15[dst - arg64_r8]);
+      } else {
+        GEN(store32_gadgets[dst]);
+      }
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED);
+      GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_PINSRW:
+    // PINSRW xmm, r32/m16, imm8
+    if (inst.operand_count >= 3 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      int64_t imm = inst.operands[2].imm;
+      if (is_gpr(inst.operands[1].type)) {
+        // Register source
+        gadget_t load = get_load64_reg_gadget(inst.operands[1].type);
+        if (!load) {
+          g(interrupt); GEN(INT_UNDEFINED);
+          GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        GEN(load);
+        GEN(gadget_pinsrw_reg);
+        GEN(dst_xmm);
+        GEN(imm);
+      } else if (is_mem(inst.operands[1].type)) {
+        // Memory source
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt); GEN(INT_UNDEFINED);
+          GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        GEN(gadget_pinsrw_mem);
+        GEN(dst_xmm);
+        GEN(imm);
+        GEN(state->orig_ip);
       }
     } else {
       g(interrupt); GEN(INT_UNDEFINED);

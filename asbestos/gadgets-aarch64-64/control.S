@@ -281,6 +281,60 @@
 .gadget_list skip, COND_LIST
 .gadget_list skipn, COND_LIST
 
+// JRCXZ - Jump short if RCX is zero
+// Same layout as jmp_\cond: [_ip] = taken, [_ip+8] = not-taken
+.gadget jmp_rcxz
+    cbnz rcx, 1f
+    ldr _ip, [_ip]
+    b fiber_ret_chain
+1:  ldr _ip, [_ip, 8]
+    b fiber_ret_chain
+
+// LOOP - Decrement RCX and jump if RCX != 0
+.gadget loop
+    sub rcx, rcx, 1
+    cbz rcx, 1f
+    ldr _ip, [_ip]
+    b fiber_ret_chain
+1:  ldr _ip, [_ip, 8]
+    b fiber_ret_chain
+
+// LOOPE - Decrement RCX and jump if RCX != 0 AND ZF == 1
+.gadget loope
+    sub rcx, rcx, 1
+    cbz rcx, 1f
+    // Check ZF
+    ldr w8, [_cpu, CPU_flags_res]
+    tbnz w8, 0, 2f          // bit 0 = ZF_RES -> check CPU_res
+    ldr w8, [_cpu, CPU_eflags]
+    tbnz w8, 6, 3f           // ZF bit in eflags
+    b 1f
+2:  ldr x8, [_cpu, CPU_res]
+    cbnz x8, 1f              // ZF=0 if res!=0
+3:  // ZF==1 and RCX!=0: take the branch
+    ldr _ip, [_ip]
+    b fiber_ret_chain
+1:  ldr _ip, [_ip, 8]
+    b fiber_ret_chain
+
+// LOOPNE - Decrement RCX and jump if RCX != 0 AND ZF == 0
+.gadget loopne
+    sub rcx, rcx, 1
+    cbz rcx, 1f
+    // Check ZF - jump if ZF==0
+    ldr w8, [_cpu, CPU_flags_res]
+    tbnz w8, 0, 2f          // bit 0 = ZF_RES -> check CPU_res
+    ldr w8, [_cpu, CPU_eflags]
+    tbnz w8, 6, 1f           // ZF=1 in eflags -> don't branch
+    b 3f
+2:  ldr x8, [_cpu, CPU_res]
+    cbz x8, 1f               // ZF=1 if res==0 -> don't branch
+3:  // ZF==0 and RCX!=0: take the branch
+    ldr _ip, [_ip]
+    b fiber_ret_chain
+1:  ldr _ip, [_ip, 8]
+    b fiber_ret_chain
+
 // Helper gadget: save _xtmp to x8 for cmov operations
 .gadget save_xtmp_to_x8
     mov x8, _xtmp

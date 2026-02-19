@@ -551,12 +551,48 @@ void helper_pand(struct cpu_state *cpu, int dst_idx, int src_idx) {
 }
 
 // PADDD xmm, xmm - Add packed 32-bit integers
+void helper_paddb(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint8_t dst[16], src[16];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 16; i++)
+        dst[i] += src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+void helper_paddw(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint16_t dst[8], src[8];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 8; i++)
+        dst[i] += src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
 void helper_paddd(struct cpu_state *cpu, int dst_idx, int src_idx) {
     uint32_t dst[4], src[4];
     memcpy(dst, &cpu->xmm[dst_idx], 16);
     memcpy(src, &cpu->xmm[src_idx], 16);
     for (int i = 0; i < 4; i++)
         dst[i] += src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+void helper_psubb(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint8_t dst[16], src[16];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 16; i++)
+        dst[i] -= src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+void helper_psubw(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint16_t dst[8], src[8];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 8; i++)
+        dst[i] -= src[i];
     memcpy(&cpu->xmm[dst_idx], dst, 16);
 }
 
@@ -726,12 +762,48 @@ void helper_orps_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
     memcpy(&cpu->xmm[dst_idx], dst, 16);
 }
 
+void helper_paddb_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint8_t dst[16], src[16];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    for (int i = 0; i < 16; i++)
+        dst[i] += src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+void helper_paddw_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint16_t dst[8], src[8];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    for (int i = 0; i < 8; i++)
+        dst[i] += src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
 void helper_paddd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
     uint32_t dst[4], src[4];
     memcpy(dst, &cpu->xmm[dst_idx], 16);
     memcpy(src, src_addr, 16);
     for (int i = 0; i < 4; i++)
         dst[i] += src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+void helper_psubb_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint8_t dst[16], src[16];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    for (int i = 0; i < 16; i++)
+        dst[i] -= src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+void helper_psubw_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint16_t dst[8], src[8];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    for (int i = 0; i < 8; i++)
+        dst[i] -= src[i];
     memcpy(&cpu->xmm[dst_idx], dst, 16);
 }
 
@@ -1096,6 +1168,21 @@ int helper_pmovmskb(struct cpu_state *cpu, int src_idx) {
         if (src[i] & 0x80)
             mask |= (1 << i);
     return mask;
+}
+
+// PEXTRW r32, xmm, imm8 - Extract word from XMM
+int helper_pextrw(struct cpu_state *cpu, int src_idx, uint8_t imm) {
+    uint16_t w[8];
+    memcpy(w, &cpu->xmm[src_idx], 16);
+    return w[imm & 7];
+}
+
+// PINSRW xmm, r32/m16, imm8 - Insert word into XMM
+void helper_pinsrw(struct cpu_state *cpu, int dst_idx, uint16_t val, uint8_t imm) {
+    uint16_t w[8];
+    memcpy(w, &cpu->xmm[dst_idx], 16);
+    w[imm & 7] = val;
+    memcpy(&cpu->xmm[dst_idx], w, 16);
 }
 
 // CMPSD xmm, xmm/m64, imm8 - Compare Scalar Double-Precision FP

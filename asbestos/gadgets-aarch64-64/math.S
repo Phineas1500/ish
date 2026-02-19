@@ -3658,8 +3658,12 @@ sse_xmm_xmm_op pcmpgtd
 sse_xmm_xmm_op pand
 sse_xmm_xmm_op pandn
 sse_xmm_xmm_op por
+sse_xmm_xmm_op paddb
+sse_xmm_xmm_op paddw
 sse_xmm_xmm_op paddd
 sse_xmm_xmm_op paddq
+sse_xmm_xmm_op psubb
+sse_xmm_xmm_op psubw
 sse_xmm_xmm_op psubq
 sse_xmm_xmm_op psubd
 sse_xmm_xmm_op orps
@@ -3682,8 +3686,12 @@ sse_xmm_mem_op pand
 sse_xmm_mem_op pandn
 sse_xmm_mem_op por
 sse_xmm_mem_op orps
+sse_xmm_mem_op paddb
+sse_xmm_mem_op paddw
 sse_xmm_mem_op paddd
 sse_xmm_mem_op paddq
+sse_xmm_mem_op psubb
+sse_xmm_mem_op psubw
 sse_xmm_mem_op psubq
 sse_xmm_mem_op psubd
 sse_xmm_mem_op pcmpeqb
@@ -3976,6 +3984,45 @@ sse_xmm_xmm_op movdqa_xmm
     restore_c
     mov _xtmp, x14             // Transfer result to _xtmp after restore_c
     gret 1
+
+// PEXTRW r32, xmm, imm8 - Extract word from XMM
+// [_ip] = src XMM index, [_ip+8] = imm8
+.gadget pextrw
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // src XMM index
+    ldr x2, [_ip, 8]           // imm8
+    bl NAME(helper_pextrw)
+    mov x14, x0
+    restore_c
+    mov _xtmp, x14
+    gret 2
+
+// PINSRW xmm, r32, imm8 - Insert word into XMM from register
+// _xtmp = source value, [_ip] = dst XMM index, [_ip+8] = imm8
+.gadget pinsrw_reg
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    and w2, _tmp, 0xffff       // value (16-bit)
+    ldr x3, [_ip, 8]           // imm8
+    bl NAME(helper_pinsrw)
+    restore_c
+    gret 2
+
+// PINSRW xmm, m16, imm8 - Insert word into XMM from memory
+.gadget pinsrw_mem
+    read_prep 16, pinsrw_mem
+    ldrh w14, [_addr]
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    mov w2, w14                // value (16-bit)
+    ldr x3, [_ip, 8]           // imm8
+    bl NAME(helper_pinsrw)
+    restore_c
+    gret 3                     // skip 3: XMM index + imm8 + orig_ip
+    read_bullshit 16, pinsrw_mem
 
 // ============================================================
 // CVTSI2SD - Convert Signed Integer to Scalar Double
