@@ -188,38 +188,6 @@ static int load_entry64(struct prg_header64 ph, addr_t bias, struct fd *fd) {
                                 PAGE_ROUND_UP(bss_size - tail_size), flags)) <
           0)
         return err;
-
-      // Debug: dump some BSS memory to verify it's zero
-      page_t bss_page = PAGE_ROUND_UP(addr + filesize);
-      addr_t bss_addr = bss_page << 12;
-      DEBUG_FPRINTF(stderr, "ELF64: checking BSS page=%llx addr=%llx\n",
-                    (unsigned long long)bss_page, (unsigned long long)bss_addr);
-      struct pt_entry *bss_entry = mem_pt(current->mem, bss_page);
-      DEBUG_FPRINTF(stderr, "ELF64: mem_pt returned %p\n", (void *)bss_entry);
-      void *bss_ptr = mem_ptr(current->mem, bss_addr, MEM_READ);
-      if (bss_ptr) {
-        uint64_t *p = (uint64_t *)bss_ptr;
-        DEBUG_FPRINTF(stderr, "ELF64: BSS at %llx: %llx %llx %llx %llx\n",
-                      (unsigned long long)bss_addr, (unsigned long long)p[0],
-                      (unsigned long long)p[1], (unsigned long long)p[2],
-                      (unsigned long long)p[3]);
-      } else {
-        DEBUG_FPRINTF(stderr,
-                      "ELF64: mem_ptr returned NULL for bss_addr=%llx\n",
-                      (unsigned long long)bss_addr);
-      }
-
-      // Also check page 0x7efffffff where corruption happens
-      page_t check_page = bss_page + 1;
-      addr_t check_addr = check_page << 12;
-      void *check_ptr = mem_ptr(current->mem, check_addr + 0x910, MEM_READ);
-      if (check_ptr) {
-        uint64_t *p = (uint64_t *)check_ptr;
-        DEBUG_FPRINTF(stderr,
-                      "ELF64: Checking addr %llx (page %llx+0x910): %llx\n",
-                      (unsigned long long)(check_addr + 0x910),
-                      (unsigned long long)check_page, (unsigned long long)p[0]);
-      }
     }
   }
   return 0;
@@ -572,60 +540,6 @@ static int elf_exec64(struct fd *fd, const char *file, struct exec_args argv,
     }
   }
 
-  // Debug: check several BSS addresses before execution
-  // Address 0xa1f10 is in BSS and gets loaded early in _dlstart
-  // Address 0x9ed78 is the DYNAMIC section (not Dso)
-  addr_t bss_addr1 = interp_base + 0xa1f10;
-  addr_t dynamic_addr = interp_base + 0x9ed78;
-  DEBUG_FPRINTF(stderr, "ELF64: BSS at 0xa1f10 -> %llx\n",
-                (unsigned long long)bss_addr1);
-  DEBUG_FPRINTF(stderr, "ELF64: DYNAMIC at 0x9ed78 -> %llx\n",
-                (unsigned long long)dynamic_addr);
-
-  uint64_t val1 = 0, val2 = 0;
-  if (!user_get(bss_addr1, val1)) {
-    DEBUG_FPRINTF(stderr, "ELF64: [0x%llx] = %llx (should be 0)\n",
-                  (unsigned long long)bss_addr1, (unsigned long long)val1);
-  } else {
-    DEBUG_FPRINTF(stderr, "ELF64: Could not read BSS at 0x%llx\n",
-                  (unsigned long long)bss_addr1);
-  }
-  if (!user_get(dynamic_addr, val2)) {
-    DEBUG_FPRINTF(stderr, "ELF64: [0x%llx] = %llx (DYNAMIC section)\n",
-                  (unsigned long long)dynamic_addr, (unsigned long long)val2);
-  }
-
-  // Check a few more BSS addresses
-  for (int i = 0; i < 8; i++) {
-    addr_t addr = bss_addr1 + i * 8;
-    uint64_t v = 0;
-    if (!user_get(addr, v)) {
-      DEBUG_FPRINTF(stderr, "ELF64: [0x%llx] = %llx\n",
-                    (unsigned long long)addr, (unsigned long long)v);
-    }
-  }
-
-  // Check the specific address that will get corrupted during execution
-  addr_t corrupt_addr = 0x7efffffff910;
-  uint64_t corrupt_val = 0xDEADBEEF;
-  if (!user_get(corrupt_addr, corrupt_val)) {
-    DEBUG_FPRINTF(stderr, "ELF64: BEFORE EXEC [0x%llx] = %llx (should be 0)\n",
-                  (unsigned long long)corrupt_addr,
-                  (unsigned long long)corrupt_val);
-  }
-
-  // Debug: dump first 16 quadwords on stack
-  DEBUG_FPRINTF(stderr, "ELF64: stack dump at %llx:\n", (unsigned long long)sp);
-  read_wrlock(&current->mem->lock);
-  uint64_t *stack_ptr = (uint64_t *)mem_ptr(current->mem, sp, MEM_READ);
-  if (stack_ptr) {
-    for (int i = 0; i < 16; i++) {
-      DEBUG_FPRINTF(stderr, "  [%llx]: %llx\n",
-                    (unsigned long long)(sp + i * 8),
-                    (unsigned long long)stack_ptr[i]);
-    }
-  }
-  read_wrunlock(&current->mem->lock);
   current->cpu.fcw = 0x37f;
 
   // Clear all registers (x86_64 ABI)

@@ -628,6 +628,16 @@ void helper_pshufd(struct cpu_state *cpu, int dst_idx, int src_idx, uint8_t imm)
     memcpy(&cpu->xmm[dst_idx], result, 16);
 }
 
+void helper_pshufd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr, uint8_t imm) {
+    uint32_t src[4], result[4];
+    memcpy(src, src_addr, 16);
+    result[0] = src[(imm >> 0) & 3];
+    result[1] = src[(imm >> 2) & 3];
+    result[2] = src[(imm >> 4) & 3];
+    result[3] = src[(imm >> 6) & 3];
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
 // SHUFPS xmm, xmm, imm8 - Shuffle packed single-precision floats
 // Low 2 dwords from dst, high 2 dwords from src
 void helper_shufps(struct cpu_state *cpu, int dst_idx, int src_idx, uint8_t imm) {
@@ -990,6 +1000,74 @@ void helper_punpcklqdq(struct cpu_state *cpu, int dst_idx, int src_idx) {
     memcpy(src, &cpu->xmm[src_idx], 16);
     dst[1] = src[0];
     // dst[0] stays as dst[0]
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+// PCMPGTB xmm, xmm - Packed Compare Greater Than Bytes (signed)
+void helper_pcmpgtb(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    int8_t dst[16], src[16];
+    uint8_t result[16];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 16; i++)
+        result[i] = (dst[i] > src[i]) ? 0xFF : 0;
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+void helper_pcmpgtb_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    int8_t dst[16], src[16];
+    uint8_t result[16];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    for (int i = 0; i < 16; i++)
+        result[i] = (dst[i] > src[i]) ? 0xFF : 0;
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// UNPCKLPD xmm, xmm/m128 - Unpack Low Packed Doubles
+// Same operation as PUNPCKLQDQ: dst[0] = dst[0], dst[1] = src[0]
+void helper_unpcklpd(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint64_t dst[2], src[2];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    dst[1] = src[0];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+void helper_unpcklpd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint64_t dst[2], src[2];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    dst[1] = src[0];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+// UNPCKHPD xmm, xmm/m128 - Unpack High Packed Doubles
+// Same operation as PUNPCKHQDQ: dst[0] = dst[1], dst[1] = src[1]
+void helper_unpckhpd(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint64_t dst[2], src[2];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    dst[0] = dst[1];
+    dst[1] = src[1];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+void helper_unpckhpd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint64_t dst[2], src[2];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    dst[0] = dst[1];
+    dst[1] = src[1];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+// PUNPCKLQDQ xmm, m128 - Unpack Low Quadwords from memory
+void helper_punpcklqdq_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint64_t dst[2], src[2];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    dst[1] = src[0];
     memcpy(&cpu->xmm[dst_idx], dst, 16);
 }
 
@@ -2038,6 +2116,23 @@ void helper_trace_regs(struct cpu_state *cpu, uint64_t guest_ip) {
     if (crypto_offset == 0x15a5b7ULL) {
         fprintf(stderr, "[VERIFY] EVP_PKEY_verify returned: eax=%d\n",
                (int32_t)(cpu->rax & 0xFFFFFFFF));
+    }
+}
+
+// Debug helper: detect 32-bit store to stack-adjacent memory
+// Called from store32_mem gadget when address is near RSP
+static int s32_trace_count = 0;
+void helper_debug_store32_near_stack(struct cpu_state *cpu, uint64_t store_addr, uint32_t value) {
+    int64_t diff = (int64_t)store_addr - (int64_t)cpu->rsp;
+    if (diff >= 0 && diff < 256) {
+        if (s32_trace_count < 200) {
+            fprintf(stderr, "[S32] store32 %#x to [rsp+%lld] (addr=%#llx, rsp=%#llx, rip=%#llx)\n",
+                   value, (long long)diff,
+                   (unsigned long long)store_addr,
+                   (unsigned long long)cpu->rsp,
+                   (unsigned long long)cpu->rip);
+            s32_trace_count++;
+        }
     }
 }
 

@@ -2857,6 +2857,14 @@ NAME(xor32_r8_r15_gadgets):
 
 // CWDE: Sign extend AX (16-bit) to EAX (32-bit), zero-extended to RAX
 // Writing to _tmp (w0) automatically zero-extends to _xtmp (x0)
+// CBW: Sign extend AL to AX (only low 16 bits of RAX are modified)
+// _xtmp has RAX value loaded; result must preserve bits 63:16
+.gadget cbw
+    sxtb w9, _tmp              // Sign-extend AL (bits 7:0) to w9
+    bfi _xtmp, x9, 0, 16      // Insert low 16 bits of result into _xtmp[15:0]
+    gret
+
+// CWDE: Sign extend AX to EAX
 .gadget cwde
     sxth _tmp, _tmp
     gret
@@ -3654,7 +3662,10 @@ sse_xmm_xmm_op punpckhdq
 sse_xmm_xmm_op punpckhqdq
 sse_xmm_xmm_op pcmpeqb
 sse_xmm_xmm_op pcmpeqd
+sse_xmm_xmm_op pcmpgtb
 sse_xmm_xmm_op pcmpgtd
+sse_xmm_xmm_op unpcklpd
+sse_xmm_xmm_op unpckhpd
 sse_xmm_xmm_op pand
 sse_xmm_xmm_op pandn
 sse_xmm_xmm_op por
@@ -3696,7 +3707,11 @@ sse_xmm_mem_op psubq
 sse_xmm_mem_op psubd
 sse_xmm_mem_op pcmpeqb
 sse_xmm_mem_op pcmpeqd
+sse_xmm_mem_op pcmpgtb
 sse_xmm_mem_op pcmpgtd
+sse_xmm_mem_op unpcklpd
+sse_xmm_mem_op unpckhpd
+sse_xmm_mem_op punpcklqdq
 sse_xmm_mem_op packuswb
 sse_xmm_mem_op packsswb
 sse_xmm_mem_op packssdw
@@ -3825,6 +3840,20 @@ sse_xmm_mem_op punpckhqdq
     bl NAME(helper_pshufd)
     restore_c
     gret 3
+
+// PSHUFD xmm, m128, imm8 - Shuffle packed doublewords from memory
+// [_ip] = dst XMM index, [_ip+8] = imm8, [_ip+16] = orig_ip
+.gadget pshufd_mem
+    read_prep 128, pshufd_mem
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    mov x2, _addr
+    ldr x3, [_ip, 8]
+    bl NAME(helper_pshufd_mem)
+    restore_c
+    gret 3
+    read_bullshit 128, pshufd_mem
 
 // SHUFPS xmm, xmm, imm8 - Shuffle packed single-precision floats
 // result[0] = dst[imm[1:0]], result[1] = dst[imm[3:2]]
@@ -4210,6 +4239,91 @@ sse_xmm_xmm_op movdqa_xmm
     read_bullshit 64, cvttsd2si_mem32
 
 // ============================================================
+// CVTSD2SI - Convert Scalar Double to Signed Integer (rounded)
+// Uses fcvtns (round to nearest, ties to even) - x86 default rounding mode
+// ============================================================
+
+// CVTSD2SI r64, xmm
+.gadget cvtsd2si_reg64
+    ldr x8, [_ip]              // XMM register index
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr d0, [x8]               // Load double from XMM
+    fcvtns _xtmp, d0           // Round to nearest, ties to even
+    gret 1
+
+// CVTSD2SI r32, xmm
+.gadget cvtsd2si_reg32
+    ldr x8, [_ip]
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr d0, [x8]
+    fcvtns w0, d0              // Round to nearest 32-bit
+    uxtw _xtmp, w0
+    gret 1
+
+// CVTSD2SI r64, m64
+.gadget cvtsd2si_mem64
+    read_prep 64, cvtsd2si_mem64
+    ldr d0, [_addr]
+    fcvtns _xtmp, d0
+    gret 1
+    read_bullshit 64, cvtsd2si_mem64
+
+// CVTSD2SI r32, m64
+.gadget cvtsd2si_mem32
+    read_prep 64, cvtsd2si_mem32
+    ldr d0, [_addr]
+    fcvtns w0, d0
+    uxtw _xtmp, w0
+    gret 1
+    read_bullshit 64, cvtsd2si_mem32
+
+// ============================================================
+// CVTSS2SI - Convert Scalar Single to Signed Integer (rounded)
+// ============================================================
+
+// CVTSS2SI r64, xmm
+.gadget cvtss2si_reg64
+    ldr x8, [_ip]
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr s0, [x8]               // Load float from XMM
+    fcvtns _xtmp, s0           // Round to nearest, ties to even
+    gret 1
+
+// CVTSS2SI r32, xmm
+.gadget cvtss2si_reg32
+    ldr x8, [_ip]
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr s0, [x8]
+    fcvtns w0, s0
+    uxtw _xtmp, w0
+    gret 1
+
+// CVTSS2SI r64, m32
+.gadget cvtss2si_mem64
+    read_prep 32, cvtss2si_mem64
+    ldr s0, [_addr]
+    fcvtns _xtmp, s0
+    gret 1
+    read_bullshit 32, cvtss2si_mem64
+
+// CVTSS2SI r32, m32
+.gadget cvtss2si_mem32
+    read_prep 32, cvtss2si_mem32
+    ldr s0, [_addr]
+    fcvtns w0, s0
+    uxtw _xtmp, w0
+    gret 1
+    read_bullshit 32, cvtss2si_mem32
+
+// ============================================================
 // ADDSD - Add Scalar Double-Precision
 // ============================================================
 
@@ -4463,6 +4577,148 @@ sse_xmm_xmm_op movdqa_xmm
     str d1, [x9]
     gret 2
     read_bullshit 64, maxsd_xmm_mem
+
+// ============================================================
+// SQRTSD - Square Root Scalar Double-Precision
+// ============================================================
+
+// SQRTSD xmm, xmm - Square root of source, store in dst low 64 bits
+// _xtmp = source XMM index, [_ip] = destination XMM index
+.gadget sqrtsd_xmm_xmm
+    lsl x8, _xtmp, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr d0, [x8]               // Load src double
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[dst]
+
+    fsqrt d0, d0               // sqrt(src)
+    str d0, [x9]               // Store to dst low 64 bits
+    gret 1
+
+// SQRTSD xmm, m64
+// _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
+.gadget sqrtsd_xmm_mem
+    read_prep 64, sqrtsd_xmm_mem
+    ldr d0, [_addr]            // Load double from memory
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+
+    fsqrt d0, d0
+    str d0, [x9]
+    gret 2
+    read_bullshit 64, sqrtsd_xmm_mem
+
+// ============================================================
+// SQRTSS - Square Root Scalar Single-Precision
+// ============================================================
+
+// SQRTSS xmm, xmm
+.gadget sqrtss_xmm_xmm
+    lsl x8, _xtmp, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr s0, [x8]               // Load src float
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+
+    fsqrt s0, s0               // sqrt(src)
+    str s0, [x9]               // Store to dst low 32 bits
+    gret 1
+
+// SQRTSS xmm, m32
+.gadget sqrtss_xmm_mem
+    read_prep 32, sqrtss_xmm_mem
+    ldr s0, [_addr]            // Load float from memory
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+
+    fsqrt s0, s0
+    str s0, [x9]
+    gret 2
+    read_bullshit 32, sqrtss_xmm_mem
+
+// ============================================================
+// MINSS/MAXSS - Min/Max Scalar Single-Precision
+// ============================================================
+
+// MINSS xmm, xmm
+.gadget minss_xmm_xmm
+    lsl x8, _xtmp, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr s0, [x8]               // src float
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    ldr s1, [x9]               // dst float
+
+    fmin s1, s1, s0            // dst = min(dst, src)
+    str s1, [x9]
+    gret 1
+
+// MINSS xmm, m32
+.gadget minss_xmm_mem
+    read_prep 32, minss_xmm_mem
+    ldr s0, [_addr]
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    ldr s1, [x9]
+
+    fmin s1, s1, s0
+    str s1, [x9]
+    gret 2
+    read_bullshit 32, minss_xmm_mem
+
+// MAXSS xmm, xmm
+.gadget maxss_xmm_xmm
+    lsl x8, _xtmp, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr s0, [x8]
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    ldr s1, [x9]
+
+    fmax s1, s1, s0
+    str s1, [x9]
+    gret 1
+
+// MAXSS xmm, m32
+.gadget maxss_xmm_mem
+    read_prep 32, maxss_xmm_mem
+    ldr s0, [_addr]
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    ldr s1, [x9]
+
+    fmax s1, s1, s0
+    str s1, [x9]
+    gret 2
+    read_bullshit 32, maxss_xmm_mem
 
 // ============================================================
 // CMPSD xmm, xmm/m64, imm8 - Compare Scalar Double with predicate
@@ -4877,6 +5133,91 @@ ss_xmm_mem_op divss, fdiv
 .Lucomiss_done:
     str w10, [_cpu, CPU_eflags]
     gret 1
+
+// COMISS/UCOMISS xmm, m32 - Compare scalar single from XMM with memory
+// _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
+.gadget comiss_xmm_mem
+    read_prep 32, comiss_xmm_mem
+    ldr s1, [_addr]            // Load second float from memory
+
+    // Load first XMM
+    ldr x9, [_ip]              // XMM index
+    lsl x9, x9, 4              // Multiply by 16
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9           // x9 = &xmm[src1]
+    ldr s0, [x9]               // Load first float
+
+    // Compare (ARM64 fcmp sets NZCV)
+    fcmp s0, s1
+
+    // Clear SF, OF
+    strb wzr, [_cpu, CPU_of]
+
+    // Clear ZF_RES and PF_RES bits so flags are read from eflags
+    ldr w10, [_cpu, CPU_flags_res]
+    mov w11, (ZF_RES | PF_RES | SF_RES)
+    bic w10, w10, w11
+    str w10, [_cpu, CPU_flags_res]
+
+    // Load eflags and clear ZF, PF, SF bits
+    ldr w10, [_cpu, CPU_eflags]
+    mov w11, (ZF_FLAG | PF_FLAG | SF_FLAG)
+    bic w10, w10, w11
+
+    // Default: CF=0
+    strb wzr, [_cpu, CPU_cf]
+
+    b.vs .Lcomiss_mem_unord
+    b.eq .Lcomiss_mem_eq
+    b.mi .Lcomiss_mem_lt
+    b .Lcomiss_mem_done
+
+.Lcomiss_mem_unord:
+    // ZF=1, PF=1, CF=1
+    mov w11, (ZF_FLAG | PF_FLAG)
+    orr w10, w10, w11
+    mov w11, 1
+    strb w11, [_cpu, CPU_cf]
+    b .Lcomiss_mem_done
+
+.Lcomiss_mem_eq:
+    // ZF=1, PF=0, CF=0
+    orr w10, w10, ZF_FLAG
+    b .Lcomiss_mem_done
+
+.Lcomiss_mem_lt:
+    // ZF=0, PF=0, CF=1
+    mov w11, 1
+    strb w11, [_cpu, CPU_cf]
+
+.Lcomiss_mem_done:
+    str w10, [_cpu, CPU_eflags]
+    gret 2
+    read_bullshit 32, comiss_xmm_mem
+
+// ============================================================================
+// STMXCSR / LDMXCSR - Store/Load MXCSR register
+// ============================================================================
+
+// STMXCSR m32 - Store MXCSR to memory
+// We always store 0x1F80 (default: round-to-nearest, all exceptions masked)
+// _addr = memory address (GUEST), [_ip] = orig_ip
+.gadget stmxcsr
+    write_prep 32, stmxcsr
+    mov w8, 0x1F80
+    str w8, [_addr]
+    write_done 32, stmxcsr
+    gret 1
+    write_bullshit 32, stmxcsr
+
+// LDMXCSR m32 - Load MXCSR from memory (NOP - read and discard)
+// _addr = memory address (GUEST), [_ip] = orig_ip
+.gadget ldmxcsr
+    read_prep 32, ldmxcsr
+    // Read from memory but discard - we don't actually use MXCSR
+    ldr w8, [_addr]
+    gret 1
+    read_bullshit 32, ldmxcsr
 
 // ============================================================================
 // x87 FPU Gadgets
