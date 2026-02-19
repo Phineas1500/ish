@@ -86,6 +86,8 @@ dword_t sys_lseek(fd_t f, dword_t off, dword_t whence);
 #endif
 dword_t sys_pread(fd_t f, addr_t buf_addr, dword_t buf_size, off_t_ off);
 dword_t sys_pwrite(fd_t f, addr_t buf_addr, dword_t size, off_t_ off);
+dword_t sys_preadv2(fd_t f, addr_t iovec_addr, dword_t iovec_count, off_t_ off, dword_t flags);
+dword_t sys_pwritev2(fd_t f, addr_t iovec_addr, dword_t iovec_count, off_t_ off, dword_t flags);
 dword_t sys_ioctl(fd_t f, dword_t cmd, dword_t arg);
 dword_t sys_fcntl(fd_t f, dword_t cmd, dword_t arg);
 dword_t sys_fcntl32(fd_t fd, dword_t cmd, dword_t arg);

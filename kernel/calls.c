@@ -225,6 +225,8 @@ syscall_t syscall_table[] = {
     [318] = (syscall_t)sys_getrandom,
     [324] = (syscall_t)syscall_silent_stub, // membarrier
     [326] = (syscall_t)sys_copy_file_range,
+    [327] = (syscall_t)sys_preadv2,
+    [328] = (syscall_t)sys_pwritev2,
     [332] = (syscall_t)sys_statx,
     [439] = (syscall_t)syscall_silent_stub, // faccessat2
 };

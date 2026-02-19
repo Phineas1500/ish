@@ -382,6 +382,165 @@ error:
     return res;
 }
 
+static ssize_t do_preadv2_pwritev2(fd_t f, addr_t iovec_addr, dword_t iovec_count, off_t_ off, dword_t flags, bool is_read) {
+    struct fd *fd = f_get(f);
+    if (fd == NULL)
+        return _EBADF;
+    if (flags != 0)
+        return _EINVAL;
+
+    struct iovec_ *iovec = read_iovec(iovec_addr, iovec_count);
+    if (IS_ERR(iovec))
+        return PTR_ERR(iovec);
+    size_t io_size = iovec_size(iovec, iovec_count);
+    if (io_size == 0) {
+        free(iovec);
+        return 0;
+    }
+    char *buf = malloc(io_size);
+    if (buf == NULL) {
+        free(iovec);
+        return _ENOMEM;
+    }
+
+    ssize_t res = 0;
+    if (!is_read) {
+        size_t offset = 0;
+        for (unsigned i = 0; i < iovec_count; i++) {
+            if (user_read(iovec[i].base, buf + offset, iovec[i].len)) {
+                free(buf);
+                free(iovec);
+                return _EFAULT;
+            }
+            offset += iovec[i].len;
+        }
+    }
+
+    size_t offset = 0;
+    bool restore_offset = false;
+    off_t_ saved_off = 0;
+    lock(&fd->lock);
+
+    if (is_read) {
+        if (fd->ops->pread == NULL && fd->ops->read == NULL) {
+            res = _EBADF;
+            goto unlock;
+        }
+        if (fd->ops->pread == NULL) {
+            saved_off = fd->ops->lseek(fd, 0, LSEEK_CUR);
+            if (saved_off < 0) {
+                res = saved_off;
+                goto unlock;
+            }
+            restore_offset = true;
+        }
+
+        for (unsigned i = 0; i < iovec_count; i++) {
+            size_t chunk_size = iovec[i].len;
+            if (chunk_size == 0)
+                continue;
+
+            if (fd->ops->pread)
+                res = fd->ops->pread(fd, buf + offset, chunk_size, off + offset);
+            else {
+                ssize_t seek_res = fd->ops->lseek(fd, off + offset, LSEEK_SET);
+                if (seek_res < 0) {
+                    res = seek_res;
+                    break;
+                }
+                res = fd->ops->read(fd, buf + offset, chunk_size);
+            }
+
+            if (res < 0)
+                break;
+            if (res == 0)
+                break;
+
+            offset += (size_t) res;
+            if (offset >= io_size)
+                break;
+            if ((size_t) res < chunk_size)
+                break;
+        }
+    } else {
+        if (fd->ops->pwrite == NULL && fd->ops->write == NULL) {
+            res = _EBADF;
+            goto unlock;
+        }
+        if (fd->ops->pwrite == NULL) {
+            saved_off = fd->ops->lseek(fd, 0, LSEEK_CUR);
+            if (saved_off < 0) {
+                res = saved_off;
+                goto unlock;
+            }
+            restore_offset = true;
+        }
+
+        for (unsigned i = 0; i < iovec_count; i++) {
+            size_t chunk_size = iovec[i].len;
+            if (chunk_size == 0)
+                continue;
+
+            if (fd->ops->pwrite)
+                res = fd->ops->pwrite(fd, buf + offset, chunk_size, off + offset);
+            else {
+                ssize_t seek_res = fd->ops->lseek(fd, off + offset, LSEEK_SET);
+                if (seek_res < 0) {
+                    res = seek_res;
+                    break;
+                }
+                res = fd->ops->write(fd, buf + offset, chunk_size);
+            }
+
+            if (res < 0)
+                break;
+            if (res == 0)
+                break;
+
+            offset += (size_t) res;
+            if (offset >= io_size)
+                break;
+            if ((size_t) res < chunk_size)
+                break;
+        }
+    }
+    if (restore_offset) {
+        off_t_ end_off = fd->ops->lseek(fd, saved_off, LSEEK_SET);
+        assert(end_off >= 0);
+    }
+    if (is_read && res >= 0) {
+        size_t remaining = (size_t) offset;
+        size_t copied = 0;
+        for (unsigned i = 0; i < iovec_count && remaining > 0; i++) {
+            size_t chunk_size = iovec[i].len;
+            if (chunk_size > remaining)
+                chunk_size = remaining;
+            if (user_write(iovec[i].base, buf + copied, chunk_size)) {
+                res = _EFAULT;
+                break;
+            }
+            copied += chunk_size;
+            remaining -= chunk_size;
+        }
+    }
+
+unlock:
+    unlock(&fd->lock);
+    free(buf);
+    free(iovec);
+    return res >= 0 ? (ssize_t) offset : res;
+}
+
+dword_t sys_preadv2(fd_t f, addr_t iovec_addr, dword_t iovec_count, off_t_ off, dword_t flags) {
+    STRACE("preadv2(%d, %#x, %d, %lld, %#x)", f, iovec_addr, iovec_count, (long long) off, flags);
+    return do_preadv2_pwritev2(f, iovec_addr, iovec_count, off, flags, true);
+}
+
+dword_t sys_pwritev2(fd_t f, addr_t iovec_addr, dword_t iovec_count, off_t_ off, dword_t flags) {
+    STRACE("pwritev2(%d, %#x, %d, %lld, %#x)", f, iovec_addr, iovec_count, (long long) off, flags);
+    return do_preadv2_pwritev2(f, iovec_addr, iovec_count, off, flags, false);
+}
+
 dword_t sys__llseek(fd_t f, dword_t off_high, dword_t off_low, addr_t res_addr, dword_t whence) {
     struct fd *fd = f_get(f);
     if (fd == NULL)

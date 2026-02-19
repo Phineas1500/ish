@@ -406,6 +406,8 @@ extern void gadget_bsf32(void);
 extern void gadget_bsf64(void);
 extern void gadget_bsr32(void);
 extern void gadget_bsr64(void);
+extern void gadget_popcnt32(void);
+extern void gadget_popcnt64(void);
 extern void gadget_tzcnt32(void);
 extern void gadget_tzcnt64(void);
 extern void gadget_lzcnt32(void);
@@ -4412,6 +4414,81 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       bool is_32bit = (inst.operands[0].size == size64_32);
       GEN(is_32bit ? gadget_bsr32 : gadget_bsr64);
 
+      gen_store_reg_partial(state, &inst, 0);
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_POPCNT:
+    // POPCNT dst, src - Population count
+    if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
+      enum size64 src_size = inst.operands[1].size;
+      if (is_gpr(inst.operands[1].type)) {
+        // Source is register
+        gadget_t load = get_load64_reg_gadget(inst.operands[1].type);
+        if (!load) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        GEN(load);
+
+        if (src_size == size64_16) {
+          // Narrow register reads to 16-bit for 16-bit POPCNT.
+          GEN(gadget_lea_and64_imm);
+          GEN(0xffff);
+        } else if (src_size == size64_8) {
+          // Narrow 8-bit register reads to 8 bits, including high-byte regs.
+          if (inst.raw_operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+              zydis_is_high_byte_reg(inst.raw_operands[1].reg.value)) {
+            GEN(gadget_lea_lsr64_imm);
+            GEN(8);
+          }
+          GEN(gadget_lea_and64_imm);
+          GEN(0xff);
+        }
+      } else if (is_mem(inst.operands[1].type)) {
+        // Source is memory
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        if (src_size == size64_64) {
+          GEN(load64_gadgets[9]);
+        } else if (src_size == size64_32) {
+          GEN(load32_gadgets[9]);
+        } else if (src_size == size64_16) {
+          GEN(gadget_load16_mem);
+        } else if (src_size == size64_8) {
+          GEN(gadget_load8_mem);
+        } else {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        GEN(state->orig_ip);
+      } else {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+
+      bool is_32bit = (inst.operands[0].size == size64_32);
+      GEN(is_32bit ? gadget_popcnt32 : gadget_popcnt64);
       gen_store_reg_partial(state, &inst, 0);
     } else {
       g(interrupt);

@@ -103,8 +103,10 @@ static addr_t mmap_common(addr_t addr, dword_t len, dword_t prot, dword_t flags,
     write_wrlock(&current->mem->lock);
     addr_t res = do_mmap(addr, len, prot, flags, fd_no, offset);
     write_wrunlock(&current->mem->lock);
-    fprintf(stderr, "  [mmap] pid=%d mmap(addr=%#llx, fd=%d, len=0x%x, prot=%d, flags=%#x) = 0x%llx\n",
-            current->pid, (unsigned long long)addr, fd_no, len, prot, flags, (unsigned long long)res);
+    if (DEBUG_strace) {
+        fprintf(stderr, "  [mmap] pid=%d mmap(addr=%#llx, fd=%d, len=0x%x, prot=%d, flags=%#x) = 0x%llx\n",
+                current->pid, (unsigned long long)addr, fd_no, len, prot, flags, (unsigned long long)res);
+    }
     return res;
 }
 

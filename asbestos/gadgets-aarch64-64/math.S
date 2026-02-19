@@ -2710,6 +2710,32 @@ NAME(xor32_r8_r15_gadgets):
     gret
 
 // ============================================================
+// POPCNT - Population count (count set bits)
+// ============================================================
+
+.gadget popcnt64
+    mov x9, xzr
+1:  cbz _xtmp, 1f
+    sub x10, _xtmp, 1
+    and _xtmp, _xtmp, x10
+    add x9, x9, 1
+    b 1b
+1:  mov _xtmp, x9
+    setf_zsp
+    gret
+
+.gadget popcnt32
+    mov w9, wzr
+1:  cbz _tmp, 1f
+    sub w10, _tmp, 1
+    and _tmp, _tmp, w10
+    add w9, w9, 1
+    b 1b
+1:  uxtw _xtmp, w9
+    setf_zsp w
+    gret
+
+// ============================================================
 // TZCNT - Count Trailing Zeros (BMI1)
 // Unlike BSF, TZCNT defines the result for zero input and sets flags differently:
 // ZF = (result == 0), CF = (source == 0)

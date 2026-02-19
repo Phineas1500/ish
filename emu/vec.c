@@ -513,14 +513,14 @@ void vec_packsu_w128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst) {
 }
 
 void vec_shuffle_lw128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst, uint8_t encoding) {
-    union xmm_reg src_copy = *src;
+    union xmm_reg src_copy = *src, dst_copy = *dst;
     for (int i = 0; i < 4; i++)
         dst->u16[i] = src_copy.u16[(encoding >> (i*2)) % 4];
-    dst->qw[1] = src->qw[1];
+    dst->qw[1] = dst_copy.qw[1];
 }
 void vec_shuffle_hw128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst, uint8_t encoding) {
-    union xmm_reg src_copy = *src;
-    dst->qw[0] = src->qw[0];
+    union xmm_reg src_copy = *src, dst_copy = *dst;
+    dst->qw[0] = dst_copy.qw[0];
     dst->u32[2] = src_copy.u16[(encoding >> 0 & 3) | 4] | src_copy.u16[(encoding >> 2 & 3) | 4] << 16;
     dst->u32[3] = src_copy.u16[(encoding >> 4 & 3) | 4] | src_copy.u16[(encoding >> 6 & 3) | 4] << 16;
 }
@@ -531,14 +531,18 @@ void vec_shuffle_d128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst, uint
         dst->u32[i] = src_copy.u32[(encoding >> (i*2)) % 4];
 }
 void vec_shuffle_ps128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst, uint8_t encoding) {
-    dst->u32[0] = dst->u32[(encoding >> 0) & 3];
-    dst->u32[1] = dst->u32[(encoding >> 2) & 3];
-    dst->u32[2] = src->u32[(encoding >> 4) & 3];
-    dst->u32[3] = src->u32[(encoding >> 6) & 3];
+    const union xmm_reg dst_copy = *dst;
+    const union xmm_reg src_copy = *src;
+    dst->u32[0] = dst_copy.u32[(encoding >> 0) & 3];
+    dst->u32[1] = dst_copy.u32[(encoding >> 2) & 3];
+    dst->u32[2] = src_copy.u32[(encoding >> 4) & 3];
+    dst->u32[3] = src_copy.u32[(encoding >> 6) & 3];
 }
 void vec_shuffle_pd128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst, uint8_t encoding) {
-    dst->qw[0] = dst->qw[(encoding >> 0) & 1];
-    dst->qw[1] = src->qw[(encoding >> 1) & 1];
+    const union xmm_reg dst_copy = *dst;
+    const union xmm_reg src_copy = *src;
+    dst->qw[0] = dst_copy.qw[(encoding >> 0) & 1];
+    dst->qw[1] = src_copy.qw[(encoding >> 1) & 1];
 }
 
 void vec_movmask_b128(NO_CPU, const union xmm_reg *src, uint32_t *dst) {
