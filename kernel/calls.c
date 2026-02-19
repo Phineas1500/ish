@@ -40,7 +40,7 @@ syscall_t syscall_table[] = {
     [13] = (syscall_t)sys_rt_sigaction,
     [14] = (syscall_t)sys_rt_sigprocmask,
     [15] = (syscall_t)sys_rt_sigreturn,
-    [16] = (syscall_t)sys_ioctl,
+    [16] = (syscall_t)sys_ioctl64,
     [17] = (syscall_t)sys_pread,
     [18] = (syscall_t)sys_pwrite,
     [19] = (syscall_t)sys_readv,
@@ -82,7 +82,7 @@ syscall_t syscall_table[] = {
     [61] = (syscall_t)sys_wait4,
     [62] = (syscall_t)sys_kill,
     [63] = (syscall_t)sys_uname,
-    [72] = (syscall_t)sys_fcntl,
+    [72] = (syscall_t)sys_fcntl64,
     [73] = (syscall_t)sys_flock,
     [74] = (syscall_t)sys_fsync,
     [75] = (syscall_t)sys_fsync, // fdatasync -> fsync
@@ -488,158 +488,17 @@ void handle_interrupt(int interrupt) {
       // syscall_t (int64_t). On ARM64, 32-bit returns are zero-extended, so
       // negative error codes like -EEXIST (0xFFFFFFEF) become 0x00000000FFFFFFEF.
       // The guest checks (rax >= -4095ULL) which needs sign-extended values.
-      // Fix: if result fits in 32 bits with bit 31 set, sign-extend to 64-bit.
-      if ((uint64_t)result >= 0x80000000ULL && (uint64_t)result <= 0xFFFFFFFFULL) {
+      // Fix: if result looks like a 32-bit error code, sign-extend to 64-bit.
+      // Syscall functions returning int_t/dword_t (32-bit) have their results
+      // zero-extended on ARM64, so -ENOENT (0xFFFFFFFE) becomes 0x00000000FFFFFFFE.
+      // The guest expects -ENOENT as 0xFFFFFFFFFFFFFFFE, so we sign-extend.
+      // Only sign-extend values in the Linux error range: [-4095, -1] as uint32,
+      // i.e. [0xFFFFF001, 0xFFFFFFFF]. This avoids corrupting valid addresses
+      // from syscalls like mremap that return addr_t through 32-bit function types.
+      if ((uint64_t)result >= 0xFFFFF001ULL && (uint64_t)result <= 0xFFFFFFFFULL) {
         result = (int64_t)(int32_t)(uint32_t)result;
       }
       STRACE(" = 0x%llx\n", (unsigned long long)result);
-      // Temporary: trace network I/O and process lifecycle for TLS debugging
-      {
-        // Trace write/writev/sendto: dump first bytes to detect TLS vs plain HTTP
-        if ((syscall_num == 1 || syscall_num == 20 || syscall_num == 44) &&
-            (int64_t)cpu->rdi >= 3) {
-          const char *name = syscall_num==1?"write":syscall_num==20?"writev":"sendto";
-          fprintf(stderr, "  [io] pid=%d %s(fd=%lld, len=%lld) = %lld",
-                  current->pid, name, (long long)cpu->rdi,
-                  (long long)(syscall_num==20?cpu->rdx:cpu->rdx), (long long)result);
-          // For write(), dump first 8 bytes
-          if (syscall_num == 1 && result > 0) {
-            void *p = mem_ptr(current->mem, cpu->rsi, MEM_READ);
-            if (p) {
-              uint8_t *b = (uint8_t *)p;
-              int n = result > 16 ? 16 : (int)result;
-              fprintf(stderr, " [");
-              for (int i = 0; i < n; i++) fprintf(stderr, "%02x", b[i]);
-              fprintf(stderr, "]");
-            }
-          }
-          // For writev(), dump first bytes of first iov
-          if (syscall_num == 20 && result > 0) {
-            void *iov_ptr = mem_ptr(current->mem, cpu->rsi, MEM_READ);
-            if (iov_ptr) {
-              uint64_t base = *(uint64_t *)iov_ptr;
-              uint64_t len = *((uint64_t *)iov_ptr + 1);
-              void *data = mem_ptr(current->mem, base, MEM_READ);
-              if (data) {
-                uint8_t *b = (uint8_t *)data;
-                int n = len > 16 ? 16 : (int)len;
-                fprintf(stderr, " [");
-                for (int i = 0; i < n; i++) fprintf(stderr, "%02x", b[i]);
-                fprintf(stderr, "]");
-              }
-            }
-          }
-          fprintf(stderr, "\n");
-        }
-        // Trace read/readv/recvfrom on fds >= 3
-        if ((syscall_num == 0 || syscall_num == 19 || syscall_num == 45) &&
-            (int64_t)cpu->rdi >= 3) {
-          const char *name = syscall_num==0?"read":syscall_num==19?"readv":"recvfrom";
-          // read(fd=rdi, buf=rsi, count=rdx)
-          fprintf(stderr, "  [io] pid=%d %s(fd=%lld, count=%lld) = %lld\n",
-                  current->pid, name, (long long)cpu->rdi,
-                  (long long)cpu->rdx, (long long)result);
-        }
-        // Trace open/openat to see what fd=4 is
-        if (syscall_num == 2 || syscall_num == 257) { // open / openat
-          addr_t path_addr = (syscall_num == 2) ? cpu->rdi : cpu->rsi;
-          char path_buf[256] = {0};
-          for (int i = 0; i < 255; i++) {
-            uint8_t ch;
-            if (user_get(path_addr + i, ch)) break;
-            path_buf[i] = (char)ch;
-            if (ch == 0) break;
-          }
-          fprintf(stderr, "  [fs] pid=%d %s(\"%s\") = %lld\n",
-                  current->pid, syscall_num==2?"open":"openat",
-                  path_buf, (long long)result);
-        }
-        // Trace close
-        if (syscall_num == 3) // close
-          fprintf(stderr, "  [fs] pid=%d close(%lld) = %lld\n",
-                  current->pid, (long long)cpu->rdi, (long long)result);
-        // Trace fstat with file size
-        if (syscall_num == 5 && result == 0) { // fstat
-          // Read back the stat struct to get the file size (offset 48 = size_64)
-          uint64_t fsize = 0;
-          user_get(cpu->rsi + 48, fsize);
-          fprintf(stderr, "  [fs] pid=%d fstat(fd=%lld) = %lld (size=%llu)\n",
-                  current->pid, (long long)cpu->rdi, (long long)result,
-                  (unsigned long long)fsize);
-        } else if (syscall_num == 5) {
-          fprintf(stderr, "  [fs] pid=%d fstat(fd=%lld) = %lld\n",
-                  current->pid, (long long)cpu->rdi, (long long)result);
-        }
-        // Trace lseek
-        if (syscall_num == 8) // lseek
-          fprintf(stderr, "  [fs] pid=%d lseek(fd=%lld, off=%lld, whence=%lld) = %lld\n",
-                  current->pid, (long long)cpu->rdi, (long long)cpu->rsi,
-                  (long long)cpu->rdx, (long long)result);
-        // Trace brk
-        if (syscall_num == 12) // brk
-          fprintf(stderr, "  [mem] pid=%d brk(%#llx) = %#llx\n",
-                  current->pid, (unsigned long long)cpu->rdi, (unsigned long long)(uint64_t)result);
-        // Trace getrandom
-        if (syscall_num == 318)
-          fprintf(stderr, "  [rng] pid=%d getrandom(len=%lld, flags=%lld) = %lld\n",
-                  current->pid, (long long)cpu->rsi, (long long)cpu->rdx, (long long)result);
-        // Trace socket/connect/socketpair
-        if (syscall_num == 41) // socket
-          fprintf(stderr, "  [net] pid=%d socket(%lld,%lld,%lld) = %lld\n",
-                  current->pid, (long long)cpu->rdi, (long long)cpu->rsi,
-                  (long long)cpu->rdx, (long long)result);
-        if (syscall_num == 42) // connect
-          fprintf(stderr, "  [net] pid=%d connect(fd=%lld) = %lld\n",
-                  current->pid, (long long)cpu->rdi, (long long)result);
-        if (syscall_num == 53) { // socketpair
-          int sv[2] = {-1, -1};
-          void *p = mem_ptr(current->mem, cpu->r10, MEM_READ);
-          if (p) { sv[0] = ((int*)p)[0]; sv[1] = ((int*)p)[1]; }
-          fprintf(stderr, "  [net] pid=%d socketpair() = %lld [%d, %d]\n",
-                  current->pid, (long long)result, sv[0], sv[1]);
-        }
-        // Trace dup2/dup3
-        if (syscall_num == 33) // dup2
-          fprintf(stderr, "  [fd] pid=%d dup2(%lld, %lld) = %lld\n",
-                  current->pid, (long long)cpu->rdi, (long long)cpu->rsi, (long long)result);
-        if (syscall_num == 292) // dup3
-          fprintf(stderr, "  [fd] pid=%d dup3(%lld, %lld) = %lld\n",
-                  current->pid, (long long)cpu->rdi, (long long)cpu->rsi, (long long)result);
-        // Trace clone/fork
-        if (syscall_num == 56 || syscall_num == 57 || syscall_num == 58) {
-          const char *name = syscall_num==56?"clone":syscall_num==57?"fork":"vfork";
-          fprintf(stderr, "  [proc] pid=%d %s() = %lld\n",
-                  current->pid, name, (long long)result);
-        }
-        // Trace execve
-        if (syscall_num == 59) { // execve
-          char exec_path[256] = {0};
-          for (int i = 0; i < 255; i++) {
-            uint8_t ch;
-            if (user_get(cpu->rdi + i, ch)) break;
-            exec_path[i] = (char)ch;
-            if (ch == 0) break;
-          }
-          fprintf(stderr, "  [proc] pid=%d execve(\"%s\") = %lld\n",
-                  current->pid, exec_path, (long long)result);
-        }
-        // Trace exit
-        if (syscall_num == 231) // exit_group
-          fprintf(stderr, "  [exit] pid=%d exit_group(%lld)\n",
-                  current->pid, (long long)cpu->rdi);
-        if (syscall_num == 60) // exit
-          fprintf(stderr, "  [exit] pid=%d exit(%lld)\n",
-                  current->pid, (long long)cpu->rdi);
-        // Trace pipe
-        if (syscall_num == 22 || syscall_num == 293) {
-          int pipefd[2] = {-1, -1};
-          void *p = mem_ptr(current->mem, cpu->rdi, MEM_READ);
-          if (p) { pipefd[0] = ((int*)p)[0]; pipefd[1] = ((int*)p)[1]; }
-          fprintf(stderr, "  [fd] pid=%d %s() = %lld [%d, %d]\n",
-                  current->pid, syscall_num==22?"pipe":"pipe2", (long long)result,
-                  pipefd[0], pipefd[1]);
-        }
-      }
       cpu->rax = result;
     }
   } else if (interrupt == INT_GPF) {
@@ -687,6 +546,22 @@ void handle_interrupt(int interrupt) {
       fprintf(stderr, "  r12=%#llx r13=%#llx r14=%#llx r15=%#llx\n",
              (unsigned long long)cpu->r12, (unsigned long long)cpu->r13,
              (unsigned long long)cpu->r14, (unsigned long long)cpu->r15);
+      // Dump memory at r8 (often points to a Python object in the crash)
+      fprintf(stderr, "  mem at r8=%#llx:", (unsigned long long)cpu->r8);
+      for (int i = 0; i < 8; i++) {
+        uint64_t val;
+        if (user_get(cpu->r8 + i*8, val)) { fprintf(stderr, " [+%02x]=FAULT", i*8); break; }
+        fprintf(stderr, " [+%02x]=%#llx", i*8, (unsigned long long)val);
+      }
+      fprintf(stderr, "\n");
+      // Also dump mem at rdi (another common pointer)
+      fprintf(stderr, "  mem at rdi=%#llx:", (unsigned long long)cpu->rdi);
+      for (int i = 0; i < 8; i++) {
+        uint64_t val;
+        if (user_get(cpu->rdi + i*8, val)) { fprintf(stderr, " [+%02x]=FAULT", i*8); break; }
+        fprintf(stderr, " [+%02x]=%#llx", i*8, (unsigned long long)val);
+      }
+      fprintf(stderr, "\n");
       // Dump instruction bytes around fault IP (64 before + 64 after)
       fprintf(stderr, "  insn bytes at ip-64:");
       for (int i = -64; i < 64; i++) {

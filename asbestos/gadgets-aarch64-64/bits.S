@@ -61,6 +61,104 @@
     eor _xtmp, x8, x11          // Toggle the bit
     gret
 
+// ============================================================
+// 32-bit BT/BTS/BTR/BTC - bit index mod 32 (not 64)
+// For x86 BT r/m32, r32 form
+// ============================================================
+
+// BT32 reg-reg: Test bit (_xtmp % 32) of x8
+.gadget bt32_reg
+    and w9, _tmp, 31            // Bit position mod 32
+    lsr w10, w8, w9             // Shift bit to position 0 (32-bit)
+    and w10, w10, 1             // Isolate the bit
+    strb w10, [_cpu, CPU_cf]    // Set CF
+    mov _xtmp, x8               // Return original value
+    gret
+
+// BTS32 reg-reg: Test and set bit (_xtmp % 32) of x8
+.gadget bts32_reg
+    and w9, _tmp, 31            // Bit position mod 32
+    mov w11, 1
+    lsl w11, w11, w9            // Create mask with bit set
+    lsr w10, w8, w9             // Shift bit to position 0
+    and w10, w10, 1             // Isolate the bit
+    strb w10, [_cpu, CPU_cf]    // Set CF to old value
+    orr _tmp, w8, w11           // Set the bit (32-bit)
+    and _xtmp, _xtmp, 0xffffffff // Zero-extend to 64-bit
+    gret
+
+// BTR32 reg-reg: Test and reset (clear) bit (_xtmp % 32) of x8
+.gadget btr32_reg
+    and w9, _tmp, 31            // Bit position mod 32
+    mov w11, 1
+    lsl w11, w11, w9            // Create mask with bit set
+    lsr w10, w8, w9             // Shift bit to position 0
+    and w10, w10, 1             // Isolate the bit
+    strb w10, [_cpu, CPU_cf]    // Set CF to old value
+    bic _tmp, w8, w11           // Clear the bit (32-bit)
+    and _xtmp, _xtmp, 0xffffffff // Zero-extend to 64-bit
+    gret
+
+// BTC32 reg-reg: Test and complement (toggle) bit (_xtmp % 32) of x8
+.gadget btc32_reg
+    and w9, _tmp, 31            // Bit position mod 32
+    mov w11, 1
+    lsl w11, w11, w9            // Create mask with bit set
+    lsr w10, w8, w9             // Shift bit to position 0
+    and w10, w10, 1             // Isolate the bit
+    strb w10, [_cpu, CPU_cf]    // Set CF to old value
+    eor _tmp, w8, w11           // Toggle the bit (32-bit)
+    and _xtmp, _xtmp, 0xffffffff // Zero-extend to 64-bit
+    gret
+
+// BT32 with immediate bit index
+.gadget bt32_imm
+    ldr w9, [_ip]               // Get immediate bit index
+    and w9, w9, 31              // Mod 32
+    lsr w10, _tmp, w9           // Shift bit to position 0 (32-bit)
+    and w10, w10, 1             // Isolate
+    strb w10, [_cpu, CPU_cf]    // Set CF
+    gret 1
+
+// BTS32 with immediate bit index
+.gadget bts32_imm
+    ldr w9, [_ip]               // Get immediate bit index
+    and w9, w9, 31              // Mod 32
+    mov w11, 1
+    lsl w11, w11, w9            // Create mask
+    lsr w10, _tmp, w9           // Get old bit (32-bit)
+    and w10, w10, 1
+    strb w10, [_cpu, CPU_cf]
+    orr _tmp, _tmp, w11         // Set the bit (32-bit)
+    and _xtmp, _xtmp, 0xffffffff // Zero-extend to 64-bit
+    gret 1
+
+// BTR32 with immediate bit index
+.gadget btr32_imm
+    ldr w9, [_ip]               // Get immediate bit index
+    and w9, w9, 31              // Mod 32
+    mov w11, 1
+    lsl w11, w11, w9            // Create mask
+    lsr w10, _tmp, w9           // Get old bit (32-bit)
+    and w10, w10, 1
+    strb w10, [_cpu, CPU_cf]
+    bic _tmp, _tmp, w11         // Clear the bit (32-bit)
+    and _xtmp, _xtmp, 0xffffffff // Zero-extend to 64-bit
+    gret 1
+
+// BTC32 with immediate bit index
+.gadget btc32_imm
+    ldr w9, [_ip]               // Get immediate bit index
+    and w9, w9, 31              // Mod 32
+    mov w11, 1
+    lsl w11, w11, w9            // Create mask
+    lsr w10, _tmp, w9           // Get old bit (32-bit)
+    and w10, w10, 1
+    strb w10, [_cpu, CPU_cf]
+    eor _tmp, _tmp, w11         // Toggle the bit (32-bit)
+    and _xtmp, _xtmp, 0xffffffff // Zero-extend to 64-bit
+    gret 1
+
 // BT with immediate bit index
 // Entry: _xtmp = value to test, immediate = bit index
 .gadget bt64_imm

@@ -390,3 +390,71 @@ dword_t sys_fcntl32(fd_t fd, dword_t cmd, dword_t arg) {
     }
     return sys_fcntl(fd, cmd, arg);
 }
+
+#ifdef ISH_GUEST_64BIT
+// x86_64 fcntl: arg is 64-bit (pointer for F_GETLK/F_SETLK/F_SETLKW),
+// and F_GETLK/F_SETLK use native struct flock (not flock32)
+dword_t sys_fcntl64(fd_t f, dword_t cmd, addr_t arg) {
+    struct fdtable *table = current->files;
+    struct fd *fd = f_get(f);
+    if (fd == NULL)
+        return _EBADF;
+    struct flock_ flock;
+    fd_t new_f;
+    int err;
+    switch (cmd) {
+        case F_DUPFD_:
+            STRACE("fcntl64(%d, F_DUPFD, %d)", f, (int)arg);
+            fd->refcount++;
+            return f_install_start(fd, arg);
+
+        case F_DUPFD_CLOEXEC_:
+            STRACE("fcntl64(%d, F_DUPFD_CLOEXEC, %d)", f, (int)arg);
+            fd->refcount++;
+            new_f = f_install_start(fd, arg);
+            bit_set(new_f, table->cloexec);
+            return new_f;
+
+        case F_GETFD_:
+            STRACE("fcntl64(%d, F_GETFD)", f);
+            return bit_test(f, table->cloexec);
+        case F_SETFD_:
+            STRACE("fcntl64(%d, F_SETFD, 0x%x)", f, (int)arg);
+            if (arg & 1)
+                bit_set(f, table->cloexec);
+            else
+                bit_clear(f, table->cloexec);
+            return 0;
+
+        case F_GETFL_:
+            STRACE("fcntl64(%d, F_GETFL)", f);
+            return fd_getflags(fd);
+        case F_SETFL_:
+            STRACE("fcntl64(%d, F_SETFL, %#x)", f, (int)arg);
+            return fd_setflags(fd, arg);
+
+        // x86_64 uses native 64-bit struct flock for F_GETLK/F_SETLK
+        case F_GETLK_:
+            STRACE("fcntl64(%d, F_GETLK, 0x%llx)", f, (unsigned long long)arg);
+            if (user_read(arg, &flock, sizeof(flock)))
+                return _EFAULT;
+            err = fcntl_getlk(fd, &flock);
+            if (err >= 0)
+                if (user_write(arg, &flock, sizeof(flock)))
+                    return _EFAULT;
+            return err;
+
+        case F_SETLK_:
+        case F_SETLKW_:
+            STRACE("fcntl64(%d, F_SETLK%s, 0x%llx)", f,
+                   cmd == F_SETLKW_ ? "W" : "", (unsigned long long)arg);
+            if (user_read(arg, &flock, sizeof(flock)))
+                return _EFAULT;
+            return fcntl_setlk(fd, &flock, cmd == F_SETLKW_);
+
+        default:
+            STRACE("fcntl64(%d, %d)", f, cmd);
+            return _EINVAL;
+    }
+}
+#endif

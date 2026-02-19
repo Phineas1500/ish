@@ -656,7 +656,7 @@ dword_t sys_pwrite(fd_t f, addr_t buf_addr, dword_t size, off_t_ off) {
     return res;
 }
 
-static int fd_ioctl(struct fd *fd, dword_t cmd, dword_t arg) {
+static int fd_ioctl(struct fd *fd, dword_t cmd, addr_t arg) {
     ssize_t size = -1;
     if (fd->ops->ioctl_size)
         size = fd->ops->ioctl_size(cmd);
@@ -707,6 +707,27 @@ dword_t sys_ioctl(fd_t f, dword_t cmd, dword_t arg) {
     }
     return fd_ioctl(fd, cmd, arg);
 }
+
+#ifdef ISH_GUEST_64BIT
+dword_t sys_ioctl64(fd_t f, dword_t cmd, addr_t arg) {
+    STRACE("ioctl64(%d, 0x%x, 0x%llx)", f, cmd, (unsigned long long)arg);
+    struct fd *fd = f_get(f);
+    if (fd == NULL)
+        return _EBADF;
+
+    switch (cmd) {
+        case FIONBIO_:
+            return set_nonblock(fd, arg);
+        case FIOCLEX_:
+            bit_set(f, current->files->cloexec);
+            return 0;
+        case FIONCLEX_:
+            bit_clear(f, current->files->cloexec);
+            return 0;
+    }
+    return fd_ioctl(fd, cmd, arg);
+}
+#endif
 
 dword_t sys_getcwd(addr_t buf_addr, qword_t size) {
     STRACE("getcwd(%#x, %#x)", buf_addr, size);

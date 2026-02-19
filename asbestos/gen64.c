@@ -414,7 +414,7 @@ extern void gadget_tzcnt64(void);
 extern void gadget_lzcnt32(void);
 extern void gadget_lzcnt64(void);
 
-// Bit test gadgets
+// Bit test gadgets (64-bit: bit index mod 64)
 extern void gadget_bt64_reg(void);
 extern void gadget_bt64_imm(void);
 extern void gadget_bts64_reg(void);
@@ -423,6 +423,15 @@ extern void gadget_btr64_reg(void);
 extern void gadget_btr64_imm(void);
 extern void gadget_btc64_reg(void);
 extern void gadget_btc64_imm(void);
+// Bit test gadgets (32-bit: bit index mod 32)
+extern void gadget_bt32_reg(void);
+extern void gadget_bt32_imm(void);
+extern void gadget_bts32_reg(void);
+extern void gadget_bts32_imm(void);
+extern void gadget_btr32_reg(void);
+extern void gadget_btr32_imm(void);
+extern void gadget_btc32_reg(void);
+extern void gadget_btc32_imm(void);
 
 // NOT/NEG gadgets
 extern void gadget_not64(void);
@@ -1447,13 +1456,6 @@ static bool gen_mov(struct gen_state *state, struct decoded_inst64 *inst) {
 
     if (!gen_addr(state, dst, inst))
       return false;
-    // DEBUG: detect 32-bit store to stack
-    if (size_bits == 32 && dst->mem.base == arg64_rsp) {
-      fprintf(stderr, "[GEN-S32] MOV DWORD [rsp+%lld], reg at ip=%#llx (src_size=%d, dst_size=%d)\n",
-             (long long)dst->mem.disp,
-             (unsigned long long)state->orig_ip,
-             src->size, dst->size);
-    }
     switch (size_bits) {
     case 64:
       GEN(store64_gadgets[9]); // store64_mem
@@ -1486,14 +1488,6 @@ static bool gen_mov(struct gen_state *state, struct decoded_inst64 *inst) {
     // Calculate address and store
     if (!gen_addr(state, dst, inst))
       return false;
-    // DEBUG: detect 32-bit store to stack
-    if (size_bits == 32 && dst->mem.base == arg64_rsp) {
-      fprintf(stderr, "[GEN-S32] MOV DWORD [rsp+%lld], imm=%#llx at ip=%#llx (dst_size=%d)\n",
-             (long long)dst->mem.disp,
-             (unsigned long long)src->imm,
-             (unsigned long long)state->orig_ip,
-             dst->size);
-    }
     switch (size_bits) {
     case 64:
       GEN(store64_gadgets[9]); // store64_mem
@@ -5328,12 +5322,14 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
   case ZYDIS_MNEMONIC_BT:
   case ZYDIS_MNEMONIC_BTS:
   case ZYDIS_MNEMONIC_BTR:
-  case ZYDIS_MNEMONIC_BTC:
+  case ZYDIS_MNEMONIC_BTC: {
     // Bit test instructions: BT, BTS, BTR, BTC
-    // BT r/m64, r64: test bit (op2 % 64) in op1, set CF
+    // BT r/m, r: test bit (op2 % size) in op1, set CF
     // BTS: same but also set bit to 1
     // BTR: same but also clear bit to 0
     // BTC: same but also toggle bit
+    // 32-bit form: bit index mod 32. 64-bit form: bit index mod 64.
+    bool bt_is64 = (inst.operands[0].size == size64_64);
     if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
       // Load destination (value to test)
       gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
@@ -5349,16 +5345,16 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
         switch (inst.mnemonic) {
         case ZYDIS_MNEMONIC_BT:
-          GEN(gadget_bt64_reg);
+          GEN(bt_is64 ? gadget_bt64_reg : gadget_bt32_reg);
           break;
         case ZYDIS_MNEMONIC_BTS:
-          GEN(gadget_bts64_reg);
+          GEN(bt_is64 ? gadget_bts64_reg : gadget_bts32_reg);
           break;
         case ZYDIS_MNEMONIC_BTR:
-          GEN(gadget_btr64_reg);
+          GEN(bt_is64 ? gadget_btr64_reg : gadget_btr32_reg);
           break;
         case ZYDIS_MNEMONIC_BTC:
-          GEN(gadget_btc64_reg);
+          GEN(bt_is64 ? gadget_btc64_reg : gadget_btc32_reg);
           break;
         default:
           break;
@@ -5372,16 +5368,16 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         // immediate form - bit index is immediate
         switch (inst.mnemonic) {
         case ZYDIS_MNEMONIC_BT:
-          GEN(gadget_bt64_imm);
+          GEN(bt_is64 ? gadget_bt64_imm : gadget_bt32_imm);
           break;
         case ZYDIS_MNEMONIC_BTS:
-          GEN(gadget_bts64_imm);
+          GEN(bt_is64 ? gadget_bts64_imm : gadget_bts32_imm);
           break;
         case ZYDIS_MNEMONIC_BTR:
-          GEN(gadget_btr64_imm);
+          GEN(bt_is64 ? gadget_btr64_imm : gadget_btr32_imm);
           break;
         case ZYDIS_MNEMONIC_BTC:
-          GEN(gadget_btc64_imm);
+          GEN(bt_is64 ? gadget_btc64_imm : gadget_btc32_imm);
           break;
         default:
           break;
@@ -5410,7 +5406,11 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         return 0;
       }
       GEN(gadget_save_addr); // Save guest address for store
-      GEN(load64_gadgets[9]); // load64_mem (clobbers _addr with host addr)
+      if (bt_is64) {
+        GEN(load64_gadgets[9]); // load64_mem
+      } else {
+        GEN(load32_gadgets[9]); // load32_mem
+      }
       GEN(state->orig_ip);
       GEN(gadget_save_xtmp_to_x8);
 
@@ -5421,16 +5421,16 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
         switch (inst.mnemonic) {
         case ZYDIS_MNEMONIC_BT:
-          GEN(gadget_bt64_reg);
+          GEN(bt_is64 ? gadget_bt64_reg : gadget_bt32_reg);
           break;
         case ZYDIS_MNEMONIC_BTS:
-          GEN(gadget_bts64_reg);
+          GEN(bt_is64 ? gadget_bts64_reg : gadget_bts32_reg);
           break;
         case ZYDIS_MNEMONIC_BTR:
-          GEN(gadget_btr64_reg);
+          GEN(bt_is64 ? gadget_btr64_reg : gadget_btr32_reg);
           break;
         case ZYDIS_MNEMONIC_BTC:
-          GEN(gadget_btc64_reg);
+          GEN(bt_is64 ? gadget_btc64_reg : gadget_btc32_reg);
           break;
         default:
           break;
@@ -5438,22 +5438,26 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
         if (inst.mnemonic != ZYDIS_MNEMONIC_BT) {
           GEN(gadget_restore_addr); // Restore guest address
-          GEN(store64_gadgets[9]); // store64_mem
+          if (bt_is64) {
+            GEN(store64_gadgets[9]); // store64_mem
+          } else {
+            GEN(store32_gadgets[9]); // store32_mem
+          }
           GEN(state->orig_ip);
         }
       } else if (inst.operands[1].type == arg64_imm) {
         switch (inst.mnemonic) {
         case ZYDIS_MNEMONIC_BT:
-          GEN(gadget_bt64_imm);
+          GEN(bt_is64 ? gadget_bt64_imm : gadget_bt32_imm);
           break;
         case ZYDIS_MNEMONIC_BTS:
-          GEN(gadget_bts64_imm);
+          GEN(bt_is64 ? gadget_bts64_imm : gadget_bts32_imm);
           break;
         case ZYDIS_MNEMONIC_BTR:
-          GEN(gadget_btr64_imm);
+          GEN(bt_is64 ? gadget_btr64_imm : gadget_btr32_imm);
           break;
         case ZYDIS_MNEMONIC_BTC:
-          GEN(gadget_btc64_imm);
+          GEN(bt_is64 ? gadget_btc64_imm : gadget_btc32_imm);
           break;
         default:
           break;
@@ -5462,7 +5466,11 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
         if (inst.mnemonic != ZYDIS_MNEMONIC_BT) {
           GEN(gadget_restore_addr); // Restore guest address
-          GEN(store64_gadgets[9]); // store64_mem
+          if (bt_is64) {
+            GEN(store64_gadgets[9]); // store64_mem
+          } else {
+            GEN(store32_gadgets[9]); // store32_mem
+          }
           GEN(state->orig_ip);
         }
       } else {
@@ -5480,6 +5488,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       return 0;
     }
     break;
+  }
 
   case ZYDIS_MNEMONIC_CMPXCHG:
     // CMPXCHG [mem], reg - Compare and exchange

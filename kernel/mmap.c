@@ -149,7 +149,7 @@ int_t sys_munmap(addr_t addr, uint_t len) {
 #define MREMAP_MAYMOVE_ 1
 #define MREMAP_FIXED_ 2
 
-int_t sys_mremap(addr_t addr, dword_t old_len, dword_t new_len, dword_t flags) {
+addr_t sys_mremap(addr_t addr, dword_t old_len, dword_t new_len, dword_t flags) {
     STRACE("mremap(%#x, %#x, %#x, %d)", addr, old_len, new_len, flags);
     if (PGOFFSET(addr) != 0)
         return _EINVAL;

@@ -59,7 +59,7 @@ addr_t sys_mmap64(addr_t addr, addr_t len, dword_t prot, dword_t flags, fd_t fd_
 #endif
 int_t sys_munmap(addr_t addr, uint_t len);
 int_t sys_mprotect(addr_t addr, uint_t len, int_t prot);
-int_t sys_mremap(addr_t addr, dword_t old_len, dword_t new_len, dword_t flags);
+addr_t sys_mremap(addr_t addr, dword_t old_len, dword_t new_len, dword_t flags);
 dword_t sys_madvise(addr_t addr, dword_t len, dword_t advice);
 dword_t sys_mbind(addr_t addr, dword_t len, int_t mode, addr_t nodemask, dword_t maxnode, uint_t flags);
 int_t sys_mlock(addr_t addr, dword_t len);
@@ -89,8 +89,14 @@ dword_t sys_pwrite(fd_t f, addr_t buf_addr, dword_t size, off_t_ off);
 dword_t sys_preadv2(fd_t f, addr_t iovec_addr, dword_t iovec_count, off_t_ off, dword_t flags);
 dword_t sys_pwritev2(fd_t f, addr_t iovec_addr, dword_t iovec_count, off_t_ off, dword_t flags);
 dword_t sys_ioctl(fd_t f, dword_t cmd, dword_t arg);
+#ifdef ISH_GUEST_64BIT
+dword_t sys_ioctl64(fd_t f, dword_t cmd, addr_t arg);
+#endif
 dword_t sys_fcntl(fd_t f, dword_t cmd, dword_t arg);
 dword_t sys_fcntl32(fd_t fd, dword_t cmd, dword_t arg);
+#ifdef ISH_GUEST_64BIT
+dword_t sys_fcntl64(fd_t f, dword_t cmd, addr_t arg);
+#endif
 dword_t sys_dup(fd_t fd);
 dword_t sys_dup2(fd_t fd, fd_t new_fd);
 dword_t sys_dup3(fd_t f, fd_t new_f, int_t flags);
