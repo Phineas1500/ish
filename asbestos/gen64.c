@@ -2155,6 +2155,20 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       g(pop);
       GEN(state->orig_ip);
       gen_store_reg_partial(state, &inst, 0);
+    } else if (inst.operand_count > 0 && is_mem(inst.operands[0].type)) {
+      // POP [mem]: pop value from stack, store to memory
+      g(pop);
+      GEN(state->orig_ip);
+      // _xtmp now holds the popped value, gen_addr doesn't clobber _xtmp
+      if (!gen_addr(state, &inst.operands[0], &inst)) {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+      GEN(store64_gadgets[9]); // store64_mem
+      GEN(state->orig_ip);
     } else {
       g(interrupt);
       GEN(INT_UNDEFINED);

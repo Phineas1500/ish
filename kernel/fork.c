@@ -110,9 +110,14 @@ static int copy_task(struct task *task, dword_t flags, addr_t stack, addr_t ptid
     unlock(&pids_lock);
 
     if (flags & CLONE_SETTLS_) {
+#ifdef ISH_GUEST_64BIT
+        // x86_64: tls_addr IS the FS base value directly (not a struct user_desc pointer)
+        task->cpu.fs_base = tls_addr;
+#else
         err = task_set_thread_area(task, tls_addr);
         if (err < 0)
             goto fail_free_sighand;
+#endif
     }
 
     err = _EFAULT;
@@ -208,6 +213,7 @@ dword_t sys_clone(dword_t flags, addr_t stack, addr_t ptid, addr_t tls, addr_t c
 // x86_64 clone: args are (flags, stack, ptid, ctid, tls)
 // x86 clone:    args are (flags, stack, ptid, tls, ctid)
 dword_t sys_clone_64(dword_t flags, addr_t stack, addr_t ptid, addr_t ctid, addr_t tls) {
+    STRACE("clone(0x%x, 0x%x, 0x%x, 0x%x, 0x%x)", flags, stack, ptid, ctid, tls);
     return sys_clone(flags, stack, ptid, tls, ctid);
 }
 #endif

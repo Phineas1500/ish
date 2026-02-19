@@ -37,6 +37,7 @@ int sys_set_thread_area(addr_t u_info) {
 }
 
 int sys_set_tid_address(addr_t tid) {
+    STRACE("set_tid_address(%#x)", tid);
     current->clear_tid = tid;
     return sys_getpid();
 }

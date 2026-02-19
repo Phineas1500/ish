@@ -44,10 +44,7 @@ void helper_cpuid(
     dword_t b32 = (dword_t)cpu->rbx;
     dword_t c32 = (dword_t)cpu->rcx;
     dword_t d32 = (dword_t)cpu->rdx;
-    dword_t input_leaf = a32;
     do_cpuid(&a32, &b32, &c32, &d32);
-    fprintf(stderr, "[CPUID] leaf=%u: eax=%#x ebx=%#x ecx=%#x edx=%#x\n",
-           input_leaf, a32, b32, c32, d32);
     cpu->rax = a32;
     cpu->rbx = b32;
     cpu->rcx = c32;
