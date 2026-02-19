@@ -785,6 +785,8 @@ extern void gadget_store64_r15(void);
 // CMPXCHG gadgets
 extern void gadget_cmpxchg64_mem(void);
 extern void gadget_cmpxchg32_mem(void);
+extern void gadget_lock_cmpxchg64_mem(void);
+extern void gadget_lock_cmpxchg32_mem(void);
 
 // XCHG gadgets
 extern void gadget_xchg64_mem(void);
@@ -5529,10 +5531,11 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       }
       GEN(load_src);
       // Use appropriate cmpxchg gadget based on operand size
+      // LOCK prefix: use atomic CAS (casal) for thread-safe compare-and-swap
       if (inst.operands[0].size == size64_64) {
-        GEN(gadget_cmpxchg64_mem);
+        GEN(inst.has_lock ? gadget_lock_cmpxchg64_mem : gadget_cmpxchg64_mem);
       } else {
-        GEN(gadget_cmpxchg32_mem);
+        GEN(inst.has_lock ? gadget_lock_cmpxchg32_mem : gadget_cmpxchg32_mem);
       }
       GEN(state->orig_ip);
     } else {

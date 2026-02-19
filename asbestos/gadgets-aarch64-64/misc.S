@@ -86,6 +86,88 @@
     read_bullshit 32, cmpxchg32_read
     write_bullshit 32, cmpxchg32_write
 
+// LOCK CMPXCHG - Atomic compare and exchange using ARM64 LSE atomics
+// Uses write_prep to get host address with write permission, then casal for atomic CAS
+// For crosspage accesses, falls through to non-atomic (crosspage atomics are pathological)
+
+// 64-bit atomic CMPXCHG
+// Uses write_prep to get writable host address, then casal for atomic CAS
+// For crosspage (LOCAL_value buffer), falls back to non-atomic
+.gadget lock_cmpxchg64_mem
+    write_prep 64, lcmpxchg64
+    // _addr = host address (writable), _xtmp = desired, rax = expected
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lcmpxchg64_cross
+    // Atomic CAS on host memory
+    mov x9, rax               // x9 = expected (casal overwrites with old value)
+    casal x9, _xtmp, [_addr]  // atomic: if [_addr]==x9 store _xtmp; x9 = old
+    cmp x9, rax
+    b.ne lcmpxchg64_fail
+    // CAS succeeded: write_done needed (we wrote), then ZF=1
+    write_done 64, lcmpxchg64
+    str xzr, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret 1
+lcmpxchg64_fail:
+    // CAS failed: RAX = old value, ZF=0
+    mov rax, x9
+    mov x10, 1
+    str x10, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret 1
+lcmpxchg64_cross:
+    // Crosspage fallback (non-atomic, data in LOCAL_value buffer)
+    ldr x8, [_addr]
+    cmp x8, rax
+    b.ne lcmpxchg64_cross_fail
+    str _xtmp, [_addr]
+    // Jump to write_done (reuse the one label from the main path)
+    b back_write_done_lcmpxchg64
+lcmpxchg64_cross_fail:
+    mov rax, x8
+    b lcmpxchg64_fail
+    write_bullshit 64, lcmpxchg64
+
+// 32-bit atomic CMPXCHG
+.gadget lock_cmpxchg32_mem
+    write_prep 32, lcmpxchg32
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lcmpxchg32_cross
+    mov w9, eax
+    casal w9, _tmp, [_addr]   // atomic 32-bit CAS
+    cmp w9, eax
+    b.ne lcmpxchg32_fail
+    write_done 32, lcmpxchg32
+    str xzr, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret 1
+lcmpxchg32_fail:
+    mov eax, w9
+    mov x10, 1
+    str x10, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret 1
+lcmpxchg32_cross:
+    ldr w8, [_addr]
+    cmp w8, eax
+    b.ne lcmpxchg32_cross_fail
+    str _tmp, [_addr]
+    b back_write_done_lcmpxchg32
+lcmpxchg32_cross_fail:
+    mov eax, w8
+    b lcmpxchg32_fail
+    write_bullshit 32, lcmpxchg32
+
 // XCHG reg, [mem] - Exchange register with memory
 // _addr = memory address
 // _xtmp = register value to swap
