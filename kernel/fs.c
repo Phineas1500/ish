@@ -86,6 +86,51 @@ fd_t sys_open(addr_t path_addr, dword_t flags, mode_t_ mode) {
     return sys_openat(AT_FDCWD_, path_addr, flags, mode);
 }
 
+#define MFD_CLOEXEC_ 0x0001
+#define MFD_ALLOW_SEALING_ 0x0002
+#define MFD_SUPPORTED_FLAGS_ (MFD_CLOEXEC_ | MFD_ALLOW_SEALING_)
+
+dword_t sys_memfd_create(addr_t name_addr, uint_t flags) {
+    char name[250];
+    memset(name, 0, sizeof(name));
+    if (user_read_string(name_addr, name, sizeof(name)))
+        return _EFAULT;
+    if (memchr(name, '\0', sizeof(name)) == NULL)
+        return _EINVAL;
+    if (flags & ~MFD_SUPPORTED_FLAGS_)
+        return _EINVAL;
+
+    STRACE("memfd_create(\"%s\", %#x)", name, flags);
+
+    static uint_t memfd_seq = 0;
+    int install_flags = (flags & MFD_CLOEXEC_) ? O_CLOEXEC_ : 0;
+    int open_flags = O_RDWR_ | O_CREAT_ | O_EXCL_ | install_flags;
+
+    for (int attempt = 0; attempt < 128; attempt++) {
+        uint_t seq = __sync_add_and_fetch(&memfd_seq, 1);
+        char path[MAX_PATH];
+        snprintf(path, sizeof(path), "/tmp/.ish-memfd-%d-%llu-%u", current->pid,
+                 (unsigned long long) current->threadid, seq);
+
+        struct fd *fd = generic_open(path, open_flags, 0600);
+        if (IS_ERR(fd)) {
+            if (PTR_ERR(fd) == _EEXIST)
+                continue;
+            return PTR_ERR(fd);
+        }
+
+        int err = generic_unlinkat(AT_PWD, path);
+        if (err < 0) {
+            fd_close(fd);
+            return err;
+        }
+
+        return f_install(fd, install_flags);
+    }
+
+    return _EEXIST;
+}
+
 dword_t sys_readlinkat(fd_t at_f, addr_t path_addr, addr_t buf_addr, dword_t bufsize) {
     char path[MAX_PATH];
     if (user_read_string(path_addr, path, sizeof(path)))
@@ -529,6 +574,16 @@ unlock:
     free(buf);
     free(iovec);
     return res >= 0 ? (ssize_t) offset : res;
+}
+
+dword_t sys_preadv(fd_t f, addr_t iovec_addr, dword_t iovec_count, off_t_ off) {
+    STRACE("preadv(%d, %#x, %d, %lld)", f, iovec_addr, iovec_count, (long long) off);
+    return do_preadv2_pwritev2(f, iovec_addr, iovec_count, off, 0, true);
+}
+
+dword_t sys_pwritev(fd_t f, addr_t iovec_addr, dword_t iovec_count, off_t_ off) {
+    STRACE("pwritev(%d, %#x, %d, %lld)", f, iovec_addr, iovec_count, (long long) off);
+    return do_preadv2_pwritev2(f, iovec_addr, iovec_count, off, 0, false);
 }
 
 dword_t sys_preadv2(fd_t f, addr_t iovec_addr, dword_t iovec_count, off_t_ off, dword_t flags) {
@@ -1238,9 +1293,44 @@ dword_t sys_sendfile64(fd_t out_fd, fd_t in_fd, addr_t offset_addr, dword_t coun
 dword_t sys_splice(fd_t UNUSED(in_fd), addr_t UNUSED(in_off_addr), fd_t UNUSED(out_fd), addr_t UNUSED(out_off_addr), dword_t UNUSED(count), dword_t UNUSED(flags)) {
     return _EINVAL;
 }
-dword_t sys_copy_file_range(fd_t UNUSED(in_fd), addr_t UNUSED(in_off), fd_t UNUSED(out_fd),
-        addr_t UNUSED(out_off), dword_t UNUSED(len), uint_t UNUSED(flags)) {
-    return _EPERM; // good enough for ruby
+dword_t sys_copy_file_range(fd_t in_fd, addr_t in_off, fd_t out_fd, addr_t out_off,
+        dword_t len, uint_t flags) {
+    STRACE("copy_file_range(%d, %#x, %d, %#x, %u, %#x)",
+            in_fd, in_off, out_fd, out_off, len, flags);
+
+    if (flags != 0)
+        return _EINVAL;
+
+    if (out_off == 0)
+        return sys_sendfile64(out_fd, in_fd, in_off, len);
+
+    struct fd *out = f_get(out_fd);
+    if (out == NULL)
+        return _EBADF;
+    if (out->ops->lseek == NULL)
+        return _ESPIPE;
+
+    off_t_ out_start;
+    if (user_get(out_off, out_start))
+        return _EFAULT;
+
+    off_t_ saved_out = out->ops->lseek(out, 0, LSEEK_CUR);
+    if (saved_out < 0)
+        return saved_out;
+    off_t_ seek_res = out->ops->lseek(out, out_start, LSEEK_SET);
+    if (seek_res < 0)
+        return seek_res;
+
+    dword_t copied = sys_sendfile64(out_fd, in_fd, in_off, len);
+
+    out->ops->lseek(out, saved_out, LSEEK_SET);
+    if ((sdword_t) copied >= 0) {
+        out_start += copied;
+        if (user_put(out_off, out_start))
+            return _EFAULT;
+    }
+
+    return copied;
 }
 
 dword_t sys_xattr_stub(addr_t UNUSED(path_addr), addr_t UNUSED(name_addr),
