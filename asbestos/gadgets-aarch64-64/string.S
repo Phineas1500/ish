@@ -160,6 +160,26 @@
     read_bullshit 8, single_movsb_r
     write_bullshit 8, single_movsb_w
 
+// Single MOVSQ - Move exactly one qword from [RSI] to [RDI], then update RSI/RDI
+// Used when MOVSQ appears without REP prefix
+// Note: First argument at [_ip] is orig_ip for segfault handler
+.gadget single_movsq
+    mov _addr, rsi
+    read_prep 64, single_movsq_r
+    ldr _xtmp, [_addr]
+    mov _addr, rdi
+    write_prep 64, single_movsq_w
+    str _xtmp, [_addr]
+    write_done 64, single_movsq_w
+    // Update RSI and RDI based on direction flag
+    ldrsw x11, [_cpu, CPU_df_offset]  // x11 = 1 or -1 (sign-extended)
+    lsl x11, x11, 3                   // x11 = df_offset * 8
+    add rsi, rsi, x11
+    add rdi, rdi, x11
+    gret 1
+    read_bullshit 64, single_movsq_r
+    write_bullshit 64, single_movsq_w
+
 // ============================================================
 // REPNE SCASB - Scan string for byte in AL
 // Compares AL with [RDI], sets flags, increments RDI, decrements RCX

@@ -459,6 +459,7 @@ extern void gadget_rep_movsq(void);
 extern void gadget_rep_movsd(void);
 extern void gadget_rep_movsb(void);
 extern void gadget_single_movsb(void); // Single MOVSB without REP prefix
+extern void gadget_single_movsq(void); // Single MOVSQ without REP prefix
 // SSE MOVSD (Move Scalar Double-Precision) - NOT the string operation!
 extern void gadget_movsd_xmm_xmm(void);  // movsd xmm, xmm
 extern void gadget_movsd_xmm_mem(void);  // movsd xmm, m64
@@ -1651,31 +1652,31 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
       // Special case: xor reg, reg (zeroing idiom) - MUST set flags properly!
       // XOR sets ZF=1, SF=0, CF=0, OF=0 when result is 0
-      if (inst.operands[0].type == inst.operands[1].type) {
-        // Load reg into _xtmp, then XOR with itself (uses proper flag-setting)
+      // NOTE: Only use gadget_xor_zero shortcut for 32/64-bit self-XOR.
+      // For 8/16-bit self-XOR (e.g., xorb %dl,%dl), gadget_xor_zero zeroes
+      // the full register, but x86-64 8/16-bit ops must preserve upper bits.
+      // gen_store_reg_partial skips merge for XOR, so the zero propagates.
+      // Fall through to the regular reg-reg path for 8/16-bit which uses
+      // xor8_x8/xor16_x8 gadgets that properly preserve upper bits.
+      if (inst.operands[0].type == inst.operands[1].type &&
+          inst.operands[0].size != size64_8 &&
+          inst.operands[0].size != size64_16) {
         gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
         if (load)
           GEN(load);
-        // XOR with immediate 0 doesn't give correct flags, use xor64_imm with
-        // the register value Actually simpler: just XOR with itself via
-        // xor64_imm 0 which will set flags correctly No wait - we need to XOR
-        // _xtmp with _xtmp, but we don't have that gadget So use xor64_imm with
-        // 0xFFFFFFFFFFFFFFFF to flip all bits, then with itself again...
-        // Actually the easiest is to use the reg gadget: load reg, then XOR
-        // with same reg But that requires self-referential XOR gadget Best
-        // approach: use dedicated zeroing gadget that sets flags
         GEN(gadget_xor_zero); // Sets _xtmp=0 and flags (ZF=1, SF=0, CF=0, OF=0)
         gen_store_reg_partial(state, &inst, 0);
       } else if (is_gpr(inst.operands[1].type)) {
         // XOR reg, reg (different registers)
         if (inst.operands[0].size == size64_8 ||
             inst.operands[0].size == size64_16) {
-          // 8/16-bit: use x8 pattern for correct flag setting
-          gadget_t load_dst = get_load64_reg_gadget(inst.operands[0].type);
-          if (load_dst) GEN(load_dst);
-          GEN(gadget_save_xtmp_to_x8);
+          // 8/16-bit: load SOURCE into x8, DESTINATION stays in _xtmp
+          // xor8/16_x8 preserves upper bytes of _xtmp (destination)
           gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
           if (load_src) GEN(load_src);
+          GEN(gadget_save_xtmp_to_x8);
+          gadget_t load_dst = get_load64_reg_gadget(inst.operands[0].type);
+          if (load_dst) GEN(load_dst);
           GEN(inst.operands[0].size == size64_8 ? gadget_xor8_x8 : gadget_xor16_x8);
         } else {
           // 32/64-bit: use per-register gadgets
@@ -1716,12 +1717,17 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
         if (load)
           GEN(load);
+        uint64_t xor_imm = inst.operands[1].imm;
+        if (inst.operands[0].size == size64_8)
+          xor_imm &= 0xFF;
+        else if (inst.operands[0].size == size64_16)
+          xor_imm &= 0xFFFF;
         if (inst.operands[0].size == size64_32) {
           GEN(gadget_xor32_imm);
         } else {
           GEN(gadget_xor64_imm);
         }
-        GEN(inst.operands[1].imm);
+        GEN(xor_imm);
         gen_store_reg_partial(state, &inst, 0);
       } else if (inst.operands[1].type == arg64_mem ||
                  inst.operands[1].type == arg64_rip_rel) {
@@ -1794,7 +1800,12 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(gadget_load8_mem);
       }
       GEN(state->orig_ip);
-      // XOR with immediate
+      // XOR with immediate - mask to operand size
+      uint64_t xor_mem_imm = inst.operands[1].imm;
+      if (size_bits == size64_8)
+        xor_mem_imm &= 0xFF;
+      else if (size_bits == size64_16)
+        xor_mem_imm &= 0xFFFF;
       if (size_bits == size64_64) {
         GEN(gadget_xor64_imm);
       } else if (size_bits == size64_32) {
@@ -1804,7 +1815,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       } else {
         GEN(gadget_xor8_imm);
       }
-      GEN(inst.operands[1].imm);
+      GEN(xor_mem_imm);
       // Restore address and store result
       GEN(gadget_restore_addr);
       if (size_bits == size64_64) {
@@ -3425,12 +3436,17 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       }
 
       if (inst.operands[1].type == arg64_imm) {
+        uint64_t and_imm = inst.operands[1].imm;
+        if (inst.operands[0].size == size64_8)
+          and_imm &= 0xFF;
+        else if (inst.operands[0].size == size64_16)
+          and_imm &= 0xFFFF;
         if (inst.operands[0].size == size64_32) {
           GEN(gadget_and32_imm);
         } else {
           GEN(gadget_and64_imm);
         }
-        GEN(inst.operands[1].imm);
+        GEN(and_imm);
       } else if (is_gpr(inst.operands[1].type)) {
         int reg_idx = inst.operands[1].type - arg64_rax;
         if (reg_idx >= 0 && reg_idx < 8) {
@@ -3504,13 +3520,18 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(gadget_load8_mem);
       }
       GEN(state->orig_ip);
-      // AND with immediate
+      // AND with immediate - mask to operand size
+      uint64_t and_mem_imm = inst.operands[1].imm;
+      if (and_mem_size == size64_8)
+        and_mem_imm &= 0xFF;
+      else if (and_mem_size == size64_16)
+        and_mem_imm &= 0xFFFF;
       if (and_mem_size == size64_64) {
         GEN(gadget_and64_imm);
       } else {
         GEN(gadget_and32_imm);
       }
-      GEN(inst.operands[1].imm);
+      GEN(and_mem_imm);
       // Restore address and store
       GEN(gadget_restore_addr);
       if (and_mem_size == size64_64) {
@@ -3593,10 +3614,9 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(load);
 
         if (inst.operands[1].type == arg64_imm) {
-          // For 8-bit OR operations, we need special handling
+          // Mask immediate to operand size (Zydis sign-extends)
           int64_t imm = inst.operands[1].imm;
           if (inst.operands[0].size == size64_8) {
-            // Mask immediate to 8 bits (in case Zydis sign-extended)
             imm = imm & 0xff;
             // Check if destination is a high-byte register (AH, BH, CH, DH)
             if (inst.raw_operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER &&
@@ -3608,6 +3628,8 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
               GEN(gadget_lea_lsr64_imm);
               GEN(8);
             }
+          } else if (inst.operands[0].size == size64_16) {
+            imm = imm & 0xffff;
           }
           if (inst.operands[0].size == size64_32) {
             GEN(gadget_or32_imm);
@@ -3739,9 +3761,14 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             GEN(gadget_load8_mem);
           }
           GEN(state->orig_ip);
-          // OR with immediate
+          // OR with immediate - mask to operand size
+          uint64_t or_mem_imm = inst.operands[1].imm;
+          if (or_mem_size == size64_8)
+            or_mem_imm &= 0xFF;
+          else if (or_mem_size == size64_16)
+            or_mem_imm &= 0xFFFF;
           GEN(gadget_or64_imm);
-          GEN(inst.operands[1].imm);
+          GEN(or_mem_imm);
           // Restore address and store
           GEN(gadget_restore_addr);
           if (or_mem_size == size64_64) {
@@ -7205,8 +7232,13 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_MOVSQ:
-    // REP MOVSQ - move [RSI] to [RDI], repeat RCX times
-    GEN(gadget_rep_movsq);
+    if (inst.has_rep) {
+      // REP MOVSQ - move [RSI] to [RDI], repeat RCX times
+      GEN(gadget_rep_movsq);
+    } else {
+      // Single MOVSQ - copy exactly one qword
+      GEN(gadget_single_movsq);
+    }
     GEN(state->orig_ip); // For segfault handler
     break;
 

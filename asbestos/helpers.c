@@ -1584,22 +1584,7 @@ static void dump_hex(const char *label, uint8_t *buf, int len) {
     fprintf(stderr, "\n");
 }
 
-static int trace_call_count = 0;
-static int trace_in_call3 = 0;
-
 void helper_trace_regs(struct cpu_state *cpu, uint64_t guest_ip) {
-    // Track which call to cpp_classify_number we're in
-    if (guest_ip == 0x216d8c0ULL) {
-        trace_call_count++;
-        trace_in_call3 = (trace_call_count == 3) ? 1 : 0;
-    }
-    // Only log during call 3 (the one processing "1L") and at the IMAGINARY check
-    if (!trace_in_call3 && guest_ip != 0x2170979ULL)
-        return;
-    // For IMAGINARY check, only show call 3's
-    if (guest_ip == 0x2170979ULL && trace_call_count != 3)
-        return;
-
     fprintf(stderr, "[TRACE] ip=%#llx rax=%#llx rbx=%#llx rcx=%#llx rdx=%#llx\n",
            (unsigned long long)guest_ip,
            (unsigned long long)cpu->rax, (unsigned long long)cpu->rbx,
@@ -1613,13 +1598,9 @@ void helper_trace_regs(struct cpu_state *cpu, uint64_t guest_ip) {
     fprintf(stderr, "[TRACE]  r12=%#llx r13=%#llx r14=%#llx r15=%#llx\n",
            (unsigned long long)cpu->r12, (unsigned long long)cpu->r13,
            (unsigned long long)cpu->r14, (unsigned long long)cpu->r15);
-
-    // At 0x2170979: caller checks CPP_N_IMAGINARY
-    if (guest_ip == 0x2170979ULL) {
-        uint32_t result = (uint32_t)(cpu->rax & 0xFFFFFFFF);
-        fprintf(stderr, "[TRACE] CPP_N_IMAGINARY check: eax=%#x (IMAGINARY=%s)\n",
-               result, (result & 0x2000) ? "YES" : "no");
-    }
+    fprintf(stderr, "[TRACE]  cf=%d of=%d res=%#llx flags_res=%#x\n",
+           cpu->cf, cpu->of,
+           (unsigned long long)cpu->res, cpu->flags_res);
     return;
 
     // APK signature verification tracing (disabled - kept for reference)

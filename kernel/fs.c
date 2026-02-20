@@ -323,10 +323,6 @@ dword_t sys_write(fd_t fd_no, addr_t buf_addr, dword_t size) {
     if (user_read(buf_addr, buf, size))
         goto out;
 
-    size_t print_size = size;
-    if (print_size > 100) print_size = 100;
-    STRACE("write(%d, \"%.*s\", %d)", fd_no, print_size, buf, size);
-
     res = sys_write_buf(fd_no, buf, size);
 out:
     free(buf);

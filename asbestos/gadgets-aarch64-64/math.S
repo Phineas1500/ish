@@ -719,9 +719,8 @@
     and w8, w8, 0xffff          // Mask immediate to 16 bits
     eor w10, _tmp, w8           // XOR
     and w10, w10, 0xffff        // Keep only 16 bits of result
-    bic _tmp, _tmp, 0xffff      // Clear low 16 bits of dest
-    orr _tmp, _tmp, w10         // Merge result
-    mov _xtmp, _xtmp            // Ensure 64-bit for setf_zsp
+    bic _xtmp, _xtmp, 0xffff   // Clear low 16 bits (use x0 to preserve bits 63:32)
+    orr _xtmp, _xtmp, x10      // Merge result
     sxth x10, w10               // Sign-extend for flag setting
     clearf_oc
     setf_zsp h, x10
@@ -732,9 +731,8 @@
     and w8, w8, 0xff            // Mask immediate to 8 bits
     eor w10, _tmp, w8           // XOR
     and w10, w10, 0xff          // Keep only 8 bits of result
-    bic _tmp, _tmp, 0xff        // Clear low 8 bits of dest
-    orr _tmp, _tmp, w10         // Merge result
-    mov _xtmp, _xtmp            // Ensure 64-bit for setf_zsp
+    bic _xtmp, _xtmp, 0xff     // Clear low 8 bits (use x0 to preserve bits 63:32)
+    orr _xtmp, _xtmp, x10      // Merge result
     sxtb x10, w10               // Sign-extend for flag setting
     clearf_oc
     setf_zsp b, x10
@@ -777,9 +775,8 @@
     and w8, w8, 0xffff            // Mask x8 to 16 bits
     eor w10, _tmp, w8             // XOR
     and w10, w10, 0xffff          // Keep only 16 bits of result
-    bic _tmp, _tmp, 0xffff        // Clear low 16 bits of dest
-    orr _tmp, _tmp, w10           // Merge result
-    mov _xtmp, _xtmp
+    bic _xtmp, _xtmp, 0xffff     // Clear low 16 bits (use x0 to preserve bits 63:32)
+    orr _xtmp, _xtmp, x10        // Merge result
     sxth x10, w10                 // Sign-extend for flag setting
     clearf_oc
     setf_zsp h, x10
@@ -789,9 +786,8 @@
     and w8, w8, 0xff              // Mask x8 to 8 bits
     eor w10, _tmp, w8             // XOR
     and w10, w10, 0xff            // Keep only 8 bits of result
-    bic _tmp, _tmp, 0xff          // Clear low 8 bits of dest
-    orr _tmp, _tmp, w10           // Merge result
-    mov _xtmp, _xtmp
+    bic _xtmp, _xtmp, 0xff       // Clear low 8 bits (use x0 to preserve bits 63:32)
+    orr _xtmp, _xtmp, x10        // Merge result
     sxtb x10, w10                 // Sign-extend for flag setting
     clearf_oc
     setf_zsp b, x10
