@@ -6545,12 +6545,8 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       // 64-bit registers are rax-rdi (arg64_rax to arg64_rdi) and r8-r15
       bool is_64bit = false;
       if (is_gpr(inst.operands[1].type)) {
-        // Check if it's a 64-bit register (not 32-bit like eax, r8d, etc.)
-        // arg64_rax through arg64_r15 are 64-bit
-        // Our decoder already distinguishes between eax (32-bit) and rax (64-bit)
-        enum arg64 op = inst.operands[1].type;
-        is_64bit = (op >= arg64_rax && op <= arg64_rdi) ||
-                   (op >= arg64_r8 && op <= arg64_r15);
+        // Check operand size to distinguish cvtsi2sd (32-bit) vs cvtsi2sdq (64-bit)
+        is_64bit = (inst.operands[1].size == size64_64);
       } else {
         // For memory operands, check the instruction operand width from inst
         // The instruction f2 48 0f 2a has REX.W (48), making it 64-bit
@@ -6604,9 +6600,8 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       int dst_xmm = get_xmm_index(inst.operands[0].type);
       bool is_64bit = false;
       if (is_gpr(inst.operands[1].type)) {
-        enum arg64 op = inst.operands[1].type;
-        is_64bit = (op >= arg64_rax && op <= arg64_rdi) ||
-                   (op >= arg64_r8 && op <= arg64_r15);
+        // Check operand size to distinguish cvtsi2ss (32-bit) vs cvtsi2ssq (64-bit)
+        is_64bit = (inst.operands[1].size == size64_64);
       } else {
         is_64bit = (code[0] == 0x48 ||
                     (code[0] == 0xf2 && code[1] == 0x48) ||
@@ -6718,9 +6713,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type) &&
         is_xmm(inst.operands[1].type)) {
       int src_xmm = get_xmm_index(inst.operands[1].type);
-      enum arg64 op = inst.operands[0].type;
-      bool is_64bit = (op >= arg64_rax && op <= arg64_rdi) ||
-                      (op >= arg64_r8 && op <= arg64_r15);
+      bool is_64bit = (inst.operands[0].size == size64_64);
       GEN(is_64bit ? gadget_cvttss2si_reg64 : gadget_cvttss2si_reg32);
       GEN(src_xmm);
       enum arg64 dst = inst.operands[0].type;
