@@ -180,6 +180,58 @@
     read_bullshit 64, single_movsq_r
     write_bullshit 64, single_movsq_w
 
+// Single MOVSD (string) - Move exactly one dword from [RSI] to [RDI], then update RSI/RDI
+.gadget single_movsd
+    mov _addr, rsi
+    read_prep 32, single_movsd_r
+    ldr _tmp, [_addr]
+    mov _addr, rdi
+    write_prep 32, single_movsd_w
+    str _tmp, [_addr]
+    write_done 32, single_movsd_w
+    ldrsw x11, [_cpu, CPU_df_offset]
+    lsl x11, x11, 2
+    add rsi, rsi, x11
+    add rdi, rdi, x11
+    gret 1
+    read_bullshit 32, single_movsd_r
+    write_bullshit 32, single_movsd_w
+
+// Single STOSQ - Store RAX to [RDI] exactly once, then update RDI
+.gadget single_stosq
+    mov _addr, rdi
+    write_prep 64, single_stosq
+    str rax, [_addr]
+    write_done 64, single_stosq
+    ldrsw x11, [_cpu, CPU_df_offset]
+    lsl x11, x11, 3
+    add rdi, rdi, x11
+    gret 1
+    write_bullshit 64, single_stosq
+
+// Single STOSD - Store EAX to [RDI] exactly once, then update RDI
+.gadget single_stosd
+    mov _addr, rdi
+    write_prep 32, single_stosd
+    str eax, [_addr]
+    write_done 32, single_stosd
+    ldrsw x11, [_cpu, CPU_df_offset]
+    lsl x11, x11, 2
+    add rdi, rdi, x11
+    gret 1
+    write_bullshit 32, single_stosd
+
+// Single STOSB - Store AL to [RDI] exactly once, then update RDI
+.gadget single_stosb
+    mov _addr, rdi
+    write_prep 8, single_stosb
+    strb eax, [_addr]
+    write_done 8, single_stosb
+    ldrsw x11, [_cpu, CPU_df_offset]
+    add rdi, rdi, x11
+    gret 1
+    write_bullshit 8, single_stosb
+
 // ============================================================
 // REPNE SCASB - Scan string for byte in AL
 // Compares AL with [RDI], sets flags, increments RDI, decrements RCX

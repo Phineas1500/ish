@@ -460,6 +460,10 @@ extern void gadget_rep_movsd(void);
 extern void gadget_rep_movsb(void);
 extern void gadget_single_movsb(void); // Single MOVSB without REP prefix
 extern void gadget_single_movsq(void); // Single MOVSQ without REP prefix
+extern void gadget_single_stosq(void); // Single STOSQ without REP prefix
+extern void gadget_single_stosd(void); // Single STOSD without REP prefix
+extern void gadget_single_stosb(void); // Single STOSB without REP prefix
+extern void gadget_single_movsd(void); // Single MOVSD (string, not SSE) without REP prefix
 // SSE MOVSD (Move Scalar Double-Precision) - NOT the string operation!
 extern void gadget_movsd_xmm_xmm(void);  // movsd xmm, xmm
 extern void gadget_movsd_xmm_mem(void);  // movsd xmm, m64
@@ -7202,22 +7206,30 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
 
   case ZYDIS_MNEMONIC_STOSQ:
-    // REP STOSQ - store RAX to [RDI], repeat RCX times
-    // Check for REP prefix (handled implicitly by our gadget)
-    GEN(gadget_rep_stosq);
-    GEN(state->orig_ip); // For segfault handler
+    if (inst.has_rep) {
+      GEN(gadget_rep_stosq);
+    } else {
+      GEN(gadget_single_stosq);
+    }
+    GEN(state->orig_ip);
     break;
 
   case ZYDIS_MNEMONIC_STOSD:
-    // REP STOSD - store EAX to [RDI], repeat RCX times
-    GEN(gadget_rep_stosd);
-    GEN(state->orig_ip); // For segfault handler
+    if (inst.has_rep) {
+      GEN(gadget_rep_stosd);
+    } else {
+      GEN(gadget_single_stosd);
+    }
+    GEN(state->orig_ip);
     break;
 
   case ZYDIS_MNEMONIC_STOSB:
-    // REP STOSB - store AL to [RDI], repeat RCX times
-    GEN(gadget_rep_stosb);
-    GEN(state->orig_ip); // For segfault handler
+    if (inst.has_rep) {
+      GEN(gadget_rep_stosb);
+    } else {
+      GEN(gadget_single_stosb);
+    }
+    GEN(state->orig_ip);
     break;
 
   case ZYDIS_MNEMONIC_MOVSQ:
@@ -7289,9 +7301,13 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(state->orig_ip);
       }
     } else {
-      // String MOVSD - REP MOVSD moves dwords from [RSI] to [RDI]
-      GEN(gadget_rep_movsd);
-      GEN(state->orig_ip); // For segfault handler
+      // String MOVSD - moves dwords from [RSI] to [RDI]
+      if (inst.has_rep) {
+        GEN(gadget_rep_movsd);
+      } else {
+        GEN(gadget_single_movsd);
+      }
+      GEN(state->orig_ip);
     }
     break;
 
