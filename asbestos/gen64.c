@@ -1553,19 +1553,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
   bool end_block = false;
 
-  // Trace points (empty array = disabled, add IPs here when debugging)
-  {
-    static const uint64_t trace_ips[] = {
-    };
-    for (int i = 0; i < (int)(sizeof(trace_ips)/sizeof(trace_ips[0])); i++) {
-      if (state->orig_ip == trace_ips[i]) {
-        GEN(gadget_trace_regs);
-        GEN(state->orig_ip);
-        break;
-      }
-    }
-  }
-
   // Generate code based on mnemonic
   switch (inst.mnemonic) {
   case ZYDIS_MNEMONIC_NOP:

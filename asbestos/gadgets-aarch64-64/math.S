@@ -5736,11 +5736,17 @@ ss_xmm_mem_op divss, fdiv
     write_bullshit 16, fpu_fnstcw
 
 // FNSTSW - Store Status Word to AX
+// helper writes to cpu->rax in memory, but rax lives in ARM64 register x20
+// must save_regs before (so helper sees current rax) and load_regs after
+// (so x20 picks up the updated value). Without this, the FPREM+FNSTSW+TESTB
+// loop in musl's fmodl spins forever because x20 retains stale AH with C2=1.
 .gadget fpu_fnstsw
+    save_regs
     save_c
     mov x0, _cpu
     bl NAME(helper_fpu_fnstsw)
     restore_c
+    load_regs
     gret
 
 // FUCOMIP - Unordered Compare, set EFLAGS, pop
