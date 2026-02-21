@@ -39,6 +39,29 @@ int_t sys_prctl(dword_t option, uint_t arg2, uint_t UNUSED(arg3),
   }
 }
 
+#ifdef ISH_GUEST_64BIT
+// 64-bit prctl: arg2 can be a pointer (e.g., PR_SET_NAME) which needs full 64-bit width
+int_t sys_prctl64(dword_t option, addr_t arg2, addr_t UNUSED(arg3),
+                  addr_t UNUSED(arg4), addr_t UNUSED(arg5)) {
+  switch (option) {
+  case PRCTL_SET_KEEPCAPS_:
+    return 0;
+  case PRCTL_SET_NAME_: {
+    char name[16];
+    if (user_read_string(arg2, name, sizeof(name) - 1))
+      return _EFAULT;
+    name[sizeof(name) - 1] = '\0';
+    STRACE("prctl(PRCTL_SET_NAME, \"%s\")", name);
+    strcpy(current->comm, name);
+    return 0;
+  }
+  default:
+    STRACE("prctl(%#x)", option);
+    return _EINVAL;
+  }
+}
+#endif
+
 // arch_prctl codes
 #define ARCH_SET_GS 0x1001
 #define ARCH_SET_FS 0x1002

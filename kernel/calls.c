@@ -7,6 +7,7 @@
 #include "kernel/task.h"
 #include <string.h>
 
+
 dword_t syscall_stub(void) { return _ENOSYS; }
 // While identical, this version of the stub doesn't log below. Use this for
 // syscalls that are optional (i.e. fallback on something else) but called
@@ -56,12 +57,14 @@ syscall_t syscall_table[] = {
     [33] = (syscall_t)sys_dup2,
     [34] = (syscall_t)sys_pause,
     [35] = (syscall_t)sys_nanosleep,
+    [36] = (syscall_t)sys_getitimer,
     [37] = (syscall_t)sys_alarm,
     [38] = (syscall_t)sys_setitimer,
     [39] = (syscall_t)sys_getpid,
     [40] = (syscall_t)sys_sendfile64,
     [41] = (syscall_t)sys_socket,
     [42] = (syscall_t)sys_connect,
+    [43] = (syscall_t)sys_accept,
     [44] = (syscall_t)sys_sendto,
     [45] = (syscall_t)sys_recvfrom,
     [46] = (syscall_t)sys_sendmsg,
@@ -152,7 +155,7 @@ syscall_t syscall_table[] = {
     [145] = (syscall_t)sys_sched_getscheduler,
     [146] = (syscall_t)sys_sched_get_priority_max,
     [149] = (syscall_t)sys_mlock,
-    [157] = (syscall_t)sys_prctl,
+    [157] = (syscall_t)sys_prctl64,
     [158] = (syscall_t)sys_arch_prctl,
     [160] = (syscall_t)sys_setrlimit32,
     [161] = (syscall_t)sys_chroot,
@@ -180,6 +183,7 @@ syscall_t syscall_table[] = {
     [227] = (syscall_t)sys_clock_settime,
     [228] = (syscall_t)sys_clock_gettime,
     [229] = (syscall_t)sys_clock_getres,
+    [230] = (syscall_t)sys_clock_nanosleep,
     [231] = (syscall_t)sys_exit_group,
     [232] = (syscall_t)sys_epoll_wait,
     [233] = (syscall_t)sys_epoll_ctl,

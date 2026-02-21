@@ -85,6 +85,8 @@ int_t sys_timerfd_settime(fd_t f, int_t flags, addr_t new_value_addr, addr_t old
 
 dword_t sys_times(addr_t tbuf);
 dword_t sys_nanosleep(addr_t req, addr_t rem);
+dword_t sys_clock_nanosleep(dword_t clock, int_t flags, addr_t req, addr_t rem);
+int_t sys_getitimer(int_t which, addr_t val);
 dword_t sys_gettimeofday(addr_t tv, addr_t tz);
 dword_t sys_settimeofday(addr_t tv, addr_t tz);
 
