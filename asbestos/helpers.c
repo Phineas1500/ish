@@ -1303,6 +1303,47 @@ void helper_cmpsd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr, uint8_
     memcpy(&cpu->xmm[dst_idx], &mask, 8);
 }
 
+// CMPSS xmm, xmm, imm8 - Compare Scalar Single with predicate
+void helper_cmpss(struct cpu_state *cpu, int dst_idx, int src_idx, uint8_t pred) {
+    float a, b;
+    memcpy(&a, &cpu->xmm[dst_idx], 4);
+    memcpy(&b, &cpu->xmm[src_idx], 4);
+    int result;
+    switch (pred & 7) {
+    case 0: result = (a == b); break;
+    case 1: result = (a < b); break;
+    case 2: result = (a <= b); break;
+    case 3: result = __builtin_isunordered(a, b); break;
+    case 4: result = (a != b); break;
+    case 5: result = !(a < b); break;
+    case 6: result = !(a <= b); break;
+    case 7: result = !__builtin_isunordered(a, b); break;
+    default: result = 0; break;
+    }
+    uint32_t mask = result ? 0xFFFFFFFFU : 0;
+    memcpy(&cpu->xmm[dst_idx], &mask, 4);
+}
+
+void helper_cmpss_mem(struct cpu_state *cpu, int dst_idx, void *src_addr, uint8_t pred) {
+    float a, b;
+    memcpy(&a, &cpu->xmm[dst_idx], 4);
+    memcpy(&b, src_addr, 4);
+    int result;
+    switch (pred & 7) {
+    case 0: result = (a == b); break;
+    case 1: result = (a < b); break;
+    case 2: result = (a <= b); break;
+    case 3: result = __builtin_isunordered(a, b); break;
+    case 4: result = (a != b); break;
+    case 5: result = !(a < b); break;
+    case 6: result = !(a <= b); break;
+    case 7: result = !__builtin_isunordered(a, b); break;
+    default: result = 0; break;
+    }
+    uint32_t mask = result ? 0xFFFFFFFFU : 0;
+    memcpy(&cpu->xmm[dst_idx], &mask, 4);
+}
+
 // PUNPCKLWD xmm, xmm - Unpack and interleave low words
 void helper_punpcklwd(struct cpu_state *cpu, int dst_idx, int src_idx) {
     uint16_t dst[8], src[8], result[8];

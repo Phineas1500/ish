@@ -4748,6 +4748,37 @@ sse_xmm_xmm_op movdqa_xmm
     read_bullshit 64, cmpsd_xmm_mem
 
 // ============================================================
+// CMPSS xmm, xmm/m32, imm8 - Compare Scalar Single with predicate
+// Uses C helper: helper_cmpss(cpu, dst_idx, src_idx, pred)
+// ============================================================
+
+// CMPSS xmm, xmm, imm8
+// [_ip] = dst XMM index, [_ip+8] = src XMM index, [_ip+16] = predicate imm8
+.gadget cmpss_xmm_xmm
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    ldr x2, [_ip, 8]           // src XMM index
+    ldr x3, [_ip, 16]          // predicate imm8
+    bl NAME(helper_cmpss)
+    restore_c
+    gret 3
+
+// CMPSS xmm, m32, imm8
+// Address already in _addr, [_ip] = dst XMM index, [_ip+8] = predicate, [_ip+16] = orig_ip
+.gadget cmpss_xmm_mem
+    read_prep 32, cmpss_xmm_mem
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    mov x2, _addr              // host memory address
+    ldr x3, [_ip, 8]           // predicate imm8
+    bl NAME(helper_cmpss_mem)
+    restore_c
+    gret 3
+    read_bullshit 32, cmpss_xmm_mem
+
+// ============================================================
 // SHUFPD xmm, xmm/m128, imm8 - Shuffle Packed Double-Precision
 // Uses C helper: helper_shufpd(cpu, dst_idx, src_idx, imm)
 // ============================================================

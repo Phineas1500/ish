@@ -1260,7 +1260,19 @@ dword_t sys_sendfile64(fd_t out_fd, fd_t in_fd, addr_t offset_addr, dword_t coun
         if (to_read > sizeof(buf))
             to_read = sizeof(buf);
 
-        ssize_t nread = in->ops->read(in, buf, to_read);
+        ssize_t nread;
+        if (in->ops->read) {
+            nread = in->ops->read(in, buf, to_read);
+        } else if (in->ops->pread) {
+            off_t_ cur = in->ops->lseek(in, 0, LSEEK_CUR);
+            nread = in->ops->pread(in, buf, to_read, cur);
+            if (nread > 0)
+                in->ops->lseek(in, cur + nread, LSEEK_SET);
+        } else {
+            if (total == 0)
+                total = _EINVAL;
+            break;
+        }
         if (nread < 0) {
             if (total == 0)
                 total = nread;

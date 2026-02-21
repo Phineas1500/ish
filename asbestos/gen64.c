@@ -637,6 +637,9 @@ extern void gadget_maxss_xmm_mem(void);  // maxss xmm, m32
 // SSE CMPSD - Compare Scalar Double with predicate
 extern void gadget_cmpsd_xmm_xmm(void);  // cmpsd xmm, xmm, imm8
 extern void gadget_cmpsd_xmm_mem(void);  // cmpsd xmm, m64, imm8
+// SSE CMPSS - Compare Scalar Single with predicate
+extern void gadget_cmpss_xmm_xmm(void);  // cmpss xmm, xmm, imm8
+extern void gadget_cmpss_xmm_mem(void);  // cmpss xmm, m32, imm8
 // SSE SHUFPD - Shuffle Packed Double-Precision
 extern void gadget_shufpd_xmm_xmm(void);  // shufpd xmm, xmm, imm8
 extern void gadget_shufpd_xmm_mem(void);  // shufpd xmm, m128, imm8
@@ -7026,6 +7029,37 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(state->orig_ip); GEN(state->orig_ip); return 0;
         }
         GEN(gadget_cmpsd_xmm_mem);
+        GEN(dst_xmm);
+        GEN(pred);
+        GEN(state->orig_ip);
+      } else {
+        g(interrupt); GEN(INT_UNDEFINED);
+        GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+      }
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED);
+      GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+  }
+
+  case ZYDIS_MNEMONIC_CMPSS: {
+    // CMPSS xmm, xmm/m32, imm8 - Compare Scalar Single with predicate
+    if (inst.operand_count >= 3 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      uint8_t pred = inst.operands[2].imm;
+      if (is_xmm(inst.operands[1].type)) {
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        GEN(gadget_cmpss_xmm_xmm);
+        GEN(dst_xmm);
+        GEN(src_xmm);
+        GEN(pred);
+      } else if (is_mem(inst.operands[1].type)) {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt); GEN(INT_UNDEFINED);
+          GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        GEN(gadget_cmpss_xmm_mem);
         GEN(dst_xmm);
         GEN(pred);
         GEN(state->orig_ip);
