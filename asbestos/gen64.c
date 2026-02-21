@@ -806,6 +806,19 @@ extern void gadget_adc32_imm(void);
 extern void gadget_cld(void);
 extern void gadget_std(void);
 
+// PUSHFQ/POPFQ gadgets
+extern void gadget_pushf(void);
+extern void gadget_popf(void);
+
+// LAHF/SAHF gadgets
+extern void gadget_lahf(void);
+extern void gadget_sahf(void);
+
+// STC/CLC/CMC gadgets
+extern void gadget_stc(void);
+extern void gadget_clc(void);
+extern void gadget_cmc(void);
+
 // Address save/restore gadgets
 extern void gadget_save_addr(void);
 extern void gadget_restore_addr(void);
@@ -1580,6 +1593,36 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
   case ZYDIS_MNEMONIC_STD:
     // Set Direction Flag (DF=1, decrement in string ops)
     GEN(gadget_std);
+    break;
+
+  case ZYDIS_MNEMONIC_PUSHFQ:
+  case ZYDIS_MNEMONIC_PUSHF:
+    GEN(gadget_pushf);
+    break;
+
+  case ZYDIS_MNEMONIC_POPFQ:
+  case ZYDIS_MNEMONIC_POPF:
+    GEN(gadget_popf);
+    break;
+
+  case ZYDIS_MNEMONIC_LAHF:
+    GEN(gadget_lahf);
+    break;
+
+  case ZYDIS_MNEMONIC_SAHF:
+    GEN(gadget_sahf);
+    break;
+
+  case ZYDIS_MNEMONIC_STC:
+    GEN(gadget_stc);
+    break;
+
+  case ZYDIS_MNEMONIC_CLC:
+    GEN(gadget_clc);
+    break;
+
+  case ZYDIS_MNEMONIC_CMC:
+    GEN(gadget_cmc);
     break;
 
   case ZYDIS_MNEMONIC_CPUID:

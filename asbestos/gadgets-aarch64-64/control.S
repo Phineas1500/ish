@@ -397,8 +397,11 @@
     sub rsp, rsp, 8
     mov _addr, rsp
     write_prep 64, pushf
-    ldr x8, [_cpu, CPU_eflags]
-    str x8, [_addr]
+    ldr w8, [_cpu, CPU_eflags]      // 32-bit load, zero-extends to x8
+    orr w8, w8, 0x2                 // Set reserved bit 1
+    orr w8, w8, 0x200               // Set IF (bit 9)
+    bic w8, w8, 0x100               // Clear TF (bit 8) - not pushed in user mode
+    str x8, [_addr]                 // Store as 64-bit (high 32 bits = 0)
     write_done 64, pushf
     gret
     write_bullshit 64, pushf
@@ -406,9 +409,16 @@
 .gadget popf
     mov _addr, rsp
     read_prep 64, popf
-    ldr x8, [_addr]
+    ldr w8, [_addr]                 // Load 32 bits of flags (ignore upper 32)
     str w8, [_cpu, CPU_eflags]
     add rsp, rsp, 8
+
+    // Update df_offset based on DF flag
+    tst w8, DF_FLAG
+    mov w9, 1
+    mov w10, -1
+    csel w9, w10, w9, ne            // w9 = DF ? -1 : 1
+    str w9, [_cpu, CPU_df_offset]
 
     save_c
     mov x0, _cpu
@@ -431,4 +441,53 @@
     str w8, [_cpu, CPU_eflags]
     mov w8, -1  // -1 as 32-bit (0xffffffff)
     str w8, [_cpu, CPU_df_offset]  // Use 32-bit store - df_offset is dword_t
+    gret
+
+// STC - Set Carry Flag
+.gadget stc
+    mov w8, 1
+    strb w8, [_cpu, CPU_cf]
+    gret
+
+// CLC - Clear Carry Flag
+.gadget clc
+    strb wzr, [_cpu, CPU_cf]
+    gret
+
+// CMC - Complement Carry Flag
+.gadget cmc
+    ldrb w8, [_cpu, CPU_cf]
+    eor w8, w8, 1
+    strb w8, [_cpu, CPU_cf]
+    gret
+
+// LAHF - Load AH from flags (SF:ZF:0:AF:0:PF:1:CF)
+// Bits: AH[7]=SF, AH[6]=ZF, AH[4]=AF, AH[2]=PF, AH[0]=CF, AH[1]=1
+.gadget lahf
+    save_regs
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_collapse_flags)
+    restore_c
+    load_regs
+    // eflags now has collapsed flags; AH = eflags[7:0]
+    ldr w8, [_cpu, CPU_eflags]
+    bfi eax, w8, 8, 8              // Insert eflags[7:0] into RAX bits 15:8 (AH)
+    gret
+
+// SAHF - Store AH into flags (SF, ZF, AF, PF, CF)
+.gadget sahf
+    ubfx w8, eax, 8, 8             // Extract AH (bits 15:8 of RAX)
+    ldr w9, [_cpu, CPU_eflags]
+    // Mask: update bits 7,6,4,2,0 (SF,ZF,AF,PF,CF) = 0xD5
+    mov w10, 0xD5
+    bic w9, w9, w10                 // Clear SF,ZF,AF,PF,CF in eflags
+    and w8, w8, w10                 // Keep only SF,ZF,AF,PF,CF from AH
+    orr w9, w9, w8                  // Merge
+    orr w9, w9, 0x2                // Bit 1 always set
+    str w9, [_cpu, CPU_eflags]
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_expand_flags)
+    restore_c
     gret
