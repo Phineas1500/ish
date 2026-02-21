@@ -1034,12 +1034,14 @@ static inline void gen_store_reg_partial(struct gen_state *state,
   bool is_high_byte_dst = (size == size64_8 &&
       inst->raw_operands[operand_idx].type == ZYDIS_OPERAND_TYPE_REGISTER &&
       zydis_is_high_byte_reg(inst->raw_operands[operand_idx].reg.value));
-  // Skip merge for bitwise ops on non-high-byte registers
-  // (they already produce full-register results with upper bits preserved)
-  // For high-byte destinations, merge IS needed since the handler shifts
-  // right by 8, losing the upper bits.
-  if (mnem == ZYDIS_MNEMONIC_OR || mnem == ZYDIS_MNEMONIC_AND ||
-      mnem == ZYDIS_MNEMONIC_XOR || mnem == ZYDIS_MNEMONIC_NOT ||
+  // Skip merge for bitwise ops that ONLY SET/TOGGLE bits (OR, XOR, BT*) on
+  // non-high-byte registers. These load the full 64-bit register and operate
+  // on it, so upper bits are naturally preserved.
+  // AND and NOT must NOT skip merge: AND clears bits above the immediate
+  // (e.g., AND AL,0x7f clears bit 8+ of RAX), and NOT inverts all 64 bits.
+  // For high-byte destinations, merge IS always needed since the handler
+  // shifts right by 8, losing the upper bits.
+  if (mnem == ZYDIS_MNEMONIC_OR || mnem == ZYDIS_MNEMONIC_XOR ||
       mnem == ZYDIS_MNEMONIC_BTS || mnem == ZYDIS_MNEMONIC_BTR ||
       mnem == ZYDIS_MNEMONIC_BTC) {
     if (!is_high_byte_dst)
