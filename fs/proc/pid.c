@@ -172,12 +172,84 @@ out_free_task:
     return err;
 }
 
+#ifdef ISH_GUEST_64BIT
+static int page_cmp(const void *a, const void *b) {
+    page_t pa = *(const page_t *)a;
+    page_t pb = *(const page_t *)b;
+    return (pa > pb) - (pa < pb);
+}
+#endif
+
 void proc_maps_dump(struct task *task, struct proc_data *buf) {
     struct mem *mem = task->mem;
     if (mem == NULL)
         return;
 
     read_wrlock(&mem->lock);
+#ifdef ISH_GUEST_64BIT
+    // 64-bit: collect mapped pages from hash table, sort, then find regions.
+    // Cannot iterate 0..MEM_PAGES (68 billion) one at a time.
+    int n = mem->pages_mapped;
+    if (n == 0) {
+        read_wrunlock(&mem->lock);
+        return;
+    }
+    page_t *pages = malloc(n * sizeof(page_t));
+    if (pages == NULL) {
+        read_wrunlock(&mem->lock);
+        return;
+    }
+    int count = 0;
+    for (size_t i = 0; i < MEM_HASH_SIZE && count < n; i++) {
+        struct pt_hash_entry *entry = mem->hash_table[i];
+        while (entry != NULL && count < n) {
+            if (entry->entry.data != NULL)
+                pages[count++] = entry->page;
+            entry = entry->next;
+        }
+    }
+    qsort(pages, count, sizeof(page_t), page_cmp);
+
+    // Walk sorted pages to find contiguous regions with same flags/data
+    int idx = 0;
+    while (idx < count) {
+        page_t start = pages[idx];
+        struct pt_entry *start_pt = mem_pt(mem, start);
+        if (start_pt == NULL) { idx++; continue; }
+        struct data *data = start_pt->data;
+        page_t end = start + 1;
+        idx++;
+        // Extend region while pages are contiguous and have same properties
+        while (idx < count && pages[idx] == end) {
+            struct pt_entry *pt = mem_pt(mem, pages[idx]);
+            if (pt == NULL) break;
+            if ((pt->flags & P_RWX) != (start_pt->flags & P_RWX)) break;
+            if (!(pt->data == data || (pt->flags & P_ANONYMOUS && start_pt->flags & P_ANONYMOUS)))
+                break;
+            end++;
+            idx++;
+        }
+
+        char path[MAX_PATH] = "";
+        if (start_pt->flags & P_GROWSDOWN) {
+            strcpy(path, "[stack]");
+        } else if (data->name != NULL) {
+            strcpy(path, data->name);
+        } else if (data->fd != NULL) {
+            generic_getpath(start_pt->data->fd, path);
+        }
+        proc_printf(buf, "%012lx-%012lx %c%c%c%c %08lx 00:00 %-10d %s\n",
+                (unsigned long)start << PAGE_BITS, (unsigned long)end << PAGE_BITS,
+                start_pt->flags & P_READ ? 'r' : '-',
+                start_pt->flags & P_WRITE ? 'w' : '-',
+                start_pt->flags & P_EXEC ? 'x' : '-',
+                start_pt->flags & P_SHARED ? '-' : 'p',
+                (unsigned long) data->file_offset,
+                0, // inode
+                path);
+    }
+    free(pages);
+#else
     page_t page = 0;
     while (page < MEM_PAGES) {
         // find a region
@@ -223,6 +295,7 @@ void proc_maps_dump(struct task *task, struct proc_data *buf) {
                 0, // inode
                 path);
     }
+#endif
     read_wrunlock(&mem->lock);
 }
 
