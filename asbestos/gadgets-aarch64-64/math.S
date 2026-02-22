@@ -3998,6 +3998,30 @@ sse_xmm_xmm_op movdqa_xmm
     restore_c
     gret 2
 
+// MOVMSKPD r, xmm - Move sign bits of packed doubles to GPR
+// [_ip] = src XMM index, result in _xtmp
+.gadget movmskpd
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // src XMM index
+    bl NAME(helper_movmskpd)
+    mov x14, x0
+    restore_c
+    mov _xtmp, x14
+    gret 1
+
+// MOVMSKPS r, xmm - Move sign bits of packed singles to GPR
+// [_ip] = src XMM index, result in _xtmp
+.gadget movmskps
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // src XMM index
+    bl NAME(helper_movmskps)
+    mov x14, x0
+    restore_c
+    mov _xtmp, x14
+    gret 1
+
 // PMOVMSKB r, xmm - Move byte mask to GPR
 // [_ip] = src XMM index, result in _xtmp
 .gadget pmovmskb

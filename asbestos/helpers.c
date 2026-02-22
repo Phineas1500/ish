@@ -1220,6 +1220,26 @@ int helper_pmovmskb(struct cpu_state *cpu, int src_idx) {
     return mask;
 }
 
+// MOVMSKPD r32, xmm - Move sign bits of packed doubles into integer
+int helper_movmskpd(struct cpu_state *cpu, int src_idx) {
+    uint64_t src[2];
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    int mask = 0;
+    if (src[0] >> 63) mask |= 1;
+    if (src[1] >> 63) mask |= 2;
+    return mask;
+}
+
+// MOVMSKPS r32, xmm - Move sign bits of packed singles into integer
+int helper_movmskps(struct cpu_state *cpu, int src_idx) {
+    uint32_t src[4];
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    int mask = 0;
+    for (int i = 0; i < 4; i++)
+        if (src[i] >> 31) mask |= (1 << i);
+    return mask;
+}
+
 // PEXTRW r32, xmm, imm8 - Extract word from XMM
 int helper_pextrw(struct cpu_state *cpu, int src_idx, uint8_t imm) {
     uint16_t w[8];

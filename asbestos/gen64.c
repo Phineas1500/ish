@@ -557,6 +557,8 @@ extern void gadget_pshufb(void);
 extern void gadget_sha256rnds2(void);
 extern void gadget_sha256msg1(void);
 extern void gadget_sha256msg2(void);
+extern void gadget_movmskpd(void);
+extern void gadget_movmskps(void);
 extern void gadget_pmovmskb(void);
 extern void gadget_pextrw(void);
 extern void gadget_pinsrw_reg(void);
@@ -7975,12 +7977,19 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     }
     break;
 
+  case ZYDIS_MNEMONIC_MOVMSKPD:
+  case ZYDIS_MNEMONIC_MOVMSKPS:
   case ZYDIS_MNEMONIC_PMOVMSKB:
-    // PMOVMSKB r32, xmm - Move byte mask
+    // MOVMSKxx r32, xmm - Move sign/byte mask to GPR
     if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type) &&
         is_xmm(inst.operands[1].type)) {
       int src_xmm = get_xmm_index(inst.operands[1].type);
-      GEN(gadget_pmovmskb);
+      if (inst.mnemonic == ZYDIS_MNEMONIC_MOVMSKPD)
+        GEN(gadget_movmskpd);
+      else if (inst.mnemonic == ZYDIS_MNEMONIC_MOVMSKPS)
+        GEN(gadget_movmskps);
+      else
+        GEN(gadget_pmovmskb);
       GEN(src_xmm);
       // Store result to GPR (32-bit zero-extended)
       enum arg64 dst = inst.operands[0].type;
