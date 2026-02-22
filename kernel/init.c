@@ -152,6 +152,21 @@ static struct fd *open_fd_from_actual_fd(int fd_no) {
     }
     fd->real_fd = fd_no;
     fd->dir = NULL;
+    // Populate stat from the host fd so guest fstat returns correct st_mode.
+    // Without this, st_mode=0 and libuv's uv_guess_handle returns UV_UNKNOWN_HANDLE,
+    // causing Node.js to not create a stdout stream.
+    struct stat host_stat;
+    if (fstat(fd_no, &host_stat) == 0) {
+        // Map host file type to guest stat mode
+        mode_t type = host_stat.st_mode & S_IFMT;
+        switch (type) {
+            case S_IFCHR:  fd->stat.mode = S_IFCHR | 0620; break;
+            case S_IFIFO:  fd->stat.mode = S_IFIFO | 0600; break;
+            case S_IFSOCK: fd->stat.mode = S_IFSOCK | 0600; break;
+            case S_IFREG:  fd->stat.mode = S_IFREG | 0644; break;
+            default:       fd->stat.mode = S_IFCHR | 0620; break;
+        }
+    }
     return fd;
 }
 

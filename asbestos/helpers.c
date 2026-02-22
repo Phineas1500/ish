@@ -5,31 +5,6 @@
 #include "emu/cpu.h"
 #include "emu/mmu.h"
 
-// Debug: verify MUL64 results
-void helper_verify_mul64(uint64_t a, uint64_t b, uint64_t lo, uint64_t hi) {
-    __uint128_t expected = (__uint128_t)a * (__uint128_t)b;
-    uint64_t exp_lo = (uint64_t)expected;
-    uint64_t exp_hi = (uint64_t)(expected >> 64);
-    if (lo != exp_lo || hi != exp_hi) {
-        fprintf(stderr, "MUL64 WRONG: %#llx * %#llx = %#llx:%#llx (expected %#llx:%#llx)\n",
-                (unsigned long long)a, (unsigned long long)b,
-                (unsigned long long)hi, (unsigned long long)lo,
-                (unsigned long long)exp_hi, (unsigned long long)exp_lo);
-    }
-}
-
-// Debug: verify ADC64 results
-void helper_verify_adc64(uint64_t a, uint64_t b, uint64_t cf_in, uint64_t result, uint64_t cf_out) {
-    __uint128_t expected = (__uint128_t)a + (__uint128_t)b + (__uint128_t)cf_in;
-    uint64_t exp_result = (uint64_t)expected;
-    uint64_t exp_cf = (uint64_t)(expected >> 64);
-    if (result != exp_result || cf_out != exp_cf) {
-        fprintf(stderr, "ADC64 WRONG: %#llx + %#llx + %llu = %#llx cf=%llu (expected %#llx cf=%llu)\n",
-                (unsigned long long)a, (unsigned long long)b, (unsigned long long)cf_in,
-                (unsigned long long)result, (unsigned long long)cf_out,
-                (unsigned long long)exp_result, (unsigned long long)exp_cf);
-    }
-}
 #include "emu/cpuid.h"
 
 void helper_cpuid(
@@ -58,8 +33,13 @@ void helper_rdtsc(struct cpu_state *cpu) {
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
     uint64_t tsc = now.tv_sec * 1000000000l + now.tv_nsec;
+#ifdef ISH_GUEST_64BIT
+    cpu->rax = tsc & 0xffffffff;  // zero-extended to 64 bits
+    cpu->rdx = tsc >> 32;
+#else
     cpu->eax = tsc & 0xffffffff;
     cpu->edx = tsc >> 32;
+#endif
 }
 
 void helper_expand_flags(struct cpu_state *cpu) {
@@ -68,11 +48,6 @@ void helper_expand_flags(struct cpu_state *cpu) {
 
 void helper_collapse_flags(struct cpu_state *cpu) {
     collapse_flags(cpu);
-}
-
-void helper_store64_via_c(uint64_t host_addr, uint64_t value) {
-    volatile uint64_t *ptr = (volatile uint64_t *)host_addr;
-    *ptr = value;
 }
 
 #ifdef ISH_GUEST_64BIT
@@ -1617,14 +1592,6 @@ void helper_shufpd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr, uint8
     memcpy(&cpu->xmm[dst_idx], result, 16);
 }
 
-// Diagnostic helper: dump x25519 inputs and output
-static void dump_hex(const char *label, uint8_t *buf, int len) {
-    fprintf(stderr, "%s: ", label);
-    for (int i = 0; i < len; i++)
-        fprintf(stderr, "%02x", buf[i]);
-    fprintf(stderr, "\n");
-}
-
 void helper_trace_regs(struct cpu_state *cpu, uint64_t guest_ip) {
     fprintf(stderr, "[TRACE] ip=%#llx rax=%#llx rbx=%#llx rcx=%#llx rdx=%#llx\n",
            (unsigned long long)guest_ip,
@@ -1633,23 +1600,6 @@ void helper_trace_regs(struct cpu_state *cpu, uint64_t guest_ip) {
     fprintf(stderr, "[TRACE]  rsi=%#llx rdi=%#llx rbp=%#llx rsp=%#llx\n",
            (unsigned long long)cpu->rsi, (unsigned long long)cpu->rdi,
            (unsigned long long)cpu->rbp, (unsigned long long)cpu->rsp);
-}
-
-// Debug helper: detect 32-bit store to stack-adjacent memory
-// Called from store32_mem gadget when address is near RSP
-static int s32_trace_count = 0;
-void helper_debug_store32_near_stack(struct cpu_state *cpu, uint64_t store_addr, uint32_t value) {
-    int64_t diff = (int64_t)store_addr - (int64_t)cpu->rsp;
-    if (diff >= 0 && diff < 256) {
-        if (s32_trace_count < 200) {
-            fprintf(stderr, "[S32] store32 %#x to [rsp+%lld] (addr=%#llx, rsp=%#llx, rip=%#llx)\n",
-                   value, (long long)diff,
-                   (unsigned long long)store_addr,
-                   (unsigned long long)cpu->rsp,
-                   (unsigned long long)cpu->rip);
-            s32_trace_count++;
-        }
-    }
 }
 
 #endif

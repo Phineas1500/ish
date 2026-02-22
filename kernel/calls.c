@@ -217,6 +217,7 @@ syscall_t syscall_table[] = {
     [284] = (syscall_t)sys_eventfd,
     [285] = (syscall_t)sys_fallocate,
     [286] = (syscall_t)sys_timerfd_settime,
+    [287] = (syscall_t)sys_timerfd_gettime,
     [288] = (syscall_t)sys_accept4,
     [290] = (syscall_t)sys_eventfd2,
     [291] = (syscall_t)sys_epoll_create,
@@ -231,11 +232,14 @@ syscall_t syscall_table[] = {
     [296] = (syscall_t)sys_pwritev,
     [318] = (syscall_t)sys_getrandom,
     [319] = (syscall_t)sys_memfd_create,
-    [324] = (syscall_t)syscall_silent_stub, // membarrier
+    [324] = (syscall_t)syscall_success_stub, // membarrier
     [326] = (syscall_t)sys_copy_file_range,
     [327] = (syscall_t)sys_preadv2,
     [328] = (syscall_t)sys_pwritev2,
     [332] = (syscall_t)sys_statx,
+    [425] = (syscall_t)syscall_silent_stub, // io_uring_setup
+    [426] = (syscall_t)syscall_silent_stub, // io_uring_enter
+    [427] = (syscall_t)syscall_silent_stub, // io_uring_register
     [439] = (syscall_t)syscall_silent_stub, // faccessat2
 };
 #else
@@ -470,6 +474,9 @@ syscall_t syscall_table[] = {
     [383] = (syscall_t)sys_statx,
     [384] = (syscall_t)sys_arch_prctl,
     [422] = (syscall_t)syscall_silent_stub, // futex_time64
+    [425] = (syscall_t)syscall_silent_stub, // io_uring_setup
+    [426] = (syscall_t)syscall_silent_stub, // io_uring_enter
+    [427] = (syscall_t)syscall_silent_stub, // io_uring_register
     [439] = (syscall_t)syscall_silent_stub, // faccessat2
 };
 #endif // ISH_GUEST_64BIT
@@ -508,6 +515,14 @@ void handle_interrupt(int interrupt) {
         result = (int64_t)(int32_t)(uint32_t)result;
       }
       STRACE(" = 0x%llx\n", (unsigned long long)result);
+      // TEMP TRACE: log unimplemented/stub syscalls for main thread
+      if (result == (uint64_t)(int64_t)(-38) /* ENOSYS */) {
+        fprintf(stderr, "T1 ENOSYS sc%-3d(%#llx,%#llx,%#llx,%#llx,%#llx,%#llx)\n",
+                syscall_num,
+                (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi,
+                (unsigned long long)cpu->rdx, (unsigned long long)cpu->r10,
+                (unsigned long long)cpu->r8, (unsigned long long)cpu->r9);
+      }
       cpu->rax = result;
     }
   } else if (interrupt == INT_GPF) {
@@ -672,6 +687,35 @@ void handle_interrupt(int interrupt) {
     };
     deliver_signal(current, SIGILL_, info);
   } else if (interrupt == INT_BREAKPOINT) {
+#ifdef ISH_GUEST_64BIT
+    // TEMP TRACE: dump registers and backtrace on INT3 (V8 abort)
+    fprintf(stderr, "INT3 at ip=%#llx pid=%d\n", (unsigned long long)CPU_IP(cpu), current->pid);
+    fprintf(stderr, "  rax=%#llx rbx=%#llx rcx=%#llx rdx=%#llx\n",
+           (unsigned long long)cpu->rax, (unsigned long long)cpu->rbx,
+           (unsigned long long)cpu->rcx, (unsigned long long)cpu->rdx);
+    fprintf(stderr, "  rsi=%#llx rdi=%#llx rbp=%#llx rsp=%#llx\n",
+           (unsigned long long)cpu->rsi, (unsigned long long)cpu->rdi,
+           (unsigned long long)cpu->rbp, (unsigned long long)cpu->rsp);
+    fprintf(stderr, "  r8=%#llx r9=%#llx r10=%#llx r11=%#llx\n",
+           (unsigned long long)cpu->r8, (unsigned long long)cpu->r9,
+           (unsigned long long)cpu->r10, (unsigned long long)cpu->r11);
+    fprintf(stderr, "  r12=%#llx r13=%#llx r14=%#llx r15=%#llx\n",
+           (unsigned long long)cpu->r12, (unsigned long long)cpu->r13,
+           (unsigned long long)cpu->r14, (unsigned long long)cpu->r15);
+    // Backtrace via RBP chain
+    fprintf(stderr, "  backtrace:\n");
+    {
+      uint64_t frame_bp = cpu->rbp;
+      for (int depth = 0; depth < 30; depth++) {
+        uint64_t ret_addr = 0, saved_bp = 0;
+        if (user_get(frame_bp + 8, ret_addr)) break;
+        if (user_get(frame_bp, saved_bp)) break;
+        fprintf(stderr, "    [%d] %#llx\n", depth, (unsigned long long)ret_addr);
+        if (saved_bp == 0 || saved_bp <= frame_bp) break;
+        frame_bp = saved_bp;
+      }
+    }
+#endif
     lock(&pids_lock);
     send_signal(current, SIGTRAP_,
                 (struct siginfo_){

@@ -18,6 +18,17 @@
     load_regs
     gret
 
+// RDTSC - Read Time-Stamp Counter
+// Writes low 32 bits of TSC to EAX (zero-extended to RAX), high 32 bits to EDX (zero-extended to RDX)
+.gadget rdtsc
+    save_regs
+    save_c
+    mov x0, _cpu
+    bl NAME(helper_rdtsc)
+    restore_c
+    load_regs
+    gret
+
 // CMPXCHG [mem], reg - Compare and exchange
 // _addr = memory address to compare/exchange
 // _xtmp = register value to store if comparison succeeds

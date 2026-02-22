@@ -87,6 +87,7 @@ extern void gadget_syscall(void);
 extern void gadget_nop(void);
 extern void gadget_debug_regs(void);
 extern void gadget_cpuid(void);
+extern void gadget_rdtsc(void);
 extern void gadget_jmp(void);
 extern void gadget_jmp_indir(void);
 extern void gadget_call(void);
@@ -1100,6 +1101,28 @@ static inline bool is_mem(enum arg64 type) {
   return type == arg64_mem || type == arg64_rip_rel;
 }
 
+// Helper to get the decoded operand index corresponding to the first explicit
+// raw operand. We include implicit operands in decode64, so operand 0 is not
+// always the explicit source/destination.
+static inline int get_first_explicit_operand_index(
+    const struct decoded_inst64 *inst) {
+  int decoded_idx = 0;
+  for (int raw_idx = 0;
+       raw_idx < inst->raw_inst.operand_count &&
+       decoded_idx < inst->operand_count;
+       raw_idx++) {
+    ZydisOperandVisibility vis = inst->raw_operands[raw_idx].visibility;
+    if (vis == ZYDIS_OPERAND_VISIBILITY_EXPLICIT) {
+      return decoded_idx;
+    }
+    if (vis == ZYDIS_OPERAND_VISIBILITY_EXPLICIT ||
+        vis == ZYDIS_OPERAND_VISIBILITY_IMPLICIT) {
+      decoded_idx++;
+    }
+  }
+  return inst->operand_count > 0 ? 0 : -1;
+}
+
 // Address calculation gadgets
 extern gadget_t addr_gadgets[];
 
@@ -1632,6 +1655,10 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     GEN(gadget_cpuid);
     break;
 
+  case ZYDIS_MNEMONIC_RDTSC:
+    GEN(gadget_rdtsc);
+    break;
+
   case ZYDIS_MNEMONIC_STMXCSR:
     // STMXCSR m32 - Store MXCSR register to memory
     if (inst.operand_count >= 1 && inst.operands[0].type == arg64_mem) {
@@ -1656,6 +1683,24 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     } else {
       g(interrupt); GEN(INT_UNDEFINED); GEN(state->orig_ip); GEN(state->orig_ip); return 0;
     }
+    break;
+
+  case ZYDIS_MNEMONIC_INT3:
+    // INT3 (0xCC) - breakpoint trap, delivers SIGTRAP
+    g(interrupt);
+    GEN(INT_BREAKPOINT);
+    GEN(state->orig_ip);
+    GEN(0);
+    end_block = true;
+    break;
+
+  case ZYDIS_MNEMONIC_UD2:
+    // UD2 - undefined instruction, delivers SIGILL
+    g(interrupt);
+    GEN(INT_UNDEFINED);
+    GEN(state->orig_ip);
+    GEN(state->orig_ip);
+    end_block = true;
     break;
 
   case ZYDIS_MNEMONIC_HLT:
@@ -2106,12 +2151,34 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     }
     break;
 
-  case ZYDIS_MNEMONIC_RET:
+  case ZYDIS_MNEMONIC_RET: {
+    // RET pops return address (8 bytes) and optional immediate stack bytes.
+    // decode64 includes implicit operands, so scan raw operands to find an
+    // explicit immediate operand (RET imm16).
+    uint64_t ret_pop = 8;
+    {
+      int decoded_idx = 0;
+      for (int raw_idx = 0;
+           raw_idx < inst.raw_inst.operand_count && decoded_idx < inst.operand_count;
+           raw_idx++) {
+        ZydisOperandVisibility vis = inst.raw_operands[raw_idx].visibility;
+        if (vis == ZYDIS_OPERAND_VISIBILITY_EXPLICIT) {
+          if (inst.operands[decoded_idx].type == arg64_imm)
+            ret_pop += (uint64_t)(inst.operands[decoded_idx].imm & 0xFFFF);
+          break;
+        }
+        if (vis == ZYDIS_OPERAND_VISIBILITY_EXPLICIT ||
+            vis == ZYDIS_OPERAND_VISIBILITY_IMPLICIT) {
+          decoded_idx++;
+        }
+      }
+    }
     g(ret);
     GEN(state->orig_ip);
-    GEN(8); // pop 8 bytes for return address
+    GEN(ret_pop);
     end_block = true;
     break;
+  }
 
   case ZYDIS_MNEMONIC_CALL:
     if (inst.operand_count > 0 && inst.operands[0].type == arg64_imm) {
@@ -2171,17 +2238,26 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
 
   case ZYDIS_MNEMONIC_PUSH:
     if (inst.operand_count > 0) {
+      int src_idx = get_first_explicit_operand_index(&inst);
+      if (src_idx < 0 || src_idx >= inst.operand_count) {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+
       // Load the value to push
-      if (is_gpr(inst.operands[0].type)) {
-        gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
+      if (is_gpr(inst.operands[src_idx].type)) {
+        gadget_t load = get_load64_reg_gadget(inst.operands[src_idx].type);
         if (load)
           GEN(load);
-      } else if (inst.operands[0].type == arg64_imm) {
+      } else if (inst.operands[src_idx].type == arg64_imm) {
         GEN(load64_gadgets[8]); // load64_imm
-        GEN(inst.operands[0].imm);
-      } else if (is_mem(inst.operands[0].type)) {
+        GEN(inst.operands[src_idx].imm);
+      } else if (is_mem(inst.operands[src_idx].type)) {
         // PUSH [mem]
-        if (!gen_addr(state, &inst.operands[0], &inst)) {
+        if (!gen_addr(state, &inst.operands[src_idx], &inst)) {
           g(interrupt);
           GEN(INT_UNDEFINED);
           GEN(state->orig_ip);
