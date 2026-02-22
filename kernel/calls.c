@@ -515,14 +515,6 @@ void handle_interrupt(int interrupt) {
         result = (int64_t)(int32_t)(uint32_t)result;
       }
       STRACE(" = 0x%llx\n", (unsigned long long)result);
-      // TEMP TRACE: log unimplemented/stub syscalls for main thread
-      if (result == (uint64_t)(int64_t)(-38) /* ENOSYS */) {
-        fprintf(stderr, "T1 ENOSYS sc%-3d(%#llx,%#llx,%#llx,%#llx,%#llx,%#llx)\n",
-                syscall_num,
-                (unsigned long long)cpu->rdi, (unsigned long long)cpu->rsi,
-                (unsigned long long)cpu->rdx, (unsigned long long)cpu->r10,
-                (unsigned long long)cpu->r8, (unsigned long long)cpu->r9);
-      }
       cpu->rax = result;
     }
   } else if (interrupt == INT_GPF) {
