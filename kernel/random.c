@@ -11,6 +11,8 @@
 #endif
 
 int get_random(char *buf, size_t len) {
+    if (len == 0)
+        return 0;
 #ifdef __APPLE__
     return CCRandomGenerateBytes(buf, len) != kCCSuccess;
 #else
@@ -18,7 +20,10 @@ int get_random(char *buf, size_t len) {
 #endif
 }
 
-dword_t sys_getrandom(addr_t buf_addr, dword_t len, dword_t UNUSED(flags)) {
+dword_t sys_getrandom(addr_t buf_addr, dword_t len, dword_t flags) {
+    (void) flags;
+    if (len == 0)
+        return 0;
     if (len > 1 << 20)
         return _EIO;
     char *buf = malloc(len);

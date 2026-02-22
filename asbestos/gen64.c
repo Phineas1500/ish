@@ -1072,10 +1072,21 @@ static inline void gen_store_reg_partial(struct gen_state *state,
   if (mnem == ZYDIS_MNEMONIC_SHL || mnem == ZYDIS_MNEMONIC_SHR ||
       mnem == ZYDIS_MNEMONIC_SAR)
     do_merge = false;
-  // Skip SETcc for now - merge breaks awk and libssl cipher registration
-  if (mnem >= ZYDIS_MNEMONIC_SETB && mnem <= ZYDIS_MNEMONIC_SETZ)
-    do_merge = false;
-
+  // SETcc writes an 8-bit destination register. For low-byte destinations
+  // (AL/BL/CL/.../R15B), upper bits of the parent register must be preserved.
+  // For high-byte destinations (AH/BH/CH/DH), result must be merged into bits
+  // [15:8]. So SETcc always needs byte-merge semantics for register dst.
+  bool is_setcc =
+      mnem == ZYDIS_MNEMONIC_SETO   || mnem == ZYDIS_MNEMONIC_SETNO ||
+      mnem == ZYDIS_MNEMONIC_SETB   || mnem == ZYDIS_MNEMONIC_SETNB ||
+      mnem == ZYDIS_MNEMONIC_SETZ   || mnem == ZYDIS_MNEMONIC_SETNZ ||
+      mnem == ZYDIS_MNEMONIC_SETBE  || mnem == ZYDIS_MNEMONIC_SETNBE ||
+      mnem == ZYDIS_MNEMONIC_SETS   || mnem == ZYDIS_MNEMONIC_SETNS ||
+      mnem == ZYDIS_MNEMONIC_SETP   || mnem == ZYDIS_MNEMONIC_SETNP ||
+      mnem == ZYDIS_MNEMONIC_SETL   || mnem == ZYDIS_MNEMONIC_SETNL ||
+      mnem == ZYDIS_MNEMONIC_SETLE  || mnem == ZYDIS_MNEMONIC_SETNLE;
+  if (is_setcc)
+    do_merge = is_high_byte_dst;
   if (do_merge) {
     // 8-bit/16-bit: preserve upper bits of destination register
     GEN(gadget_save_xtmp_to_x8); // x8 = computed result
@@ -1588,7 +1599,6 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     GEN(state->orig_ip);
     return 0;
   }
-
 
   // Advance IP past this instruction
   state->ip += len;
@@ -3399,11 +3409,19 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           if (load2) {
             GEN(gadget_save_xtmp_to_x8);
             GEN(load2);
-            // Use 32-bit TEST for 32-bit operands, 64-bit otherwise
-            if (inst.operands[0].size == size64_32) {
+            switch (inst.operands[0].size) {
+            case size64_8:
+              GEN(gadget_test8_x8);
+              break;
+            case size64_16:
+              GEN(gadget_test16_x8);
+              break;
+            case size64_32:
               GEN(gadget_test32_x8);
-            } else {
+              break;
+            default:
               GEN(gadget_test64_x8);
+              break;
             }
           }
         }

@@ -1494,7 +1494,7 @@ NAME(xor32_r8_r15_gadgets):
 7:  mov w11, esi
 9:  ands w9, w10, w11           // TEST = AND, set flags
     clearf_oc
-    setf_zsp , x9
+    setf_zsp w, x9
     gret 1
 
 // ============================================================

@@ -51,7 +51,7 @@ void mm_release(struct mm *mm) {
     }
 }
 
-static addr_t do_mmap(addr_t addr, dword_t len, dword_t prot, dword_t flags, fd_t fd_no, off_t offset) {
+static addr_t do_mmap(addr_t addr, addr_t len, dword_t prot, dword_t flags, fd_t fd_no, off_t offset) {
     int err;
     pages_t pages = PAGE_ROUND_UP(len);
     if (!pages) return _EINVAL;
@@ -91,8 +91,12 @@ static addr_t do_mmap(addr_t addr, dword_t len, dword_t prot, dword_t flags, fd_
     return page << PAGE_BITS;
 }
 
-static addr_t mmap_common(addr_t addr, dword_t len, dword_t prot, dword_t flags, fd_t fd_no, off_t offset) {
-    STRACE("mmap(0x%llx, 0x%x, 0x%x, 0x%x, %d, %lld)", (long long)addr, len, prot, flags, fd_no, (long long)offset);
+static addr_t mmap_common(addr_t addr, addr_t len, dword_t prot, dword_t flags, fd_t fd_no, off_t offset) {
+    STRACE("mmap(%#llx, %#llx, %#x, %#x, %d, %lld)",
+           (long long) addr, (long long) len, prot, flags, fd_no, (long long) offset);
+    // TEMP: mmap tracing disabled
+    //fprintf(stderr, "T%d mmap(%#llx, %#llx, prot=%#x, flags=%#x, fd=%d)\n",
+    //        current->pid, (long long) addr, (long long) len, prot, flags, fd_no);
     if (len == 0)
         return _EINVAL;
     if (prot & ~P_RWX)
@@ -103,6 +107,7 @@ static addr_t mmap_common(addr_t addr, dword_t len, dword_t prot, dword_t flags,
     write_wrlock(&current->mem->lock);
     addr_t res = do_mmap(addr, len, prot, flags, fd_no, offset);
     write_wrunlock(&current->mem->lock);
+    //fprintf(stderr, "T%d   => %#llx\n", current->pid, (long long) res);
     return res;
 }
 
@@ -128,8 +133,10 @@ addr_t sys_mmap(addr_t args_addr) {
     return mmap_common(args.addr, args.len, args.prot, args.flags, args.fd, args.offset);
 }
 
-int_t sys_munmap(addr_t addr, uint_t len) {
-    STRACE("munmap(0x%x, 0x%x)", addr, len);
+int_t sys_munmap(addr_t addr, addr_t len) {
+    STRACE("munmap(%#llx, %#llx)", (long long) addr, (long long) len);
+    //fprintf(stderr, "T%d munmap(%#llx, %#llx)\n",
+    //        current->pid, (long long) addr, (long long) len);
     if (PGOFFSET(addr) != 0)
         return _EINVAL;
     if (len == 0)
@@ -145,8 +152,9 @@ int_t sys_munmap(addr_t addr, uint_t len) {
 #define MREMAP_MAYMOVE_ 1
 #define MREMAP_FIXED_ 2
 
-addr_t sys_mremap(addr_t addr, dword_t old_len, dword_t new_len, dword_t flags) {
-    STRACE("mremap(%#x, %#x, %#x, %d)", addr, old_len, new_len, flags);
+addr_t sys_mremap(addr_t addr, addr_t old_len, addr_t new_len, dword_t flags) {
+    STRACE("mremap(%#llx, %#llx, %#llx, %d)",
+           (long long) addr, (long long) old_len, (long long) new_len, flags);
     if (PGOFFSET(addr) != 0)
         return _EINVAL;
     if (flags & ~(MREMAP_MAYMOVE_ | MREMAP_FIXED_))
@@ -189,8 +197,8 @@ addr_t sys_mremap(addr_t addr, dword_t old_len, dword_t new_len, dword_t flags) 
     return addr;
 }
 
-int_t sys_mprotect(addr_t addr, uint_t len, int_t prot) {
-    STRACE("mprotect(0x%x, 0x%x, 0x%x)", addr, len, prot);
+int_t sys_mprotect(addr_t addr, addr_t len, int_t prot) {
+    STRACE("mprotect(%#llx, %#llx, %#x)", (long long) addr, (long long) len, prot);
     if (PGOFFSET(addr) != 0)
         return _EINVAL;
     if (prot & ~P_RWX)
@@ -199,6 +207,8 @@ int_t sys_mprotect(addr_t addr, uint_t len, int_t prot) {
     write_wrlock(&current->mem->lock);
     int err = pt_set_flags(current->mem, PAGE(addr), pages, prot);
     write_wrunlock(&current->mem->lock);
+    //fprintf(stderr, "T%d mprotect(%#llx, %#llx, prot=%#x) => %d\n",
+    //        current->pid, (long long) addr, (long long) len, prot, err);
     return err;
 }
 

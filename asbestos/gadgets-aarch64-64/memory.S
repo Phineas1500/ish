@@ -314,20 +314,6 @@ segfault_\type:
     .endif
     strb w0, [_cpu, CPU_segfault_was_write]
     ldr x0, [_ip]
-    // DEBUG: validate [_ip] is a guest address (should be orig_ip)
-    lsr x14, x0, 32
-    cbz x14, .Lsegfault_ip_ok_\type
-    cmp x14, 0x100
-    b.hs .Lsegfault_ip_ok_\type
-    // [_ip] is a HOST ADDRESS - dump code stream and abort
-    save_regs
-    save_c
-    mov x0, _cpu
-    mov x1, _ip                  // original _ip (points into code stream)
-    mov x2, _addr                // segfault addr
-    bl NAME(debug_segfault_misaligned_ip)
-    brk #0x45
-.Lsegfault_ip_ok_\type:
     mov rip, x0
     sub x8, rsp, 8
     tst x0, 1 << 62

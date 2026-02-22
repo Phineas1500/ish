@@ -59,13 +59,6 @@ fiber_ret:
 // Exit fiber and return to C code
 .global fiber_exit
 fiber_exit:
-    // Validate rip is a guest address, not a leaked host pointer
-    lsr x9, rip, 32
-    cbz x9, 1f                  // rip < 4GB: skip
-    cmp x9, 0x100               // upper32 < 256 means rip < 1TB
-    b.hs 1f                     // rip >= 1TB: valid guest address
-    b fiber_exit_corrupt        // HOST ADDRESS LEAKED!
-1:
     save_regs
     ldr lr, [sp, 0x60]
     ldp x28, x29, [sp, 0x50]
@@ -95,16 +88,3 @@ fiber_exit:
     and rip, rip, 0x7fffffffffffffff
     mvn _tmp, wzr    // return -1 (re-translate)
     b fiber_exit
-
-// Debug handler: host address leaked into rip
-// At this point: rip (x28) = corrupt host addr, _tmp (w0) = interrupt code
-// All guest regs still in x20-x27, _cpu (x1) valid
-fiber_exit_corrupt:
-    save_regs                    // Store all guest regs (including corrupt rip)
-    save_c                       // Save caller-saved for C call
-    mov x2, _xtmp                // arg2: _tmp (interrupt code) - save BEFORE mov x0 overwrites
-    mov x0, _cpu                 // arg0: cpu state pointer (has corrupt rip)
-    mov x1, rip                  // arg1: corrupt rip value
-    bl NAME(debug_host_addr_in_rip)
-    // Should not return, but if it does:
-    brk #0x42
