@@ -4,9 +4,10 @@ set -euo pipefail
 # Run Node.js 24 in iSH-64 with a stability workaround applied by default.
 #
 # Default mode:
-#   t1      -> --concurrent-maglev-max-threads=1
+#   nmd     -> --no-maglev-destroy-on-background
 #
 # Other modes:
+#   t1      -> --concurrent-maglev-max-threads=1
 #   jitless -> --jitless
 #   nomaglev -> --no-maglev
 #   nco     -> --no-concurrent-osr
@@ -22,7 +23,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ISH_BIN="${ISH_BIN:-$ROOT_DIR/build-64/ish}"
 ROOTFS="${ROOTFS:-$ROOT_DIR/alpine64}"
 NODE_BIN="${NODE_BIN:-/usr/bin/node24}"
-MODE="${NODE24_MODE:-t1}"
+MODE="${NODE24_MODE:-nmd}"
 
 if [[ ! -x "$ISH_BIN" ]]; then
   echo "error: ish binary not found/executable: $ISH_BIN" >&2
@@ -31,6 +32,9 @@ fi
 
 flags=()
 case "$MODE" in
+  nmd)
+    flags+=(--no-maglev-destroy-on-background)
+    ;;
   t1)
     flags+=(--concurrent-maglev-max-threads=1)
     ;;
@@ -52,7 +56,7 @@ case "$MODE" in
   plain)
     ;;
   *)
-    echo "error: unknown NODE24_MODE '$MODE' (expected: t1|delay|jitless|nomaglev|nco|nrs|plain)" >&2
+    echo "error: unknown NODE24_MODE '$MODE' (expected: nmd|t1|delay|jitless|nomaglev|nco|nrs|plain)" >&2
     exit 2
     ;;
 esac
