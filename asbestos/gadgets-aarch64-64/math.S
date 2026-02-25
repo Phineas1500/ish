@@ -3720,6 +3720,10 @@ sse_xmm_xmm_op psubw
 sse_xmm_xmm_op psubq
 sse_xmm_xmm_op psubd
 sse_xmm_xmm_op orps
+sse_xmm_xmm_op pminub
+sse_xmm_xmm_op pmaxub
+sse_xmm_xmm_op pminsw
+sse_xmm_xmm_op pmaxsw
 
 // Helper macro for XMM-MEM operations: reads 128 bits from [_addr], calls helper(cpu, dst_xmm, addr)
 .macro sse_xmm_mem_op name
@@ -3747,6 +3751,10 @@ sse_xmm_mem_op psubb
 sse_xmm_mem_op psubw
 sse_xmm_mem_op psubq
 sse_xmm_mem_op psubd
+sse_xmm_mem_op pminub
+sse_xmm_mem_op pmaxub
+sse_xmm_mem_op pminsw
+sse_xmm_mem_op pmaxsw
 sse_xmm_mem_op pcmpeqb
 sse_xmm_mem_op pcmpeqd
 sse_xmm_mem_op pcmpgtb
@@ -4847,6 +4855,58 @@ sse_xmm_xmm_op movdqa_xmm
     restore_c
     gret 3
     read_bullshit 32, cmpss_xmm_mem
+
+// ============================================================
+// CMPPD xmm, xmm/m128, imm8 - Compare Packed Double-Precision
+// ============================================================
+
+.gadget cmppd_xmm_xmm
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    ldr x2, [_ip, 8]
+    ldr x3, [_ip, 16]
+    bl NAME(helper_cmppd)
+    restore_c
+    gret 3
+
+.gadget cmppd_xmm_mem
+    read_prep 128, cmppd_xmm_mem
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    mov x2, _addr
+    ldr x3, [_ip, 8]
+    bl NAME(helper_cmppd_mem)
+    restore_c
+    gret 3
+    read_bullshit 128, cmppd_xmm_mem
+
+// ============================================================
+// CMPPS xmm, xmm/m128, imm8 - Compare Packed Single-Precision
+// ============================================================
+
+.gadget cmpps_xmm_xmm
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    ldr x2, [_ip, 8]
+    ldr x3, [_ip, 16]
+    bl NAME(helper_cmpps)
+    restore_c
+    gret 3
+
+.gadget cmpps_xmm_mem
+    read_prep 128, cmpps_xmm_mem
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]
+    mov x2, _addr
+    ldr x3, [_ip, 8]
+    bl NAME(helper_cmpps_mem)
+    restore_c
+    gret 3
+    read_bullshit 128, cmpps_xmm_mem
 
 // ============================================================
 // SHUFPD xmm, xmm/m128, imm8 - Shuffle Packed Double-Precision
