@@ -988,6 +988,30 @@ NAME(xor32_r8_r15_gadgets):
     setf_zsp w
     gret 1
 
+.gadget or16_imm
+    ldr w8, [_ip]
+    and w8, w8, 0xffff
+    orr w10, _tmp, w8
+    and w10, w10, 0xffff
+    bic _xtmp, _xtmp, 0xffff
+    orr _xtmp, _xtmp, x10
+    sxth x10, w10
+    clearf_oc
+    setf_zsp h, x10
+    gret 1
+
+.gadget or8_imm
+    ldr w8, [_ip]
+    and w8, w8, 0xff
+    orr w10, _tmp, w8
+    and w10, w10, 0xff
+    bic _xtmp, _xtmp, 0xff
+    orr _xtmp, _xtmp, x10
+    sxtb x10, w10
+    clearf_oc
+    setf_zsp b, x10
+    gret 1
+
 // OR with register (x8 contains value to OR)
 .gadget or64_x8
     orr _xtmp, _xtmp, x8
@@ -1021,6 +1045,28 @@ NAME(xor32_r8_r15_gadgets):
     orr _tmp, _tmp, w8
     clearf_oc
     setf_zsp w
+    gret
+
+.gadget or16_x8
+    and w8, w8, 0xffff
+    orr w10, _tmp, w8
+    and w10, w10, 0xffff
+    bic _xtmp, _xtmp, 0xffff
+    orr _xtmp, _xtmp, x10
+    sxth x10, w10
+    clearf_oc
+    setf_zsp h, x10
+    gret
+
+.gadget or8_x8
+    and w8, w8, 0xff
+    orr w10, _tmp, w8
+    and w10, w10, 0xff
+    bic _xtmp, _xtmp, 0xff
+    orr _xtmp, _xtmp, x10
+    sxtb x10, w10
+    clearf_oc
+    setf_zsp b, x10
     gret
 
 // OR 64-bit memory operand (read from _addr, OR with value in x8)

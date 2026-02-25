@@ -240,8 +240,12 @@ extern void gadget_and32_si(void);
 extern void gadget_and32_di(void);
 extern void gadget_or64_imm(void);
 extern void gadget_or32_imm(void);
+extern void gadget_or16_imm(void);
+extern void gadget_or8_imm(void);
 extern void gadget_or64_x8(void);
 extern void gadget_or32_x8(void);
+extern void gadget_or16_x8(void);
+extern void gadget_or8_x8(void);
 extern void gadget_or64_mem(void);
 extern void gadget_or32_mem(void);
 extern void gadget_or64_a(void);
@@ -1088,7 +1092,7 @@ static inline void gen_store_reg_partial(struct gen_state *state,
       mnem == ZYDIS_MNEMONIC_SETL   || mnem == ZYDIS_MNEMONIC_SETNL ||
       mnem == ZYDIS_MNEMONIC_SETLE  || mnem == ZYDIS_MNEMONIC_SETNLE;
   if (is_setcc)
-    do_merge = is_high_byte_dst;
+    do_merge = true;
   if (do_merge) {
     // 8-bit/16-bit: preserve upper bits of destination register
     GEN(gadget_save_xtmp_to_x8); // x8 = computed result
@@ -3794,35 +3798,68 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           } else if (inst.operands[0].size == size64_16) {
             imm = imm & 0xffff;
           }
-          if (inst.operands[0].size == size64_32) {
+          if (inst.operands[0].size == size64_8) {
+            GEN(gadget_or8_imm);
+          } else if (inst.operands[0].size == size64_16) {
+            GEN(gadget_or16_imm);
+          } else if (inst.operands[0].size == size64_32) {
             GEN(gadget_or32_imm);
           } else {
             GEN(gadget_or64_imm);
           }
           GEN(imm);
         } else if (is_gpr(inst.operands[1].type)) {
-          int reg_idx = inst.operands[1].type - arg64_rax;
-          if (reg_idx >= 0 && reg_idx < 8) {
-            if (inst.operands[0].size == size64_32) {
-              GEN(or32_gadgets[reg_idx]);
-            } else {
-              GEN(or64_gadgets[reg_idx]);
-            }
-          } else {
-            // r8-r15: load to x8, use or_x8
+          if (inst.operands[0].size == size64_8 ||
+              inst.operands[0].size == size64_16) {
             gadget_t load2 = get_load64_reg_gadget(inst.operands[1].type);
             if (load2) {
-              GEN(gadget_save_xtmp_to_x8);
+              // Load source, normalize to low byte for AH/BH/CH/DH sources.
               GEN(load2);
+              if (inst.operands[0].size == size64_8 &&
+                  inst.raw_operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+                  zydis_is_high_byte_reg(inst.raw_operands[1].reg.value)) {
+                GEN(gadget_lea_lsr64_imm);
+                GEN(8);
+              }
+              GEN(gadget_save_xtmp_to_x8); // x8 = source value
+
+              // Reload destination as operation base.
+              gadget_t load_dst = get_load64_reg_gadget(inst.operands[0].type);
+              if (load_dst)
+                GEN(load_dst);
+              if (inst.operands[0].size == size64_8 &&
+                  inst.raw_operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+                  zydis_is_high_byte_reg(inst.raw_operands[0].reg.value)) {
+                GEN(gadget_lea_lsr64_imm);
+                GEN(8);
+              }
+
+              GEN(inst.operands[0].size == size64_8 ? gadget_or8_x8 : gadget_or16_x8);
+            }
+          } else {
+            int reg_idx = inst.operands[1].type - arg64_rax;
+            if (reg_idx >= 0 && reg_idx < 8) {
               if (inst.operands[0].size == size64_32) {
-                GEN(gadget_or32_x8);
+                GEN(or32_gadgets[reg_idx]);
               } else {
-                GEN(gadget_or64_x8);
+                GEN(or64_gadgets[reg_idx]);
+              }
+            } else {
+              // r8-r15: load to x8, use or_x8
+              gadget_t load2 = get_load64_reg_gadget(inst.operands[1].type);
+              if (load2) {
+                GEN(gadget_save_xtmp_to_x8);
+                GEN(load2);
+                if (inst.operands[0].size == size64_32) {
+                  GEN(gadget_or32_x8);
+                } else {
+                  GEN(gadget_or64_x8);
+                }
               }
             }
           }
         } else if (is_mem(inst.operands[1].type)) {
-          GEN(gadget_save_xtmp_to_x8);
+          int or_reg_mem_src_size = inst.operands[1].size;
           if (!gen_addr(state, &inst.operands[1], &inst)) {
             g(interrupt);
             GEN(INT_UNDEFINED);
@@ -3831,7 +3868,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             return 0;
           }
           // Use size-appropriate load from memory
-          switch (inst.operands[1].size) {
+          switch (or_reg_mem_src_size) {
           case size64_8:
             GEN(gadget_load8_mem);
             break;
@@ -3846,9 +3883,31 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             break;
           }
           GEN(state->orig_ip);
-          if (inst.operands[0].size == size64_32) {
+          if (inst.operands[0].size == size64_8 ||
+              inst.operands[0].size == size64_16) {
+            // Keep flags width-correct: _xtmp must hold destination, x8 source.
+            GEN(gadget_save_xtmp_to_x8); // x8 = memory source
+            gadget_t load_dst = get_load64_reg_gadget(inst.operands[0].type);
+            if (load_dst)
+              GEN(load_dst);
+            if (inst.operands[0].size == size64_8 &&
+                inst.raw_operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+                zydis_is_high_byte_reg(inst.raw_operands[0].reg.value)) {
+              GEN(gadget_lea_lsr64_imm);
+              GEN(8);
+            }
+            GEN(inst.operands[0].size == size64_8 ? gadget_or8_x8 : gadget_or16_x8);
+          } else if (inst.operands[0].size == size64_32) {
+            GEN(gadget_save_xtmp_to_x8); // x8 = memory source
+            gadget_t load_dst = get_load64_reg_gadget(inst.operands[0].type);
+            if (load_dst)
+              GEN(load_dst);
             GEN(gadget_or32_x8);
           } else {
+            GEN(gadget_save_xtmp_to_x8); // x8 = memory source
+            gadget_t load_dst = get_load64_reg_gadget(inst.operands[0].type);
+            if (load_dst)
+              GEN(load_dst);
             GEN(gadget_or64_x8);
           }
         } else {
@@ -3876,6 +3935,12 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             return 0;
           }
           int or_reg_mem_size = inst.operands[0].size;
+          if (or_reg_mem_size == size64_8 &&
+              inst.raw_operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+              zydis_is_high_byte_reg(inst.raw_operands[1].reg.value)) {
+            GEN(gadget_lea_lsr64_imm);
+            GEN(8);
+          }
           // Save address, load from memory
           GEN(gadget_save_addr);
           if (or_reg_mem_size == size64_64) {
@@ -3889,7 +3954,15 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           }
           GEN(state->orig_ip);
           // OR with x8 (source register value)
-          GEN(gadget_or64_x8);
+          if (or_reg_mem_size == size64_8) {
+            GEN(gadget_or8_x8);
+          } else if (or_reg_mem_size == size64_16) {
+            GEN(gadget_or16_x8);
+          } else if (or_reg_mem_size == size64_32) {
+            GEN(gadget_or32_x8);
+          } else {
+            GEN(gadget_or64_x8);
+          }
           // Restore address and store
           GEN(gadget_restore_addr);
           if (or_reg_mem_size == size64_64) {
@@ -3930,7 +4003,15 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             or_mem_imm &= 0xFF;
           else if (or_mem_size == size64_16)
             or_mem_imm &= 0xFFFF;
-          GEN(gadget_or64_imm);
+          if (or_mem_size == size64_8) {
+            GEN(gadget_or8_imm);
+          } else if (or_mem_size == size64_16) {
+            GEN(gadget_or16_imm);
+          } else if (or_mem_size == size64_32) {
+            GEN(gadget_or32_imm);
+          } else {
+            GEN(gadget_or64_imm);
+          }
           GEN(or_mem_imm);
           // Restore address and store
           GEN(gadget_restore_addr);
