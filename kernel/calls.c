@@ -232,7 +232,9 @@ syscall_t syscall_table[] = {
     [296] = (syscall_t)sys_pwritev,
     [318] = (syscall_t)sys_getrandom,
     [319] = (syscall_t)sys_memfd_create,
-    [324] = (syscall_t)syscall_success_stub, // membarrier
+    // membarrier: unsupported in iSH; returning success without performing a
+    // barrier violates guest synchronization assumptions.
+    [324] = (syscall_t)syscall_silent_stub, // membarrier
     [326] = (syscall_t)sys_copy_file_range,
     [327] = (syscall_t)sys_preadv2,
     [328] = (syscall_t)sys_pwritev2,
