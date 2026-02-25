@@ -8,6 +8,7 @@ set -euo pipefail
 #
 # Other modes:
 #   jitless -> --jitless
+#   nomaglev -> --no-maglev
 #   nco     -> --no-concurrent-osr
 #   nrs     -> --no-rehash-snapshot
 #   delay   -> --concurrent-recompilation-delay=1
@@ -39,6 +40,9 @@ case "$MODE" in
   jitless)
     flags+=(--jitless)
     ;;
+  nomaglev)
+    flags+=(--no-maglev)
+    ;;
   nco)
     flags+=(--no-concurrent-osr)
     ;;
@@ -48,7 +52,7 @@ case "$MODE" in
   plain)
     ;;
   *)
-    echo "error: unknown NODE24_MODE '$MODE' (expected: t1|delay|jitless|nco|nrs|plain)" >&2
+    echo "error: unknown NODE24_MODE '$MODE' (expected: t1|delay|jitless|nomaglev|nco|nrs|plain)" >&2
     exit 2
     ;;
 esac
