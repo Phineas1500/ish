@@ -317,6 +317,418 @@ lcmpxchg8_cross_fail:
     b lcmpxchg8_fail
     write_bullshit 8, lcmpxchg8
 
+// LOCK ADD/SUB/AND/OR/XOR [mem], src
+// Input: _addr = guest address, _xtmp = source operand (low bits used by size)
+// Output: _xtmp = old memory value (zero-extended for <=32-bit)
+
+// lock add r/m64, src64
+.gadget lock_add64_mem
+    write_prep 64, lock_add64
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_add64_cross
+    mov x9, _xtmp
+    ldaddal x9, x10, [_addr]      // old -> x10, mem += x9
+    mov _xtmp, x10
+    b lock_add64_done
+lock_add64_cross:
+    ldr x10, [_addr]
+    add x12, x10, _xtmp
+    str x12, [_addr]
+    mov _xtmp, x10
+lock_add64_done:
+    write_done 64, lock_add64
+    gret 1
+    write_bullshit 64, lock_add64
+
+// lock add r/m32, src32
+.gadget lock_add32_mem
+    write_prep 32, lock_add32
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_add32_cross
+    mov w9, _tmp
+    ldaddal w9, w10, [_addr]      // old -> w10, mem += w9
+    mov _tmp, w10
+    b lock_add32_done
+lock_add32_cross:
+    ldr w10, [_addr]
+    add w12, w10, _tmp
+    str w12, [_addr]
+    mov _tmp, w10
+lock_add32_done:
+    write_done 32, lock_add32
+    gret 1
+    write_bullshit 32, lock_add32
+
+// lock add r/m16, src16
+.gadget lock_add16_mem
+    write_prep 16, lock_add16
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_add16_cross
+    uxth w9, _tmp
+    ldaddalh w9, w10, [_addr]     // old -> w10, mem += low16(w9)
+    mov _tmp, w10
+    b lock_add16_done
+lock_add16_cross:
+    ldrh w10, [_addr]
+    add w12, w10, _tmp
+    strh w12, [_addr]
+    mov _tmp, w10
+lock_add16_done:
+    write_done 16, lock_add16
+    gret 1
+    write_bullshit 16, lock_add16
+
+// lock add r/m8, src8
+.gadget lock_add8_mem
+    write_prep 8, lock_add8
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_add8_cross
+    uxtb w9, _tmp
+    ldaddalb w9, w10, [_addr]     // old -> w10, mem += low8(w9)
+    mov _tmp, w10
+    b lock_add8_done
+lock_add8_cross:
+    ldrb w10, [_addr]
+    add w12, w10, _tmp
+    strb w12, [_addr]
+    mov _tmp, w10
+lock_add8_done:
+    write_done 8, lock_add8
+    gret 1
+    write_bullshit 8, lock_add8
+
+// lock sub r/m64, src64
+.gadget lock_sub64_mem
+    write_prep 64, lock_sub64
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_sub64_cross
+    mov x9, _xtmp
+    neg x9, x9
+    ldaddal x9, x10, [_addr]      // mem += (-src)
+    mov _xtmp, x10
+    b lock_sub64_done
+lock_sub64_cross:
+    ldr x10, [_addr]
+    sub x12, x10, _xtmp
+    str x12, [_addr]
+    mov _xtmp, x10
+lock_sub64_done:
+    write_done 64, lock_sub64
+    gret 1
+    write_bullshit 64, lock_sub64
+
+// lock sub r/m32, src32
+.gadget lock_sub32_mem
+    write_prep 32, lock_sub32
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_sub32_cross
+    mov w9, _tmp
+    neg w9, w9
+    ldaddal w9, w10, [_addr]
+    mov _tmp, w10
+    b lock_sub32_done
+lock_sub32_cross:
+    ldr w10, [_addr]
+    sub w12, w10, _tmp
+    str w12, [_addr]
+    mov _tmp, w10
+lock_sub32_done:
+    write_done 32, lock_sub32
+    gret 1
+    write_bullshit 32, lock_sub32
+
+// lock sub r/m16, src16
+.gadget lock_sub16_mem
+    write_prep 16, lock_sub16
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_sub16_cross
+    uxth w9, _tmp
+    neg w9, w9
+    ldaddalh w9, w10, [_addr]
+    mov _tmp, w10
+    b lock_sub16_done
+lock_sub16_cross:
+    ldrh w10, [_addr]
+    sub w12, w10, _tmp
+    strh w12, [_addr]
+    mov _tmp, w10
+lock_sub16_done:
+    write_done 16, lock_sub16
+    gret 1
+    write_bullshit 16, lock_sub16
+
+// lock sub r/m8, src8
+.gadget lock_sub8_mem
+    write_prep 8, lock_sub8
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_sub8_cross
+    uxtb w9, _tmp
+    neg w9, w9
+    ldaddalb w9, w10, [_addr]
+    mov _tmp, w10
+    b lock_sub8_done
+lock_sub8_cross:
+    ldrb w10, [_addr]
+    sub w12, w10, _tmp
+    strb w12, [_addr]
+    mov _tmp, w10
+lock_sub8_done:
+    write_done 8, lock_sub8
+    gret 1
+    write_bullshit 8, lock_sub8
+
+// lock and r/m64, src64
+.gadget lock_and64_mem
+    write_prep 64, lock_and64
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_and64_cross
+    mov x9, _xtmp
+    mvn x9, x9
+    ldclral x9, x10, [_addr]      // mem &= ~x9 == src
+    mov _xtmp, x10
+    b lock_and64_done
+lock_and64_cross:
+    ldr x10, [_addr]
+    and x12, x10, _xtmp
+    str x12, [_addr]
+    mov _xtmp, x10
+lock_and64_done:
+    write_done 64, lock_and64
+    gret 1
+    write_bullshit 64, lock_and64
+
+// lock and r/m32, src32
+.gadget lock_and32_mem
+    write_prep 32, lock_and32
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_and32_cross
+    mov w9, _tmp
+    mvn w9, w9
+    ldclral w9, w10, [_addr]
+    mov _tmp, w10
+    b lock_and32_done
+lock_and32_cross:
+    ldr w10, [_addr]
+    and w12, w10, _tmp
+    str w12, [_addr]
+    mov _tmp, w10
+lock_and32_done:
+    write_done 32, lock_and32
+    gret 1
+    write_bullshit 32, lock_and32
+
+// lock and r/m16, src16
+.gadget lock_and16_mem
+    write_prep 16, lock_and16
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_and16_cross
+    uxth w9, _tmp
+    mvn w9, w9
+    ldclralh w9, w10, [_addr]
+    mov _tmp, w10
+    b lock_and16_done
+lock_and16_cross:
+    ldrh w10, [_addr]
+    and w12, w10, _tmp
+    strh w12, [_addr]
+    mov _tmp, w10
+lock_and16_done:
+    write_done 16, lock_and16
+    gret 1
+    write_bullshit 16, lock_and16
+
+// lock and r/m8, src8
+.gadget lock_and8_mem
+    write_prep 8, lock_and8
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_and8_cross
+    uxtb w9, _tmp
+    mvn w9, w9
+    ldclralb w9, w10, [_addr]
+    mov _tmp, w10
+    b lock_and8_done
+lock_and8_cross:
+    ldrb w10, [_addr]
+    and w12, w10, _tmp
+    strb w12, [_addr]
+    mov _tmp, w10
+lock_and8_done:
+    write_done 8, lock_and8
+    gret 1
+    write_bullshit 8, lock_and8
+
+// lock or r/m64, src64
+.gadget lock_or64_mem
+    write_prep 64, lock_or64
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_or64_cross
+    mov x9, _xtmp
+    ldsetal x9, x10, [_addr]
+    mov _xtmp, x10
+    b lock_or64_done
+lock_or64_cross:
+    ldr x10, [_addr]
+    orr x12, x10, _xtmp
+    str x12, [_addr]
+    mov _xtmp, x10
+lock_or64_done:
+    write_done 64, lock_or64
+    gret 1
+    write_bullshit 64, lock_or64
+
+// lock or r/m32, src32
+.gadget lock_or32_mem
+    write_prep 32, lock_or32
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_or32_cross
+    mov w9, _tmp
+    ldsetal w9, w10, [_addr]
+    mov _tmp, w10
+    b lock_or32_done
+lock_or32_cross:
+    ldr w10, [_addr]
+    orr w12, w10, _tmp
+    str w12, [_addr]
+    mov _tmp, w10
+lock_or32_done:
+    write_done 32, lock_or32
+    gret 1
+    write_bullshit 32, lock_or32
+
+// lock or r/m16, src16
+.gadget lock_or16_mem
+    write_prep 16, lock_or16
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_or16_cross
+    uxth w9, _tmp
+    ldsetalh w9, w10, [_addr]
+    mov _tmp, w10
+    b lock_or16_done
+lock_or16_cross:
+    ldrh w10, [_addr]
+    orr w12, w10, _tmp
+    strh w12, [_addr]
+    mov _tmp, w10
+lock_or16_done:
+    write_done 16, lock_or16
+    gret 1
+    write_bullshit 16, lock_or16
+
+// lock or r/m8, src8
+.gadget lock_or8_mem
+    write_prep 8, lock_or8
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_or8_cross
+    uxtb w9, _tmp
+    ldsetalb w9, w10, [_addr]
+    mov _tmp, w10
+    b lock_or8_done
+lock_or8_cross:
+    ldrb w10, [_addr]
+    orr w12, w10, _tmp
+    strb w12, [_addr]
+    mov _tmp, w10
+lock_or8_done:
+    write_done 8, lock_or8
+    gret 1
+    write_bullshit 8, lock_or8
+
+// lock xor r/m64, src64
+.gadget lock_xor64_mem
+    write_prep 64, lock_xor64
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_xor64_cross
+    mov x9, _xtmp
+    ldeoral x9, x10, [_addr]
+    mov _xtmp, x10
+    b lock_xor64_done
+lock_xor64_cross:
+    ldr x10, [_addr]
+    eor x12, x10, _xtmp
+    str x12, [_addr]
+    mov _xtmp, x10
+lock_xor64_done:
+    write_done 64, lock_xor64
+    gret 1
+    write_bullshit 64, lock_xor64
+
+// lock xor r/m32, src32
+.gadget lock_xor32_mem
+    write_prep 32, lock_xor32
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_xor32_cross
+    mov w9, _tmp
+    ldeoral w9, w10, [_addr]
+    mov _tmp, w10
+    b lock_xor32_done
+lock_xor32_cross:
+    ldr w10, [_addr]
+    eor w12, w10, _tmp
+    str w12, [_addr]
+    mov _tmp, w10
+lock_xor32_done:
+    write_done 32, lock_xor32
+    gret 1
+    write_bullshit 32, lock_xor32
+
+// lock xor r/m16, src16
+.gadget lock_xor16_mem
+    write_prep 16, lock_xor16
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_xor16_cross
+    uxth w9, _tmp
+    ldeoralh w9, w10, [_addr]
+    mov _tmp, w10
+    b lock_xor16_done
+lock_xor16_cross:
+    ldrh w10, [_addr]
+    eor w12, w10, _tmp
+    strh w12, [_addr]
+    mov _tmp, w10
+lock_xor16_done:
+    write_done 16, lock_xor16
+    gret 1
+    write_bullshit 16, lock_xor16
+
+// lock xor r/m8, src8
+.gadget lock_xor8_mem
+    write_prep 8, lock_xor8
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lock_xor8_cross
+    uxtb w9, _tmp
+    ldeoralb w9, w10, [_addr]
+    mov _tmp, w10
+    b lock_xor8_done
+lock_xor8_cross:
+    ldrb w10, [_addr]
+    eor w12, w10, _tmp
+    strb w12, [_addr]
+    mov _tmp, w10
+lock_xor8_done:
+    write_done 8, lock_xor8
+    gret 1
+    write_bullshit 8, lock_xor8
+
 // XCHG reg, [mem] - Exchange register with memory (implicit LOCK on x86)
 // _addr = memory address
 // _xtmp = register value to swap in
