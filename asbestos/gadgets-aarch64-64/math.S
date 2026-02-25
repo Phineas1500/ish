@@ -3437,17 +3437,19 @@ NAME(imul32_r8_r15_gadgets):
 // MOVSD xmm, m64 - Load 64 bits from memory to XMM low, zero high
 // _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
 .gadget movsd_xmm_mem
+    // Keep XMM index, then shift _ip so read_prep fault path sees orig_ip at [_ip].
+    ldr x8, [_ip]              // XMM register index
+    add _ip, _ip, 8            // [_ip] now points to orig_ip
     read_prep 64, movsd_xmm_mem
     ldr _xtmp, [_addr]         // Load 64 bits from memory
 
     // Store to XMM register
-    ldr x8, [_ip]              // XMM register index
     lsl x8, x8, 4              // Multiply by 16
     add x8, x8, CPU_xmm
     add x8, _cpu, x8           // x8 = &xmm[n]
     str _xtmp, [x8]            // Store to low 64 bits
     str xzr, [x8, 8]           // Zero high 64 bits
-    gret 2
+    gret 1
     read_bullshit 64, movsd_xmm_mem
 
 // MOVSD m64, xmm - Store XMM low 64 bits to memory
@@ -3455,6 +3457,7 @@ NAME(imul32_r8_r15_gadgets):
 .gadget movsd_mem_xmm
     // Load XMM low 64 bits
     ldr x8, [_ip]              // XMM register index
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     lsl x8, x8, 4              // Multiply by 16
     add x8, x8, CPU_xmm
     add x8, _cpu, x8           // x8 = &xmm[n]
@@ -3464,7 +3467,7 @@ NAME(imul32_r8_r15_gadgets):
     write_prep 64, movsd_mem_xmm
     str _xtmp, [_addr]         // Store 64 bits to memory
     write_done 64, movsd_mem_xmm
-    gret 2
+    gret 1
     write_bullshit 64, movsd_mem_xmm
 
 // MOVSS xmm, xmm - Move low 32 bits, preserve upper 96 bits of dst
@@ -3484,22 +3487,24 @@ NAME(imul32_r8_r15_gadgets):
 
 // MOVSS xmm, m32 - Load 32 bits from memory to XMM low, zero upper
 .gadget movss_xmm_mem
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 32, movss_xmm_mem
     ldr _tmp, [_addr]          // Load 32 bits from memory
 
-    ldr x8, [_ip]
     lsl x8, x8, 4
     add x8, x8, CPU_xmm
     add x8, _cpu, x8
     str wzr, [x8, 4]           // Zero bits 63:32
     str _tmp, [x8]             // Store 32-bit float to low dword
     str xzr, [x8, 8]           // Zero high 64 bits
-    gret 2
+    gret 1
     read_bullshit 32, movss_xmm_mem
 
 // MOVSS m32, xmm - Store XMM low 32 bits to memory
 .gadget movss_mem_xmm
     ldr x8, [_ip]
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     lsl x8, x8, 4
     add x8, x8, CPU_xmm
     add x8, _cpu, x8
@@ -3508,22 +3513,23 @@ NAME(imul32_r8_r15_gadgets):
     write_prep 32, movss_mem_xmm
     str _tmp, [_addr]          // Store 32 bits to memory
     write_done 32, movss_mem_xmm
-    gret 2
+    gret 1
     write_bullshit 32, movss_mem_xmm
 
 // MOVHPS xmm, m64 - Load 64 bits from memory to XMM high, low preserved
 // _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
 .gadget movhps_load
+    ldr x8, [_ip]              // XMM register index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 64, movhps_load
     ldr _xtmp, [_addr]         // Load 64 bits from memory
 
     // Store to XMM register HIGH half
-    ldr x8, [_ip]              // XMM register index
     lsl x8, x8, 4              // Multiply by 16
     add x8, x8, CPU_xmm
     add x8, _cpu, x8           // x8 = &xmm[n]
     str _xtmp, [x8, 8]         // Store to high 64 bits (low preserved)
-    gret 2
+    gret 1
     read_bullshit 64, movhps_load
 
 // MOVHPS m64, xmm - Store XMM high 64 bits to memory
@@ -3531,6 +3537,7 @@ NAME(imul32_r8_r15_gadgets):
 .gadget movhps_store
     // Load XMM high 64 bits
     ldr x8, [_ip]              // XMM register index
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     lsl x8, x8, 4              // Multiply by 16
     add x8, x8, CPU_xmm
     add x8, _cpu, x8           // x8 = &xmm[n]
@@ -3540,22 +3547,23 @@ NAME(imul32_r8_r15_gadgets):
     write_prep 64, movhps_store
     str _xtmp, [_addr]         // Store 64 bits to memory
     write_done 64, movhps_store
-    gret 2
+    gret 1
     write_bullshit 64, movhps_store
 
 // MOVLPS xmm, m64 - Load 64 bits from memory to XMM low, high preserved
 // _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
 .gadget movlps_load
+    ldr x8, [_ip]              // XMM register index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 64, movlps_load
     ldr _xtmp, [_addr]         // Load 64 bits from memory
 
     // Store to XMM register LOW half
-    ldr x8, [_ip]              // XMM register index
     lsl x8, x8, 4              // Multiply by 16
     add x8, x8, CPU_xmm
     add x8, _cpu, x8           // x8 = &xmm[n]
     str _xtmp, [x8]            // Store to low 64 bits (high preserved)
-    gret 2
+    gret 1
     read_bullshit 64, movlps_load
 
 // MOVLPS m64, xmm - Store XMM low 64 bits to memory
@@ -3563,6 +3571,7 @@ NAME(imul32_r8_r15_gadgets):
 .gadget movlps_store
     // Load XMM low 64 bits
     ldr x8, [_ip]              // XMM register index
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     lsl x8, x8, 4              // Multiply by 16
     add x8, x8, CPU_xmm
     add x8, _cpu, x8           // x8 = &xmm[n]
@@ -3572,7 +3581,7 @@ NAME(imul32_r8_r15_gadgets):
     write_prep 64, movlps_store
     str _xtmp, [_addr]         // Store 64 bits to memory
     write_done 64, movlps_store
-    gret 2
+    gret 1
     write_bullshit 64, movlps_store
 
 // MOVHLPS xmm, xmm - Move high qword of source to low qword of dest
@@ -3631,11 +3640,12 @@ NAME(imul32_r8_r15_gadgets):
 // MOVD xmm, m32 - Load 32-bit from memory into low XMM, zero upper 96 bits
 // _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
 .gadget movd_xmm_mem
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 32, movd_xmm_mem
     ldr w9, [_addr]            // Load 32 bits from memory
 
     // Store to XMM register
-    ldr x8, [_ip]              // XMM register index
     lsl x8, x8, 4              // Multiply by 16
     add x8, x8, CPU_xmm
     add x8, _cpu, x8           // x8 = &xmm[n]
@@ -3643,7 +3653,7 @@ NAME(imul32_r8_r15_gadgets):
     uxtw x9, w9
     str x9, [x8]               // Store to low 64 bits
     str xzr, [x8, 8]           // Zero high 64 bits
-    gret 2
+    gret 1
     read_bullshit 32, movd_xmm_mem
 
 // MOVD r/m32, xmm - Move low 32 bits of XMM to GPR (zero-extended to 64-bit)
@@ -3662,6 +3672,7 @@ NAME(imul32_r8_r15_gadgets):
 .gadget movd_mem_xmm
     // Load XMM low 32 bits
     ldr x8, [_ip]              // XMM register index
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     lsl x8, x8, 4              // Multiply by 16
     add x8, x8, CPU_xmm
     add x8, _cpu, x8           // x8 = &xmm[n]
@@ -3672,7 +3683,7 @@ NAME(imul32_r8_r15_gadgets):
     write_prep 32, movd_mem_xmm
     str _tmp, [_addr]          // Store 32 bits to memory
     write_done 32, movd_mem_xmm
-    gret 2
+    gret 1
     write_bullshit 32, movd_mem_xmm
 
 // ============================================================
@@ -3728,14 +3739,16 @@ sse_xmm_xmm_op pmaxsw
 // Helper macro for XMM-MEM operations: reads 128 bits from [_addr], calls helper(cpu, dst_xmm, addr)
 .macro sse_xmm_mem_op name
 .gadget \name\()_mem
+    ldr x8, [_ip]              // dst XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 128, \name\()_mem
     save_c
     mov x0, _cpu
-    ldr x1, [_ip]              // dst XMM index
+    mov x1, x8                 // pass saved XMM index to helper
     mov x2, _addr              // host memory address
     bl NAME(helper_\name\()_mem)
     restore_c
-    gret 2                     // skip 2: XMM index + orig_ip
+    gret 1                     // skip 1: orig_ip (xmm_index already consumed)
     read_bullshit 128, \name\()_mem
 .endm
 
@@ -3894,15 +3907,18 @@ sse_xmm_mem_op punpckhqdq
 // PSHUFD xmm, m128, imm8 - Shuffle packed doublewords from memory
 // [_ip] = dst XMM index, [_ip+8] = imm8, [_ip+16] = orig_ip
 .gadget pshufd_mem
+    ldr x8, [_ip]              // dst XMM index (x8 safe across read_prep)
+    ldr x12, [_ip, 8]          // imm8 (x12 safe across read_prep)
+    add _ip, _ip, 16           // [_ip] now points to orig_ip for fault path
     read_prep 128, pshufd_mem
     save_c
     mov x0, _cpu
-    ldr x1, [_ip]
+    mov x1, x8
     mov x2, _addr
-    ldr x3, [_ip, 8]
+    mov x3, x12
     bl NAME(helper_pshufd_mem)
     restore_c
-    gret 3
+    gret 1
     read_bullshit 128, pshufd_mem
 
 // SHUFPS xmm, xmm, imm8 - Shuffle packed single-precision floats
@@ -3931,15 +3947,18 @@ sse_xmm_mem_op punpckhqdq
     gret 3
 
 .gadget pshuflw_mem
+    ldr x8, [_ip]              // dst XMM index (x8 safe across read_prep)
+    ldr x12, [_ip, 8]          // imm8 (x12 safe across read_prep)
+    add _ip, _ip, 16           // [_ip] now points to orig_ip for fault path
     read_prep 128, pshuflw_mem
     save_c
     mov x0, _cpu
-    ldr x1, [_ip]
+    mov x1, x8
     mov x2, _addr
-    ldr x3, [_ip, 8]
+    mov x3, x12
     bl NAME(helper_pshuflw_mem)
     restore_c
-    gret 3
+    gret 1
     read_bullshit 128, pshuflw_mem
 
 // PSHUFHW xmm, xmm, imm8 - Shuffle Packed High Words
@@ -3954,15 +3973,18 @@ sse_xmm_mem_op punpckhqdq
     gret 3
 
 .gadget pshufhw_mem
+    ldr x8, [_ip]              // dst XMM index (x8 safe across read_prep)
+    ldr x12, [_ip, 8]          // imm8 (x12 safe across read_prep)
+    add _ip, _ip, 16           // [_ip] now points to orig_ip for fault path
     read_prep 128, pshufhw_mem
     save_c
     mov x0, _cpu
-    ldr x1, [_ip]
+    mov x1, x8
     mov x2, _addr
-    ldr x3, [_ip, 8]
+    mov x3, x12
     bl NAME(helper_pshufhw_mem)
     restore_c
-    gret 3
+    gret 1
     read_bullshit 128, pshufhw_mem
 
 // PALIGNR xmm, xmm, imm8 - Packed Align Right (SSSE3)
@@ -4115,16 +4137,19 @@ sse_xmm_xmm_op movdqa_xmm
 
 // PINSRW xmm, m16, imm8 - Insert word into XMM from memory
 .gadget pinsrw_mem
+    ldr x8, [_ip]              // dst XMM index (x8 safe across read_prep)
+    ldr x12, [_ip, 8]          // imm8 (x12 safe across read_prep)
+    add _ip, _ip, 16           // [_ip] now points to orig_ip for fault path
     read_prep 16, pinsrw_mem
     ldrh w14, [_addr]
     save_c
     mov x0, _cpu
-    ldr x1, [_ip]              // dst XMM index
+    mov x1, x8                 // dst XMM index
     mov w2, w14                // value (16-bit)
-    ldr x3, [_ip, 8]           // imm8
+    mov x3, x12                // imm8
     bl NAME(helper_pinsrw)
     restore_c
-    gret 3                     // skip 3: XMM index + imm8 + orig_ip
+    gret 1                     // skip 1: orig_ip (others already consumed)
     read_bullshit 16, pinsrw_mem
 
 // ============================================================
@@ -4164,37 +4189,39 @@ sse_xmm_xmm_op movdqa_xmm
 // CVTSI2SD xmm, m64 - Convert 64-bit integer from memory to double
 // _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
 .gadget cvtsi2sd_mem64
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 64, cvtsi2sd_mem64
-    ldr x8, [_addr]            // Load 64-bit integer from memory
+    ldr x12, [_addr]           // Load 64-bit integer from memory
 
     // Convert integer to double
-    scvtf d0, x8               // Convert signed int64 to double
+    scvtf d0, x12              // Convert signed int64 to double
 
     // Store to XMM register
-    ldr x9, [_ip]              // XMM register index
-    lsl x9, x9, 4              // Multiply by 16
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9           // x9 = &xmm[n]
-    str d0, [x9]               // Store double to low 64 bits
-    gret 2
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[n]
+    str d0, [x8]               // Store double to low 64 bits
+    gret 1
     read_bullshit 64, cvtsi2sd_mem64
 
 // CVTSI2SD xmm, m32 - Convert 32-bit integer from memory to double
 // _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
 .gadget cvtsi2sd_mem32
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 32, cvtsi2sd_mem32
-    ldrsw x8, [_addr]          // Load 32-bit integer (sign-extended) from memory
+    ldrsw x12, [_addr]         // Load 32-bit integer (sign-extended) from memory
 
     // Convert integer to double
-    scvtf d0, x8               // Convert signed int32 to double
+    scvtf d0, x12              // Convert signed int32 to double
 
     // Store to XMM register
-    ldr x9, [_ip]              // XMM register index
-    lsl x9, x9, 4              // Multiply by 16
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9           // x9 = &xmm[n]
-    str d0, [x9]               // Store double to low 64 bits
-    gret 2
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[n]
+    str d0, [x8]               // Store double to low 64 bits
+    gret 1
     read_bullshit 32, cvtsi2sd_mem32
 
 // ============================================================
@@ -4230,31 +4257,33 @@ sse_xmm_xmm_op movdqa_xmm
 // CVTSI2SS xmm, m64 - Convert 64-bit integer from memory to float
 // _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
 .gadget cvtsi2ss_mem64
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 64, cvtsi2ss_mem64
-    ldr x8, [_addr]
-    scvtf s0, x8
+    ldr x12, [_addr]
+    scvtf s0, x12
 
-    ldr x9, [_ip]
-    lsl x9, x9, 4
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9
-    str s0, [x9]
-    gret 2
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    str s0, [x8]
+    gret 1
     read_bullshit 64, cvtsi2ss_mem64
 
 // CVTSI2SS xmm, m32 - Convert 32-bit integer from memory to float
 // _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
 .gadget cvtsi2ss_mem32
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 32, cvtsi2ss_mem32
-    ldrsw x8, [_addr]
-    scvtf s0, x8
+    ldrsw x12, [_addr]
+    scvtf s0, x12
 
-    ldr x9, [_ip]
-    lsl x9, x9, 4
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9
-    str s0, [x9]
-    gret 2
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    str s0, [x8]
+    gret 1
     read_bullshit 32, cvtsi2ss_mem32
 
 // ============================================================
@@ -4427,22 +4456,23 @@ sse_xmm_xmm_op movdqa_xmm
 // ADDSD xmm, m64 - Add scalar double from memory
 // _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
 .gadget addsd_xmm_mem
+    ldr x8, [_ip]              // Destination XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 64, addsd_xmm_mem
     ldr d0, [_addr]            // Load double from memory
 
     // Load destination XMM low 64 bits
-    ldr x9, [_ip]              // Destination XMM index
-    lsl x9, x9, 4              // Multiply by 16
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9           // x9 = &xmm[dst]
-    ldr d1, [x9]               // Load dst double
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[dst]
+    ldr d1, [x8]               // Load dst double
 
     // Add
     fadd d1, d1, d0            // dst = dst + src
 
     // Store result
-    str d1, [x9]               // Store to dst low 64 bits
-    gret 2
+    str d1, [x8]               // Store to dst low 64 bits
+    gret 1
     read_bullshit 64, addsd_xmm_mem
 
 // ============================================================
@@ -4475,22 +4505,23 @@ sse_xmm_xmm_op movdqa_xmm
 // SUBSD xmm, m64 - Subtract scalar double from memory
 // _addr = memory address (GUEST), [_ip] = destination XMM index, [_ip+8] = orig_ip
 .gadget subsd_xmm_mem
+    ldr x8, [_ip]              // Destination XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 64, subsd_xmm_mem
     ldr d0, [_addr]            // Load double from memory
 
     // Load destination XMM low 64 bits
-    ldr x9, [_ip]              // Destination XMM index
-    lsl x9, x9, 4              // Multiply by 16
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9           // x9 = &xmm[dst]
-    ldr d1, [x9]               // Load dst double
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[dst]
+    ldr d1, [x8]               // Load dst double
 
     // Subtract
     fsub d1, d1, d0            // dst = dst - src
 
     // Store result
-    str d1, [x9]               // Store to dst low 64 bits
-    gret 2
+    str d1, [x8]               // Store to dst low 64 bits
+    gret 1
     read_bullshit 64, subsd_xmm_mem
 
 // ============================================================
@@ -4523,22 +4554,23 @@ sse_xmm_xmm_op movdqa_xmm
 // MULSD xmm, m64 - Multiply scalar double from memory
 // _addr = memory address (GUEST), [_ip] = destination XMM index, [_ip+8] = orig_ip
 .gadget mulsd_xmm_mem
+    ldr x8, [_ip]              // Destination XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 64, mulsd_xmm_mem
     ldr d0, [_addr]            // Load double from memory
 
     // Load destination XMM low 64 bits
-    ldr x9, [_ip]              // Destination XMM index
-    lsl x9, x9, 4              // Multiply by 16
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9           // x9 = &xmm[dst]
-    ldr d1, [x9]               // Load dst double
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[dst]
+    ldr d1, [x8]               // Load dst double
 
     // Multiply
     fmul d1, d1, d0            // dst = dst * src
 
     // Store result
-    str d1, [x9]               // Store to dst low 64 bits
-    gret 2
+    str d1, [x8]               // Store to dst low 64 bits
+    gret 1
     read_bullshit 64, mulsd_xmm_mem
 
 // DIVSD xmm, xmm - Divide scalar double
@@ -4567,22 +4599,23 @@ sse_xmm_xmm_op movdqa_xmm
 // DIVSD xmm, m64 - Divide scalar double from memory
 // _addr = memory address (GUEST), [_ip] = destination XMM index, [_ip+8] = orig_ip
 .gadget divsd_xmm_mem
+    ldr x8, [_ip]              // Destination XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 64, divsd_xmm_mem
     ldr d0, [_addr]            // Load double from memory
 
     // Load destination XMM low 64 bits
-    ldr x9, [_ip]              // Destination XMM index
-    lsl x9, x9, 4              // Multiply by 16
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9           // x9 = &xmm[dst]
-    ldr d1, [x9]               // Load dst double
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[dst]
+    ldr d1, [x8]               // Load dst double
 
     // Divide
     fdiv d1, d1, d0            // dst = dst / src
 
     // Store result
-    str d1, [x9]               // Store to dst low 64 bits
-    gret 2
+    str d1, [x8]               // Store to dst low 64 bits
+    gret 1
     read_bullshit 64, divsd_xmm_mem
 
 // MINSD xmm, xmm - Minimum scalar double
@@ -4605,18 +4638,19 @@ sse_xmm_xmm_op movdqa_xmm
 
 // MINSD xmm, m64
 .gadget minsd_xmm_mem
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 64, minsd_xmm_mem
     ldr d0, [_addr]
 
-    ldr x9, [_ip]
-    lsl x9, x9, 4
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9
-    ldr d1, [x9]
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr d1, [x8]
 
     fmin d1, d1, d0
-    str d1, [x9]
-    gret 2
+    str d1, [x8]
+    gret 1
     read_bullshit 64, minsd_xmm_mem
 
 // MAXSD xmm, xmm - Maximum scalar double
@@ -4638,18 +4672,19 @@ sse_xmm_xmm_op movdqa_xmm
 
 // MAXSD xmm, m64
 .gadget maxsd_xmm_mem
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 64, maxsd_xmm_mem
     ldr d0, [_addr]
 
-    ldr x9, [_ip]
-    lsl x9, x9, 4
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9
-    ldr d1, [x9]
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr d1, [x8]
 
     fmax d1, d1, d0
-    str d1, [x9]
-    gret 2
+    str d1, [x8]
+    gret 1
     read_bullshit 64, maxsd_xmm_mem
 
 // ============================================================
@@ -4676,17 +4711,18 @@ sse_xmm_xmm_op movdqa_xmm
 // SQRTSD xmm, m64
 // _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
 .gadget sqrtsd_xmm_mem
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 64, sqrtsd_xmm_mem
     ldr d0, [_addr]            // Load double from memory
 
-    ldr x9, [_ip]
-    lsl x9, x9, 4
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
 
     fsqrt d0, d0
-    str d0, [x9]
-    gret 2
+    str d0, [x8]
+    gret 1
     read_bullshit 64, sqrtsd_xmm_mem
 
 // ============================================================
@@ -4711,17 +4747,18 @@ sse_xmm_xmm_op movdqa_xmm
 
 // SQRTSS xmm, m32
 .gadget sqrtss_xmm_mem
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 32, sqrtss_xmm_mem
     ldr s0, [_addr]            // Load float from memory
 
-    ldr x9, [_ip]
-    lsl x9, x9, 4
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
 
     fsqrt s0, s0
-    str s0, [x9]
-    gret 2
+    str s0, [x8]
+    gret 1
     read_bullshit 32, sqrtss_xmm_mem
 
 // ============================================================
@@ -4747,18 +4784,19 @@ sse_xmm_xmm_op movdqa_xmm
 
 // MINSS xmm, m32
 .gadget minss_xmm_mem
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 32, minss_xmm_mem
     ldr s0, [_addr]
 
-    ldr x9, [_ip]
-    lsl x9, x9, 4
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9
-    ldr s1, [x9]
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr s1, [x8]
 
     fmin s1, s1, s0
-    str s1, [x9]
-    gret 2
+    str s1, [x8]
+    gret 1
     read_bullshit 32, minss_xmm_mem
 
 // MAXSS xmm, xmm
@@ -4780,18 +4818,19 @@ sse_xmm_xmm_op movdqa_xmm
 
 // MAXSS xmm, m32
 .gadget maxss_xmm_mem
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 32, maxss_xmm_mem
     ldr s0, [_addr]
 
-    ldr x9, [_ip]
-    lsl x9, x9, 4
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9
-    ldr s1, [x9]
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr s1, [x8]
 
     fmax s1, s1, s0
-    str s1, [x9]
-    gret 2
+    str s1, [x8]
+    gret 1
     read_bullshit 32, maxss_xmm_mem
 
 // ============================================================
@@ -4814,15 +4853,18 @@ sse_xmm_xmm_op movdqa_xmm
 // CMPSD xmm, m64, imm8
 // Address already in _addr, [_ip] = dst XMM index, [_ip+8] = predicate, [_ip+16] = orig_ip
 .gadget cmpsd_xmm_mem
+    ldr x8, [_ip]              // dst XMM index (x8 safe across read_prep)
+    ldr x12, [_ip, 8]          // predicate imm8 (x12 safe across read_prep)
+    add _ip, _ip, 16           // [_ip] now points to orig_ip for fault path
     read_prep 64, cmpsd_xmm_mem
     save_c
     mov x0, _cpu
-    ldr x1, [_ip]              // dst XMM index
+    mov x1, x8                 // dst XMM index
     mov x2, _addr              // host memory address
-    ldr x3, [_ip, 8]           // predicate imm8
+    mov x3, x12                // predicate imm8
     bl NAME(helper_cmpsd_mem)
     restore_c
-    gret 3
+    gret 1
     read_bullshit 64, cmpsd_xmm_mem
 
 // ============================================================
@@ -4845,15 +4887,18 @@ sse_xmm_xmm_op movdqa_xmm
 // CMPSS xmm, m32, imm8
 // Address already in _addr, [_ip] = dst XMM index, [_ip+8] = predicate, [_ip+16] = orig_ip
 .gadget cmpss_xmm_mem
+    ldr x8, [_ip]              // dst XMM index (x8 safe across read_prep)
+    ldr x12, [_ip, 8]          // predicate imm8 (x12 safe across read_prep)
+    add _ip, _ip, 16           // [_ip] now points to orig_ip for fault path
     read_prep 32, cmpss_xmm_mem
     save_c
     mov x0, _cpu
-    ldr x1, [_ip]              // dst XMM index
+    mov x1, x8                 // dst XMM index
     mov x2, _addr              // host memory address
-    ldr x3, [_ip, 8]           // predicate imm8
+    mov x3, x12                // predicate imm8
     bl NAME(helper_cmpss_mem)
     restore_c
-    gret 3
+    gret 1
     read_bullshit 32, cmpss_xmm_mem
 
 // ============================================================
@@ -4871,15 +4916,18 @@ sse_xmm_xmm_op movdqa_xmm
     gret 3
 
 .gadget cmppd_xmm_mem
+    ldr x8, [_ip]              // dst XMM index (x8 safe across read_prep)
+    ldr x12, [_ip, 8]          // predicate imm8 (x12 safe across read_prep)
+    add _ip, _ip, 16           // [_ip] now points to orig_ip for fault path
     read_prep 128, cmppd_xmm_mem
     save_c
     mov x0, _cpu
-    ldr x1, [_ip]
+    mov x1, x8
     mov x2, _addr
-    ldr x3, [_ip, 8]
+    mov x3, x12
     bl NAME(helper_cmppd_mem)
     restore_c
-    gret 3
+    gret 1
     read_bullshit 128, cmppd_xmm_mem
 
 // ============================================================
@@ -4897,15 +4945,18 @@ sse_xmm_xmm_op movdqa_xmm
     gret 3
 
 .gadget cmpps_xmm_mem
+    ldr x8, [_ip]              // dst XMM index (x8 safe across read_prep)
+    ldr x12, [_ip, 8]          // imm8 (x12 safe across read_prep)
+    add _ip, _ip, 16           // [_ip] now points to orig_ip for fault path
     read_prep 128, cmpps_xmm_mem
     save_c
     mov x0, _cpu
-    ldr x1, [_ip]
+    mov x1, x8
     mov x2, _addr
-    ldr x3, [_ip, 8]
+    mov x3, x12
     bl NAME(helper_cmpps_mem)
     restore_c
-    gret 3
+    gret 1
     read_bullshit 128, cmpps_xmm_mem
 
 // ============================================================
@@ -4928,15 +4979,18 @@ sse_xmm_xmm_op movdqa_xmm
 // SHUFPD xmm, m128, imm8
 // Address already in _addr, [_ip] = dst XMM index, [_ip+8] = imm8, [_ip+16] = orig_ip
 .gadget shufpd_xmm_mem
+    ldr x8, [_ip]              // dst XMM index (x8 safe across read_prep)
+    ldr x12, [_ip, 8]          // imm8 (x12 safe across read_prep)
+    add _ip, _ip, 16           // [_ip] now points to orig_ip for fault path
     read_prep 128, shufpd_xmm_mem
     save_c
     mov x0, _cpu
-    ldr x1, [_ip]              // dst XMM index
+    mov x1, x8                 // dst XMM index
     mov x2, _addr              // host memory address
-    ldr x3, [_ip, 8]           // imm8
+    mov x3, x12                // imm8
     bl NAME(helper_shufpd_mem)
     restore_c
-    gret 3
+    gret 1
     read_bullshit 128, shufpd_xmm_mem
 
 // ============================================================
@@ -4944,15 +4998,18 @@ sse_xmm_xmm_op movdqa_xmm
 // ============================================================
 
 .gadget shufps_xmm_mem
+    ldr x8, [_ip]              // dst XMM index (x8 safe across read_prep)
+    ldr x12, [_ip, 8]          // imm8 (x12 safe across read_prep)
+    add _ip, _ip, 16           // [_ip] now points to orig_ip for fault path
     read_prep 128, shufps_xmm_mem
     save_c
     mov x0, _cpu
-    ldr x1, [_ip]
+    mov x1, x8
     mov x2, _addr
-    ldr x3, [_ip, 8]
+    mov x3, x12
     bl NAME(helper_shufps_mem)
     restore_c
-    gret 3
+    gret 1
     read_bullshit 128, shufps_xmm_mem
 
 // ============================================================
@@ -5049,15 +5106,16 @@ sse_xmm_xmm_op movdqa_xmm
 // COMISD xmm, m64 - Compare scalar double from XMM with memory
 // _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
 .gadget comisd_xmm_mem
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 64, comisd_xmm_mem
     ldr d1, [_addr]            // Load second double from memory
 
     // Load first XMM
-    ldr x9, [_ip]              // XMM index
-    lsl x9, x9, 4              // Multiply by 16
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9           // x9 = &xmm[src1]
-    ldr d0, [x9]               // Load first double
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[src1]
+    ldr d0, [x8]               // Load first double
 
     // Compare (ARM64 fcmp sets NZCV)
     fcmp d0, d1
@@ -5104,7 +5162,7 @@ sse_xmm_xmm_op movdqa_xmm
 
 .Lcomisd_mem_done:
     str w10, [_cpu, CPU_eflags]
-    gret 2
+    gret 1
     read_bullshit 64, comisd_xmm_mem
 
 // ============================================================
@@ -5136,19 +5194,20 @@ sse_xmm_xmm_op movdqa_xmm
 // _addr = GUEST mem addr, [_ip] = XMM index, [_ip+8] = orig_ip
 .macro ss_xmm_mem_op name, insn
 .gadget \name\()_xmm_mem
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 32, \name\()_xmm_mem
     ldr s0, [_addr]            // Load float from memory
 
-    ldr x9, [_ip]
-    lsl x9, x9, 4
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9
-    ldr s1, [x9]               // Load dst float
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr s1, [x8]               // Load dst float
 
     \insn s1, s1, s0           // dst = dst op src
 
-    str s1, [x9]               // Store result
-    gret 2
+    str s1, [x8]               // Store result
+    gret 1
     read_bullshit 32, \name\()_xmm_mem
 .endm
 
@@ -5178,15 +5237,16 @@ ss_xmm_mem_op divss, fdiv
 
 // CVTSS2SD xmm, m32 - Convert scalar single from memory to double
 .gadget cvtss2sd_xmm_mem
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 32, cvtss2sd_xmm_mem
     ldr s0, [_addr]
     fcvt d0, s0                // float → double
-    ldr x9, [_ip]
-    lsl x9, x9, 4
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9
-    str d0, [x9]
-    gret 2
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    str d0, [x8]
+    gret 1
     read_bullshit 32, cvtss2sd_xmm_mem
 
 // CVTSD2SS xmm, xmm - Convert scalar double to scalar single
@@ -5206,15 +5266,16 @@ ss_xmm_mem_op divss, fdiv
 
 // CVTSD2SS xmm, m64 - Convert scalar double from memory to single
 .gadget cvtsd2ss_xmm_mem
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 64, cvtsd2ss_xmm_mem
     ldr d0, [_addr]
     fcvt s0, d0                // double → float
-    ldr x9, [_ip]
-    lsl x9, x9, 4
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9
-    str s0, [x9]
-    gret 2
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    str s0, [x8]
+    gret 1
     read_bullshit 64, cvtsd2ss_xmm_mem
 
 // CVTTSS2SI r64, xmm - Convert truncated float to 64-bit signed integer
@@ -5294,15 +5355,16 @@ ss_xmm_mem_op divss, fdiv
 // COMISS/UCOMISS xmm, m32 - Compare scalar single from XMM with memory
 // _addr = memory address (GUEST), [_ip] = XMM index, [_ip+8] = orig_ip
 .gadget comiss_xmm_mem
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
     read_prep 32, comiss_xmm_mem
     ldr s1, [_addr]            // Load second float from memory
 
     // Load first XMM
-    ldr x9, [_ip]              // XMM index
-    lsl x9, x9, 4              // Multiply by 16
-    add x9, x9, CPU_xmm
-    add x9, _cpu, x9           // x9 = &xmm[src1]
-    ldr s0, [x9]               // Load first float
+    lsl x8, x8, 4              // Multiply by 16
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8           // x8 = &xmm[src1]
+    ldr s0, [x8]               // Load first float
 
     // Compare (ARM64 fcmp sets NZCV)
     fcmp s0, s1
@@ -5349,7 +5411,7 @@ ss_xmm_mem_op divss, fdiv
 
 .Lcomiss_mem_done:
     str w10, [_cpu, CPU_eflags]
-    gret 2
+    gret 1
     read_bullshit 32, comiss_xmm_mem
 
 // ============================================================================
