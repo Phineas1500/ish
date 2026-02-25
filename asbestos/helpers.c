@@ -51,7 +51,6 @@ void helper_collapse_flags(struct cpu_state *cpu) {
 }
 
 #ifdef ISH_GUEST_64BIT
-
 // Simple r10 load helper - used by load64_r10 workaround
 uint64_t helper_load_r10_simple(struct cpu_state *cpu) {
     return cpu->r10;

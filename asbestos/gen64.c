@@ -822,12 +822,18 @@ extern void gadget_store64_r15(void);
 // CMPXCHG gadgets
 extern void gadget_cmpxchg64_mem(void);
 extern void gadget_cmpxchg32_mem(void);
+extern void gadget_cmpxchg16_mem(void);
+extern void gadget_cmpxchg8_mem(void);
 extern void gadget_lock_cmpxchg64_mem(void);
 extern void gadget_lock_cmpxchg32_mem(void);
+extern void gadget_lock_cmpxchg16_mem(void);
+extern void gadget_lock_cmpxchg8_mem(void);
 
 // XCHG gadgets
 extern void gadget_xchg64_mem(void);
 extern void gadget_xchg32_mem(void);
+extern void gadget_xchg16_mem(void);
+extern void gadget_xchg8_mem(void);
 extern void gadget_xchg_al_ah(void);
 
 // ADC imm gadgets (register versions declared earlier)
@@ -5929,15 +5935,25 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         return 0;
       }
       GEN(load_src);
-      // Use appropriate cmpxchg gadget based on operand size
-      // LOCK prefix: use atomic CAS (casal) for thread-safe compare-and-swap
+      // cmpxchg r/m8, r8 with AH/BH/CH/DH source: extract high byte to low bits
+      if (inst.operands[0].size == size64_8 &&
+          zydis_is_high_byte_reg(inst.raw_operands[1].reg.value)) {
+        GEN(gadget_lea_lsr64_imm);
+        GEN(8);
+      }
+      // Use appropriate cmpxchg gadget based on operand size.
+      // LOCK prefix: use atomic CAS for thread-safe compare-and-swap.
       if (inst.operands[0].size == size64_64) {
         GEN(inst.has_lock ? gadget_lock_cmpxchg64_mem : gadget_cmpxchg64_mem);
-        GEN(state->orig_ip);
-      } else {
+      } else if (inst.operands[0].size == size64_32) {
         GEN(inst.has_lock ? gadget_lock_cmpxchg32_mem : gadget_cmpxchg32_mem);
-        GEN(state->orig_ip);
+      } else if (inst.operands[0].size == size64_16) {
+        GEN(inst.has_lock ? gadget_lock_cmpxchg16_mem : gadget_cmpxchg16_mem);
+      } else {
+        // size64_8
+        GEN(inst.has_lock ? gadget_lock_cmpxchg8_mem : gadget_cmpxchg8_mem);
       }
+      GEN(state->orig_ip);
     } else {
       g(interrupt);
       GEN(INT_UNDEFINED);
@@ -6009,11 +6025,20 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         return 0;
       }
       GEN(load_reg);
+      if (inst.operands[0].size == size64_8 &&
+          zydis_is_high_byte_reg(inst.raw_operands[0].reg.value)) {
+        GEN(gadget_lea_lsr64_imm);
+        GEN(8);
+      }
       // Exchange
       if (inst.operands[0].size == size64_64) {
         GEN(gadget_xchg64_mem);
-      } else {
+      } else if (inst.operands[0].size == size64_32) {
         GEN(gadget_xchg32_mem);
+      } else if (inst.operands[0].size == size64_16) {
+        GEN(gadget_xchg16_mem);
+      } else {
+        GEN(gadget_xchg8_mem);
       }
       GEN(state->orig_ip);
       // Store memory value (now in _xtmp) back to register
@@ -6037,11 +6062,20 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         return 0;
       }
       GEN(load_reg);
+      if (inst.operands[0].size == size64_8 &&
+          zydis_is_high_byte_reg(inst.raw_operands[1].reg.value)) {
+        GEN(gadget_lea_lsr64_imm);
+        GEN(8);
+      }
       // Exchange
       if (inst.operands[0].size == size64_64) {
         GEN(gadget_xchg64_mem);
-      } else {
+      } else if (inst.operands[0].size == size64_32) {
         GEN(gadget_xchg32_mem);
+      } else if (inst.operands[0].size == size64_16) {
+        GEN(gadget_xchg16_mem);
+      } else {
+        GEN(gadget_xchg8_mem);
       }
       GEN(state->orig_ip);
       // Store memory value (now in _xtmp) back to register

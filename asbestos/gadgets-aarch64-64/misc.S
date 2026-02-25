@@ -97,6 +97,66 @@
     read_bullshit 32, cmpxchg32_read
     write_bullshit 32, cmpxchg32_write
 
+// 16-bit CMPXCHG
+// Compare AX with [mem16], store src16 on match, else load mem16 into AX.
+.gadget cmpxchg16_mem
+    str _addr, [_cpu, LOCAL_value_addr]
+    read_prep 16, cmpxchg16_read
+    ldrh w8, [_addr]
+    uxth w9, eax
+    cmp w8, w9
+    b.ne 1f
+    // Equal: store source low16, set ZF=1
+    ldr _addr, [_cpu, LOCAL_value_addr]
+    write_prep 16, cmpxchg16_write
+    strh _tmp, [_addr]
+    write_done 16, cmpxchg16_write
+    str xzr, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret 1
+1:  // Not equal: AX = mem16 (upper 48 bits preserved), set ZF=0
+    bfxil rax, x8, 0, 16
+    mov x10, 1
+    str x10, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret 1
+    read_bullshit 16, cmpxchg16_read
+    write_bullshit 16, cmpxchg16_write
+
+// 8-bit CMPXCHG
+// Compare AL with [mem8], store src8 on match, else load mem8 into AL.
+.gadget cmpxchg8_mem
+    str _addr, [_cpu, LOCAL_value_addr]
+    read_prep 8, cmpxchg8_read
+    ldrb w8, [_addr]
+    uxtb w9, eax
+    cmp w8, w9
+    b.ne 1f
+    // Equal: store source low8, set ZF=1
+    ldr _addr, [_cpu, LOCAL_value_addr]
+    write_prep 8, cmpxchg8_write
+    strb _tmp, [_addr]
+    write_done 8, cmpxchg8_write
+    str xzr, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret 1
+1:  // Not equal: AL = mem8 (upper 56 bits preserved), set ZF=0
+    bfxil rax, x8, 0, 8
+    mov x10, 1
+    str x10, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret 1
+    read_bullshit 8, cmpxchg8_read
+    write_bullshit 8, cmpxchg8_write
+
 // LOCK CMPXCHG - Atomic compare and exchange using ARM64 LSE atomics
 // Uses write_prep to get host address with write permission, then casal for atomic CAS
 // For crosspage accesses, falls through to non-atomic (crosspage atomics are pathological)
@@ -179,39 +239,161 @@ lcmpxchg32_cross_fail:
     b lcmpxchg32_fail
     write_bullshit 32, lcmpxchg32
 
-// XCHG reg, [mem] - Exchange register with memory
+// 16-bit atomic CMPXCHG
+.gadget lock_cmpxchg16_mem
+    write_prep 16, lcmpxchg16
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lcmpxchg16_cross
+    uxth w12, eax
+    mov w9, w12
+    uxth w10, _tmp
+    casalh w9, w10, [_addr]   // atomic 16-bit CAS
+    cmp w9, w12
+    b.ne lcmpxchg16_fail
+    write_done 16, lcmpxchg16
+    str xzr, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret 1
+lcmpxchg16_fail:
+    bfxil rax, x9, 0, 16
+    mov x10, 1
+    str x10, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret 1
+lcmpxchg16_cross:
+    ldrh w8, [_addr]
+    uxth w12, eax
+    cmp w8, w12
+    b.ne lcmpxchg16_cross_fail
+    uxth w10, _tmp
+    strh w10, [_addr]
+    b back_write_done_lcmpxchg16
+lcmpxchg16_cross_fail:
+    mov w9, w8
+    b lcmpxchg16_fail
+    write_bullshit 16, lcmpxchg16
+
+// 8-bit atomic CMPXCHG
+.gadget lock_cmpxchg8_mem
+    write_prep 8, lcmpxchg8
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq lcmpxchg8_cross
+    uxtb w12, eax
+    mov w9, w12
+    uxtb w10, _tmp
+    casalb w9, w10, [_addr]   // atomic 8-bit CAS
+    cmp w9, w12
+    b.ne lcmpxchg8_fail
+    write_done 8, lcmpxchg8
+    str xzr, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret 1
+lcmpxchg8_fail:
+    bfxil rax, x9, 0, 8
+    mov x10, 1
+    str x10, [_cpu, CPU_res]
+    ldr w10, [_cpu, CPU_flags_res]
+    orr w10, w10, ZF_RES
+    str w10, [_cpu, CPU_flags_res]
+    gret 1
+lcmpxchg8_cross:
+    ldrb w8, [_addr]
+    uxtb w12, eax
+    cmp w8, w12
+    b.ne lcmpxchg8_cross_fail
+    uxtb w10, _tmp
+    strb w10, [_addr]
+    b back_write_done_lcmpxchg8
+lcmpxchg8_cross_fail:
+    mov w9, w8
+    b lcmpxchg8_fail
+    write_bullshit 8, lcmpxchg8
+
+// XCHG reg, [mem] - Exchange register with memory (implicit LOCK on x86)
 // _addr = memory address
-// _xtmp = register value to swap
+// _xtmp = register value to swap in
 
-// 64-bit XCHG
+// 64-bit XCHG (atomic on non-crosspage)
 .gadget xchg64_mem
-    str _addr, [_cpu, LOCAL_value_addr]  // Save guest address
-    read_prep 64, xchg64_read
-    ldr x8, [_addr]           // Load memory value
-    str x8, [_cpu, LOCAL_value]  // Save memory value temporarily
-    ldr _addr, [_cpu, LOCAL_value_addr]  // Restore guest address for write_prep
-    write_prep 64, xchg64_write
-    str _xtmp, [_addr]        // Store register value to memory
-    write_done 64, xchg64_write
-    ldr _xtmp, [_cpu, LOCAL_value]  // Load old memory value into _xtmp (for storing to reg)
+    write_prep 64, xchg64
+    mov x9, _xtmp
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq xchg64_cross
+    swpal x9, _xtmp, [_addr]      // _xtmp = old memory, memory = x9
+    b 1f
+xchg64_cross:
+    ldr x8, [_addr]
+    str x9, [_addr]
+    mov _xtmp, x8
+1:
+    write_done 64, xchg64
     gret 1
-    read_bullshit 64, xchg64_read
-    write_bullshit 64, xchg64_write
+    write_bullshit 64, xchg64
 
-// 32-bit XCHG
+// 32-bit XCHG (atomic on non-crosspage)
 .gadget xchg32_mem
-    str _addr, [_cpu, LOCAL_value_addr]  // Save guest address
-    read_prep 32, xchg32_read
-    ldr w8, [_addr]           // Load memory value (32-bit)
-    str w8, [_cpu, LOCAL_value]  // Save memory value temporarily
-    ldr _addr, [_cpu, LOCAL_value_addr]  // Restore guest address for write_prep
-    write_prep 32, xchg32_write
-    str _tmp, [_addr]         // Store register value to memory (32-bit)
-    write_done 32, xchg32_write
-    ldr _tmp, [_cpu, LOCAL_value]  // Load old memory value into _tmp (for storing to reg)
+    write_prep 32, xchg32
+    mov w9, _tmp
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq xchg32_cross
+    swpal w9, _tmp, [_addr]       // _tmp = old memory, memory = w9
+    b 1f
+xchg32_cross:
+    ldr w8, [_addr]
+    str w9, [_addr]
+    mov _tmp, w8
+1:
+    write_done 32, xchg32
     gret 1
-    read_bullshit 32, xchg32_read
-    write_bullshit 32, xchg32_write
+    write_bullshit 32, xchg32
+
+// 16-bit XCHG (atomic on non-crosspage)
+.gadget xchg16_mem
+    write_prep 16, xchg16
+    uxth w9, _tmp
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq xchg16_cross
+    swpalh w9, w8, [_addr]        // w8 = old memory, memory = low16(w9)
+    mov _tmp, w8
+    b 1f
+xchg16_cross:
+    ldrh w8, [_addr]
+    strh w9, [_addr]
+    mov _tmp, w8
+1:
+    write_done 16, xchg16
+    gret 1
+    write_bullshit 16, xchg16
+
+// 8-bit XCHG (atomic on non-crosspage)
+.gadget xchg8_mem
+    write_prep 8, xchg8
+    uxtb w9, _tmp
+    add x11, _cpu, LOCAL_value
+    cmp x11, _addr
+    b.eq xchg8_cross
+    swpalb w9, w8, [_addr]        // w8 = old memory, memory = low8(w9)
+    mov _tmp, w8
+    b 1f
+xchg8_cross:
+    ldrb w8, [_addr]
+    strb w9, [_addr]
+    mov _tmp, w8
+1:
+    write_done 8, xchg8
+    gret 1
+    write_bullshit 8, xchg8
 
 // Helper gadgets
 .gadget helper_0
