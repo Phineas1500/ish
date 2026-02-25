@@ -41,6 +41,7 @@ static bool node24_patch_empty_one_byte_string(addr_t string, uint32_t *patched_
 static void node24_bulk_patch_mapped_pages(struct cpu_state *cpu);
 static void node24_report_target_string_hashes(struct cpu_state *cpu);
 static void node24_trace_define_property(struct cpu_state *cpu, addr_t ip);
+static void node24_trace_fromjust_abort(struct cpu_state *cpu, addr_t ip);
 static bool node24_hash_seed_known = false;
 static uint32_t node24_hash_seed = 0;
 
@@ -767,6 +768,51 @@ maybe_core_return:
     }
 }
 
+static void node24_trace_fromjust_abort(struct cpu_state *cpu, addr_t ip) {
+    static uint32_t logged = 0;
+    if (logged >= 8)
+        return;
+    if ((ip & 0xfff) != 0xd53)
+        return;
+
+    // Match the leaq ... ; leaq ... ; xorl eax sequence in Maybe::FromJust fatal path.
+    static const uint8_t sig[] = {0x48, 0x8d, 0x35, 0x48, 0x8d, 0x3d, 0x31, 0xc0};
+    uint8_t b0, b1, b2, b7, b8, b9, b14, b15;
+    if (user_get(ip + 0, b0) || user_get(ip + 1, b1) || user_get(ip + 2, b2) ||
+        user_get(ip + 7, b7) || user_get(ip + 8, b8) || user_get(ip + 9, b9) ||
+        user_get(ip + 14, b14) || user_get(ip + 15, b15))
+        return;
+    if (!(b0 == sig[0] && b1 == sig[1] && b2 == sig[2] &&
+          b7 == sig[3] && b8 == sig[4] && b9 == sig[5] &&
+          b14 == sig[6] && b15 == sig[7])) {
+        return;
+    }
+
+    addr_t caller = 0;
+    user_get((addr_t)(cpu->rbp + 8), caller);
+    logged++;
+    fprintf(stderr, "[node24] FromJust abort path ip=%#llx caller=%#llx ax=%#x r9=%#llx\n",
+            (unsigned long long)ip, (unsigned long long)caller,
+            (unsigned)(cpu->rax & 0xffff), (unsigned long long)cpu->r9);
+
+    uint64_t pending_exc = 0;
+    if (user_get((addr_t)(cpu->r13 + 0x300), pending_exc) == 0 && (pending_exc & 1)) {
+        addr_t exc_obj = (addr_t)(pending_exc - 1);
+        uint64_t slots[3] = {0, 0, 0};
+        user_get((addr_t)(exc_obj + 0x20), slots[0]);
+        user_get((addr_t)(exc_obj + 0x28), slots[1]);
+        user_get((addr_t)(exc_obj + 0x30), slots[2]);
+        for (int i = 0; i < 3; i++) {
+            if ((slots[i] & 1) == 0)
+                continue;
+            char msg[160];
+            if (node24_read_one_byte_string_preview((addr_t)slots[i], msg, sizeof(msg), NULL)) {
+                fprintf(stderr, "[node24] pending_exc slot[%d] one-byte string: \"%s\"\n", i, msg);
+            }
+        }
+    }
+}
+
 static void maybe_fix_node24_empty_hash(struct cpu_state *cpu, addr_t ip) {
     static uint32_t fixups_logged = 0;
 
@@ -981,6 +1027,7 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
         addr_t ip = CPU_IP(&frame->cpu);
 #ifdef ISH_GUEST_64BIT
         node24_trace_define_property(&frame->cpu, ip);
+        node24_trace_fromjust_abort(&frame->cpu, ip);
         if (maybe_bypass_node24_forwarding_lookup(&frame->cpu, ip))
             continue;
         maybe_fix_node24_empty_hash(&frame->cpu, ip);
