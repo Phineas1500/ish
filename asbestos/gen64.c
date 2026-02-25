@@ -514,6 +514,10 @@ extern void gadget_psubw(void);
 extern void gadget_psubq(void);
 extern void gadget_psubd(void);
 extern void gadget_orps(void);
+extern void gadget_pminub(void);
+extern void gadget_pmaxub(void);
+extern void gadget_pminsw(void);
+extern void gadget_pmaxsw(void);
 extern void gadget_pshufd(void);
 extern void gadget_pshufd_mem(void);
 extern void gadget_shufps(void);
@@ -525,6 +529,10 @@ extern void gadget_pand_mem(void);
 extern void gadget_pandn_mem(void);
 extern void gadget_por_mem(void);
 extern void gadget_orps_mem(void);
+extern void gadget_pminub_mem(void);
+extern void gadget_pmaxub_mem(void);
+extern void gadget_pminsw_mem(void);
+extern void gadget_pmaxsw_mem(void);
 extern void gadget_paddb_mem(void);
 extern void gadget_paddw_mem(void);
 extern void gadget_paddd_mem(void);
@@ -647,6 +655,12 @@ extern void gadget_cmpsd_xmm_mem(void);  // cmpsd xmm, m64, imm8
 // SSE CMPSS - Compare Scalar Single with predicate
 extern void gadget_cmpss_xmm_xmm(void);  // cmpss xmm, xmm, imm8
 extern void gadget_cmpss_xmm_mem(void);  // cmpss xmm, m32, imm8
+// SSE CMPPD - Compare Packed Double-Precision with predicate
+extern void gadget_cmppd_xmm_xmm(void);
+extern void gadget_cmppd_xmm_mem(void);
+// SSE CMPPS - Compare Packed Single-Precision with predicate
+extern void gadget_cmpps_xmm_xmm(void);
+extern void gadget_cmpps_xmm_mem(void);
 // SSE SHUFPD - Shuffle Packed Double-Precision
 extern void gadget_shufpd_xmm_xmm(void);  // shufpd xmm, xmm, imm8
 extern void gadget_shufpd_xmm_mem(void);  // shufpd xmm, m128, imm8
@@ -3590,7 +3604,7 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         int dst_size = inst.operands[0].size;
         if (dst_size == size64_8 || dst_size == size64_16) {
           // 8/16-bit AND must set flags from low result only.
-          // Mask source before AND to avoid upper bits affecting flags.
+          // Masking source first prevents upper register bits from leaking into ZF/SF.
           gadget_t load2 = get_load64_reg_gadget(inst.operands[1].type);
           if (!load2) {
             g(interrupt);
@@ -3607,6 +3621,8 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
             GEN(gadget_lea_lsr64_imm);
             GEN(8);
           }
+          // x8 holds the original destination value for the final AND.
+          // Use zero_extend* so x8 is preserved.
           if (dst_size == size64_8) {
             GEN(gadget_zero_extend8);
           } else {
@@ -5805,10 +5821,11 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       // LOCK prefix: use atomic CAS (casal) for thread-safe compare-and-swap
       if (inst.operands[0].size == size64_64) {
         GEN(inst.has_lock ? gadget_lock_cmpxchg64_mem : gadget_cmpxchg64_mem);
+        GEN(state->orig_ip);
       } else {
         GEN(inst.has_lock ? gadget_lock_cmpxchg32_mem : gadget_cmpxchg32_mem);
+        GEN(state->orig_ip);
       }
-      GEN(state->orig_ip);
     } else {
       g(interrupt);
       GEN(INT_UNDEFINED);
@@ -7279,6 +7296,39 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     break;
   }
 
+  case ZYDIS_MNEMONIC_CMPPD:
+  case ZYDIS_MNEMONIC_CMPPS: {
+    // CMPPD/CMPPS xmm, xmm/m128, imm8 - Compare Packed FP with predicate
+    if (inst.operand_count >= 3 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      uint8_t pred = inst.operands[2].imm;
+      bool is_pd = (inst.mnemonic == ZYDIS_MNEMONIC_CMPPD);
+      if (is_xmm(inst.operands[1].type)) {
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        GEN(is_pd ? gadget_cmppd_xmm_xmm : gadget_cmpps_xmm_xmm);
+        GEN(dst_xmm);
+        GEN(src_xmm);
+        GEN(pred);
+      } else if (is_mem(inst.operands[1].type)) {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt); GEN(INT_UNDEFINED);
+          GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+        }
+        GEN(is_pd ? gadget_cmppd_xmm_mem : gadget_cmpps_xmm_mem);
+        GEN(dst_xmm);
+        GEN(pred);
+        GEN(state->orig_ip);
+      } else {
+        g(interrupt); GEN(INT_UNDEFINED);
+        GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+      }
+    } else {
+      g(interrupt); GEN(INT_UNDEFINED);
+      GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+  }
+
   case ZYDIS_MNEMONIC_SHUFPD:
   case ZYDIS_MNEMONIC_SHUFPS: {
     // SHUFPD/SHUFPS xmm, xmm/m128, imm8 - Shuffle Packed FP
@@ -7815,6 +7865,10 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
   case ZYDIS_MNEMONIC_PSUBD:
   case ZYDIS_MNEMONIC_ORPS:
   case ZYDIS_MNEMONIC_ORPD:
+  case ZYDIS_MNEMONIC_PMINUB:
+  case ZYDIS_MNEMONIC_PMAXUB:
+  case ZYDIS_MNEMONIC_PMINSW:
+  case ZYDIS_MNEMONIC_PMAXSW:
   case ZYDIS_MNEMONIC_ANDPD:
   case ZYDIS_MNEMONIC_ANDPS: {
     // Packed SSE2 integer/bitwise xmm, xmm/m128 operations
@@ -7856,6 +7910,10 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           case ZYDIS_MNEMONIC_PSUBD:       gadget = gadget_psubd; break;
           case ZYDIS_MNEMONIC_ORPS:        gadget = gadget_orps; break;
           case ZYDIS_MNEMONIC_ORPD:        gadget = gadget_orps; break;
+          case ZYDIS_MNEMONIC_PMINUB:      gadget = gadget_pminub; break;
+          case ZYDIS_MNEMONIC_PMAXUB:      gadget = gadget_pmaxub; break;
+          case ZYDIS_MNEMONIC_PMINSW:      gadget = gadget_pminsw; break;
+          case ZYDIS_MNEMONIC_PMAXSW:      gadget = gadget_pmaxsw; break;
           case ZYDIS_MNEMONIC_ANDPD:       gadget = gadget_pand; break;
           case ZYDIS_MNEMONIC_ANDPS:       gadget = gadget_pand; break;
           default: gadget = gadget_punpckldq; break; // unreachable
@@ -7902,6 +7960,10 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           case ZYDIS_MNEMONIC_PSUBD:       gadget = gadget_psubd_mem; break;
           case ZYDIS_MNEMONIC_ORPS:        gadget = gadget_orps_mem; break;
           case ZYDIS_MNEMONIC_ORPD:        gadget = gadget_orps_mem; break;
+          case ZYDIS_MNEMONIC_PMINUB:      gadget = gadget_pminub_mem; break;
+          case ZYDIS_MNEMONIC_PMAXUB:      gadget = gadget_pmaxub_mem; break;
+          case ZYDIS_MNEMONIC_PMINSW:      gadget = gadget_pminsw_mem; break;
+          case ZYDIS_MNEMONIC_PMAXSW:      gadget = gadget_pmaxsw_mem; break;
           case ZYDIS_MNEMONIC_ANDPD:       gadget = gadget_pand_mem; break;
           case ZYDIS_MNEMONIC_ANDPS:       gadget = gadget_pand_mem; break;
           default: gadget = gadget_pand_mem; break; // unreachable

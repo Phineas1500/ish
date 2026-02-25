@@ -798,6 +798,82 @@ void helper_psubd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
     memcpy(&cpu->xmm[dst_idx], dst, 16);
 }
 
+// PMINUB xmm, xmm - Packed minimum unsigned bytes
+void helper_pminub(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint8_t dst[16], src[16];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 16; i++)
+        if (src[i] < dst[i]) dst[i] = src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+void helper_pminub_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint8_t dst[16], src[16];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    for (int i = 0; i < 16; i++)
+        if (src[i] < dst[i]) dst[i] = src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+// PMAXUB xmm, xmm - Packed maximum unsigned bytes
+void helper_pmaxub(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    uint8_t dst[16], src[16];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 16; i++)
+        if (src[i] > dst[i]) dst[i] = src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+void helper_pmaxub_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    uint8_t dst[16], src[16];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    for (int i = 0; i < 16; i++)
+        if (src[i] > dst[i]) dst[i] = src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+// PMINSW xmm, xmm - Packed minimum signed words
+void helper_pminsw(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    int16_t dst[8], src[8];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 8; i++)
+        if (src[i] < dst[i]) dst[i] = src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+void helper_pminsw_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    int16_t dst[8], src[8];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    for (int i = 0; i < 8; i++)
+        if (src[i] < dst[i]) dst[i] = src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+// PMAXSW xmm, xmm - Packed maximum signed words
+void helper_pmaxsw(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    int16_t dst[8], src[8];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, &cpu->xmm[src_idx], 16);
+    for (int i = 0; i < 8; i++)
+        if (src[i] > dst[i]) dst[i] = src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
+void helper_pmaxsw_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    int16_t dst[8], src[8];
+    memcpy(dst, &cpu->xmm[dst_idx], 16);
+    memcpy(src, src_addr, 16);
+    for (int i = 0; i < 8; i++)
+        if (src[i] > dst[i]) dst[i] = src[i];
+    memcpy(&cpu->xmm[dst_idx], dst, 16);
+}
+
 // PADDQ xmm, xmm - Add packed 64-bit integers
 void helper_paddq(struct cpu_state *cpu, int dst_idx, int src_idx) {
     uint64_t dst[2], src[2];
@@ -1337,6 +1413,76 @@ void helper_cmpss_mem(struct cpu_state *cpu, int dst_idx, void *src_addr, uint8_
     }
     uint32_t mask = result ? 0xFFFFFFFFU : 0;
     memcpy(&cpu->xmm[dst_idx], &mask, 4);
+}
+
+// CMPPD xmm, xmm/m128, imm8 - Compare Packed Double-Precision FP
+static int cmp_pred_double(double a, double b, uint8_t pred) {
+    switch (pred & 7) {
+    case 0: return (a == b);
+    case 1: return (a < b);
+    case 2: return (a <= b);
+    case 3: return __builtin_isunordered(a, b);
+    case 4: return (a != b);
+    case 5: return !(a < b);
+    case 6: return !(a <= b);
+    case 7: return !__builtin_isunordered(a, b);
+    default: return 0;
+    }
+}
+
+void helper_cmppd(struct cpu_state *cpu, int dst_idx, int src_idx, uint8_t pred) {
+    double a[2], b[2];
+    memcpy(a, &cpu->xmm[dst_idx], 16);
+    memcpy(b, &cpu->xmm[src_idx], 16);
+    uint64_t result[2];
+    for (int i = 0; i < 2; i++)
+        result[i] = cmp_pred_double(a[i], b[i], pred) ? 0xFFFFFFFFFFFFFFFFULL : 0;
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+void helper_cmppd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr, uint8_t pred) {
+    double a[2], b[2];
+    memcpy(a, &cpu->xmm[dst_idx], 16);
+    memcpy(b, src_addr, 16);
+    uint64_t result[2];
+    for (int i = 0; i < 2; i++)
+        result[i] = cmp_pred_double(a[i], b[i], pred) ? 0xFFFFFFFFFFFFFFFFULL : 0;
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+// CMPPS xmm, xmm/m128, imm8 - Compare Packed Single-Precision FP
+static int cmp_pred_float(float a, float b, uint8_t pred) {
+    switch (pred & 7) {
+    case 0: return (a == b);
+    case 1: return (a < b);
+    case 2: return (a <= b);
+    case 3: return __builtin_isunordered(a, b);
+    case 4: return (a != b);
+    case 5: return !(a < b);
+    case 6: return !(a <= b);
+    case 7: return !__builtin_isunordered(a, b);
+    default: return 0;
+    }
+}
+
+void helper_cmpps(struct cpu_state *cpu, int dst_idx, int src_idx, uint8_t pred) {
+    float a[4], b[4];
+    memcpy(a, &cpu->xmm[dst_idx], 16);
+    memcpy(b, &cpu->xmm[src_idx], 16);
+    uint32_t result[4];
+    for (int i = 0; i < 4; i++)
+        result[i] = cmp_pred_float(a[i], b[i], pred) ? 0xFFFFFFFFU : 0;
+    memcpy(&cpu->xmm[dst_idx], result, 16);
+}
+
+void helper_cmpps_mem(struct cpu_state *cpu, int dst_idx, void *src_addr, uint8_t pred) {
+    float a[4], b[4];
+    memcpy(a, &cpu->xmm[dst_idx], 16);
+    memcpy(b, src_addr, 16);
+    uint32_t result[4];
+    for (int i = 0; i < 4; i++)
+        result[i] = cmp_pred_float(a[i], b[i], pred) ? 0xFFFFFFFFU : 0;
+    memcpy(&cpu->xmm[dst_idx], result, 16);
 }
 
 // PUNPCKLWD xmm, xmm - Unpack and interleave low words
