@@ -696,9 +696,10 @@ static void node24_trace_define_property(struct cpu_state *cpu, addr_t ip) {
             user_get((addr_t)(cpu->rbp - 0x70), key_handle);
             char key_name[160];
             bool have_key = node24_try_decode_string_handle((addr_t)key_handle, key_name, sizeof(key_name));
-            if (have_key && iter_state == 5 && cpu->rax == 0x1 && strcmp(key_name, "name") == 0) {
+            if (have_key && iter_state == 5 && cpu->rax == 0x1 &&
+                (strcmp(key_name, "name") == 0 || strcmp(key_name, "length") == 0)) {
                 if (node24_trace_verbose)
-                    fprintf(stderr, "[node24] forcing DefineEpilogue success for key=\"name\" state=5\n");
+                    fprintf(stderr, "[node24] forcing DefineEpilogue success key=\"%s\" state=5\n", key_name);
                 cpu->rax = 0x101;
             }
         }
@@ -828,8 +829,9 @@ static void node24_trace_define_property(struct cpu_state *cpu, addr_t ip) {
             user_get((addr_t)(cpu->rbp - 0x60), recv_handle);
             char key_name[160];
             bool have_key = node24_try_decode_string_handle((addr_t)key_handle, key_name, sizeof(key_name));
-            if (have_key && iter_state == 5 && cpu->rax == 0x1 && strcmp(key_name, "name") == 0) {
-                fprintf(stderr, "[node24] forcing DefineEpilogue success for key=\"name\" state=5\n");
+            if (have_key && iter_state == 5 && cpu->rax == 0x1 &&
+                (strcmp(key_name, "name") == 0 || strcmp(key_name, "length") == 0)) {
+                fprintf(stderr, "[node24] forcing DefineEpilogue success key=\"%s\" state=5\n", key_name);
                 cpu->rax = 0x101;
             }
             bool interesting = (cpu->rax != 0x101) || (iter_state != 6) ||

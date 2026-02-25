@@ -3583,23 +3583,51 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         }
         GEN(and_imm);
       } else if (is_gpr(inst.operands[1].type)) {
-        int reg_idx = inst.operands[1].type - arg64_rax;
-        if (reg_idx >= 0 && reg_idx < 8) {
-          if (inst.operands[0].size == size64_32) {
-            GEN(and32_gadgets[reg_idx]);
-          } else {
-            GEN(and64_gadgets[reg_idx]);
-          }
-        } else {
-          // r8-r15: load to x8, use and_x8
+        int dst_size = inst.operands[0].size;
+        if (dst_size == size64_8 || dst_size == size64_16) {
+          // 8/16-bit AND must set flags from low result only.
+          // Mask source before AND to avoid upper bits affecting flags.
           gadget_t load2 = get_load64_reg_gadget(inst.operands[1].type);
-          if (load2) {
-            GEN(gadget_save_xtmp_to_x8);
-            GEN(load2);
-            if (inst.operands[0].size == size64_32) {
-              GEN(gadget_and32_x8);
+          if (!load2) {
+            g(interrupt);
+            GEN(INT_UNDEFINED);
+            GEN(state->orig_ip);
+            GEN(state->orig_ip);
+            return 0;
+          }
+          GEN(gadget_save_xtmp_to_x8);
+          GEN(load2);
+          if (dst_size == size64_8 &&
+              inst.raw_operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+              zydis_is_high_byte_reg(inst.raw_operands[1].reg.value)) {
+            GEN(gadget_lea_lsr64_imm);
+            GEN(8);
+          }
+          if (dst_size == size64_8) {
+            GEN(gadget_zero_extend8);
+          } else {
+            GEN(gadget_zero_extend16);
+          }
+          GEN(gadget_and64_x8);
+        } else {
+          int reg_idx = inst.operands[1].type - arg64_rax;
+          if (reg_idx >= 0 && reg_idx < 8) {
+            if (dst_size == size64_32) {
+              GEN(and32_gadgets[reg_idx]);
             } else {
-              GEN(gadget_and64_x8);
+              GEN(and64_gadgets[reg_idx]);
+            }
+          } else {
+            // r8-r15: load to x8, use and_x8
+            gadget_t load2 = get_load64_reg_gadget(inst.operands[1].type);
+            if (load2) {
+              GEN(gadget_save_xtmp_to_x8);
+              GEN(load2);
+              if (dst_size == size64_32) {
+                GEN(gadget_and32_x8);
+              } else {
+                GEN(gadget_and64_x8);
+              }
             }
           }
         }
