@@ -290,6 +290,70 @@
     setf_zsp w
     gret
 
+// 16-bit ADD immediate: set flags from 16-bit result.
+.gadget add16_imm
+    ldr w8, [_ip]
+    and w8, w8, 0xffff
+    and w10, _tmp, 0xffff
+    add w11, w10, w8
+    and w11, w11, 0xffff
+    mov _tmp, w11
+    // Shift operands so 16-bit carry/sign map to bit 63 for NZCV.
+    lsl x12, x10, #48
+    lsl x13, x8, #48
+    adds x14, x12, x13
+    setf_oc_add
+    sxth x15, w11
+    setf_zsp h, x15
+    gret 1
+
+// 8-bit ADD immediate: set flags from 8-bit result.
+.gadget add8_imm
+    ldr w8, [_ip]
+    and w8, w8, 0xff
+    and w10, _tmp, 0xff
+    add w11, w10, w8
+    and w11, w11, 0xff
+    mov _tmp, w11
+    // Shift operands so 8-bit carry/sign map to bit 63 for NZCV.
+    lsl x12, x10, #56
+    lsl x13, x8, #56
+    adds x14, x12, x13
+    setf_oc_add
+    sxtb x15, w11
+    setf_zsp b, x15
+    gret 1
+
+// 16-bit ADD with x8 source: set flags from 16-bit result.
+.gadget add16_x8
+    and w8, w8, 0xffff
+    and w10, _tmp, 0xffff
+    add w11, w10, w8
+    and w11, w11, 0xffff
+    mov _tmp, w11
+    lsl x12, x10, #48
+    lsl x13, x8, #48
+    adds x14, x12, x13
+    setf_oc_add
+    sxth x15, w11
+    setf_zsp h, x15
+    gret
+
+// 8-bit ADD with x8 source: set flags from 8-bit result.
+.gadget add8_x8
+    and w8, w8, 0xff
+    and w10, _tmp, 0xff
+    add w11, w10, w8
+    and w11, w11, 0xff
+    mov _tmp, w11
+    lsl x12, x10, #56
+    lsl x13, x8, #56
+    adds x14, x12, x13
+    setf_oc_add
+    sxtb x15, w11
+    setf_zsp b, x15
+    gret
+
 // ============================================================
 // ADC gadgets (Add with Carry)
 // ============================================================
@@ -522,6 +586,40 @@
     setf_zsp w
     gret 1
 
+// 16-bit SUB immediate: set flags from 16-bit result.
+.gadget sub16_imm
+    ldr w8, [_ip]
+    and w8, w8, 0xffff
+    and w10, _tmp, 0xffff
+    sub w11, w10, w8
+    and w11, w11, 0xffff
+    mov _tmp, w11
+    // Shift operands so 16-bit borrow/sign map to bit 63 for NZCV.
+    lsl x12, x10, #48
+    lsl x13, x8, #48
+    subs x14, x12, x13
+    setf_oc
+    sxth x15, w11
+    setf_zsp h, x15
+    gret 1
+
+// 8-bit SUB immediate: set flags from 8-bit result.
+.gadget sub8_imm
+    ldr w8, [_ip]
+    and w8, w8, 0xff
+    and w10, _tmp, 0xff
+    sub w11, w10, w8
+    and w11, w11, 0xff
+    mov _tmp, w11
+    // Shift operands so 8-bit borrow/sign map to bit 63 for NZCV.
+    lsl x12, x10, #56
+    lsl x13, x8, #56
+    subs x14, x12, x13
+    setf_oc
+    sxtb x15, w11
+    setf_zsp b, x15
+    gret 1
+
 // DEC gadgets - decrement by 1, preserving CF
 // DEC affects OF, ZF, SF, PF, AF but NOT CF!
 .gadget dec64
@@ -662,6 +760,36 @@
     subs _tmp, w8, _tmp
     setf_oc
     setf_zsp w
+    gret
+
+// 16-bit SUB with x8 source: dst = dst - src, set flags from 16-bit result.
+.gadget sub16_x8
+    and w8, w8, 0xffff
+    and w10, _tmp, 0xffff
+    sub w11, w10, w8
+    and w11, w11, 0xffff
+    mov _tmp, w11
+    lsl x12, x10, #48
+    lsl x13, x8, #48
+    subs x14, x12, x13
+    setf_oc
+    sxth x15, w11
+    setf_zsp h, x15
+    gret
+
+// 8-bit SUB with x8 source: dst = dst - src, set flags from 8-bit result.
+.gadget sub8_x8
+    and w8, w8, 0xff
+    and w10, _tmp, 0xff
+    sub w11, w10, w8
+    and w11, w11, 0xff
+    mov _tmp, w11
+    lsl x12, x10, #56
+    lsl x13, x8, #56
+    subs x14, x12, x13
+    setf_oc
+    sxtb x15, w11
+    setf_zsp b, x15
     gret
 
 .gadget sub32_mem
