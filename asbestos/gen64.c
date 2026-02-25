@@ -612,6 +612,10 @@ extern void gadget_cvtss2sd_xmm_xmm(void);
 extern void gadget_cvtss2sd_xmm_mem(void);
 extern void gadget_cvtsd2ss_xmm_xmm(void);
 extern void gadget_cvtsd2ss_xmm_mem(void);
+extern void gadget_cvttpd2dq_xmm_xmm(void);
+extern void gadget_cvttpd2dq_xmm_mem(void);
+extern void gadget_cvtdq2pd_xmm_xmm(void);
+extern void gadget_cvtdq2pd_xmm_mem(void);
 extern void gadget_cvttss2si_reg64(void);
 extern void gadget_cvttss2si_reg32(void);
 // SSE UCOMISS/COMISS - Unordered/Ordered Compare Scalar Single
@@ -7481,6 +7485,80 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         GEN(gadget_pxor_xmm_mem);
         GEN(state->orig_ip);
         GEN(get_xmm_index(inst.operands[0].type));
+      }
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_CVTTPD2DQ:
+    // CVTTPD2DQ xmm, xmm/m128 - Convert packed doubles to packed int32 (truncate)
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      if (is_xmm(inst.operands[1].type)) {
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        GEN(load64_gadgets[8]); // load64_imm: source XMM index
+        GEN(src_xmm);
+        GEN(gadget_cvttpd2dq_xmm_xmm);
+        GEN(dst_xmm);
+      } else if (is_mem(inst.operands[1].type)) {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        GEN(gadget_cvttpd2dq_xmm_mem);
+        GEN(dst_xmm);
+        GEN(state->orig_ip);
+      } else {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_CVTDQ2PD:
+    // CVTDQ2PD xmm, xmm/m64 - Convert two packed int32 to two packed doubles
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      if (is_xmm(inst.operands[1].type)) {
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        GEN(load64_gadgets[8]); // load64_imm: source XMM index
+        GEN(src_xmm);
+        GEN(gadget_cvtdq2pd_xmm_xmm);
+        GEN(dst_xmm);
+      } else if (is_mem(inst.operands[1].type)) {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        GEN(gadget_cvtdq2pd_xmm_mem);
+        GEN(dst_xmm);
+        GEN(state->orig_ip);
+      } else {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
       }
     } else {
       g(interrupt);

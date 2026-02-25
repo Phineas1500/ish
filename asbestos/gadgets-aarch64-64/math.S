@@ -4415,6 +4415,68 @@ sse_xmm_xmm_op movdqa_xmm
     read_bullshit 32, cvtsi2ss_mem32
 
 // ============================================================
+// CVTTPD2DQ - Convert with Truncation Packed Double to Packed Int32
+// ============================================================
+
+// CVTTPD2DQ xmm, xmm
+// _xtmp = source XMM index, [_ip] = destination XMM index
+.gadget cvttpd2dq_xmm_xmm
+    mov x9, _xtmp              // save src XMM index before clobbering x0
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    mov x2, x9                 // src XMM index
+    bl NAME(helper_cvttpd2dq)
+    restore_c
+    gret 1
+
+// CVTTPD2DQ xmm, m128
+// _addr = memory address (GUEST), [_ip] = dst XMM index, [_ip+8] = orig_ip
+.gadget cvttpd2dq_xmm_mem
+    ldr x8, [_ip]              // dst XMM index (safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
+    read_prep 128, cvttpd2dq_xmm_mem
+    save_c
+    mov x0, _cpu
+    mov x1, x8
+    mov x2, _addr
+    bl NAME(helper_cvttpd2dq_mem)
+    restore_c
+    gret 1
+    read_bullshit 128, cvttpd2dq_xmm_mem
+
+// ============================================================
+// CVTDQ2PD - Convert Packed Int32 to Packed Double
+// ============================================================
+
+// CVTDQ2PD xmm, xmm
+// _xtmp = source XMM index, [_ip] = destination XMM index
+.gadget cvtdq2pd_xmm_xmm
+    mov x9, _xtmp              // save src XMM index before clobbering x0
+    save_c
+    mov x0, _cpu
+    ldr x1, [_ip]              // dst XMM index
+    mov x2, x9                 // src XMM index
+    bl NAME(helper_cvtdq2pd)
+    restore_c
+    gret 1
+
+// CVTDQ2PD xmm, m64
+// _addr = memory address (GUEST), [_ip] = dst XMM index, [_ip+8] = orig_ip
+.gadget cvtdq2pd_xmm_mem
+    ldr x8, [_ip]              // dst XMM index (safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
+    read_prep 64, cvtdq2pd_xmm_mem
+    save_c
+    mov x0, _cpu
+    mov x1, x8
+    mov x2, _addr
+    bl NAME(helper_cvtdq2pd_mem)
+    restore_c
+    gret 1
+    read_bullshit 64, cvtdq2pd_xmm_mem
+
+// ============================================================
 // CVTTSD2SI - Convert with Truncation Scalar Double to Signed Integer
 // Truncation means round toward zero (unlike CVTSD2SI which uses rounding mode)
 // ============================================================

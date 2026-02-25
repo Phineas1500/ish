@@ -1315,6 +1315,60 @@ int helper_movmskps(struct cpu_state *cpu, int src_idx) {
     return mask;
 }
 
+// CVTTPD2DQ xmm, xmm/m128 - Convert two packed doubles to two signed int32
+// with truncation toward zero. Upper 64 bits are zeroed.
+// Out-of-range/NaN values produce 0x80000000 ("indefinite").
+void helper_cvttpd2dq(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    double src[2];
+    uint32_t out[4] = {0, 0, 0, 0};
+    memcpy(src, &cpu->xmm[src_idx], sizeof(src));
+
+    for (int i = 0; i < 2; i++) {
+        double d = src[i];
+        if (d < -2147483648.0 || d > 2147483647.0) {
+            out[i] = 0x80000000u;
+        } else {
+            out[i] = (uint32_t)(int32_t)d;
+        }
+    }
+    memcpy(&cpu->xmm[dst_idx], out, sizeof(out));
+}
+
+void helper_cvttpd2dq_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    double src[2];
+    uint32_t out[4] = {0, 0, 0, 0};
+    memcpy(src, src_addr, sizeof(src));
+
+    for (int i = 0; i < 2; i++) {
+        double d = src[i];
+        if (d < -2147483648.0 || d > 2147483647.0) {
+            out[i] = 0x80000000u;
+        } else {
+            out[i] = (uint32_t)(int32_t)d;
+        }
+    }
+    memcpy(&cpu->xmm[dst_idx], out, sizeof(out));
+}
+
+// CVTDQ2PD xmm, xmm/m64 - Convert two packed int32 to two packed doubles.
+void helper_cvtdq2pd(struct cpu_state *cpu, int dst_idx, int src_idx) {
+    int32_t src[4];
+    double out[2];
+    memcpy(src, &cpu->xmm[src_idx], sizeof(src));
+    out[0] = (double)src[0];
+    out[1] = (double)src[1];
+    memcpy(&cpu->xmm[dst_idx], out, sizeof(out));
+}
+
+void helper_cvtdq2pd_mem(struct cpu_state *cpu, int dst_idx, void *src_addr) {
+    int32_t src[2];
+    double out[2];
+    memcpy(src, src_addr, sizeof(src));
+    out[0] = (double)src[0];
+    out[1] = (double)src[1];
+    memcpy(&cpu->xmm[dst_idx], out, sizeof(out));
+}
+
 // PEXTRW r32, xmm, imm8 - Extract word from XMM
 int helper_pextrw(struct cpu_state *cpu, int src_idx, uint8_t imm) {
     uint16_t w[8];
