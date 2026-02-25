@@ -79,6 +79,7 @@ extern gadget_t load64_gadgets[];
 extern gadget_t load32_gadgets[];
 extern gadget_t store64_gadgets[];
 extern gadget_t store32_gadgets[];
+extern void gadget_load64_imm(void);
 
 // External gadgets
 extern void gadget_exit(void);
@@ -6770,6 +6771,36 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       }
       gen_store_reg_partial(state, &inst, 0);
     } else if (is_mem(inst.operands[0].type)) {
+      if (inst.has_lock) {
+        if (!gen_addr(state, &inst.operands[0], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        // LOCK INC [mem] is atomic add of 1. Compute INC flags from old value.
+        GEN(gadget_load64_imm);
+        GEN(1);
+        if (inst.operands[0].size == size64_64) {
+          GEN(gadget_lock_add64_mem);
+          GEN(state->orig_ip);
+          GEN(gadget_inc64);
+        } else if (inst.operands[0].size == size64_32) {
+          GEN(gadget_lock_add32_mem);
+          GEN(state->orig_ip);
+          GEN(gadget_inc32);
+        } else if (inst.operands[0].size == size64_16) {
+          GEN(gadget_lock_add16_mem);
+          GEN(state->orig_ip);
+          GEN(gadget_inc16);
+        } else {
+          GEN(gadget_lock_add8_mem);
+          GEN(state->orig_ip);
+          GEN(gadget_inc8);
+        }
+        break;
+      }
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -6842,6 +6873,36 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       }
       gen_store_reg_partial(state, &inst, 0);
     } else if (is_mem(inst.operands[0].type)) {
+      if (inst.has_lock) {
+        if (!gen_addr(state, &inst.operands[0], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        // LOCK DEC [mem] is atomic sub of 1. Compute DEC flags from old value.
+        GEN(gadget_load64_imm);
+        GEN(1);
+        if (inst.operands[0].size == size64_64) {
+          GEN(gadget_lock_sub64_mem);
+          GEN(state->orig_ip);
+          GEN(gadget_dec64);
+        } else if (inst.operands[0].size == size64_32) {
+          GEN(gadget_lock_sub32_mem);
+          GEN(state->orig_ip);
+          GEN(gadget_dec32);
+        } else if (inst.operands[0].size == size64_16) {
+          GEN(gadget_lock_sub16_mem);
+          GEN(state->orig_ip);
+          GEN(gadget_dec16);
+        } else {
+          GEN(gadget_lock_sub8_mem);
+          GEN(state->orig_ip);
+          GEN(gadget_dec8);
+        }
+        break;
+      }
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt);
         GEN(INT_UNDEFINED);
