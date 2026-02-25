@@ -11,6 +11,7 @@ void cond_init(cond_t *cond) {
 #if __linux__
     pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
 #endif
+
     pthread_cond_init(&cond->cond, &attr);
 }
 void cond_destroy(cond_t *cond) {
@@ -28,12 +29,28 @@ static bool is_signal_pending(lock_t *lock) {
     return pending;
 }
 
+static int cond_wait_rc_to_error(int rc) {
+    switch (rc) {
+    case 0:
+        return 0;
+    case ETIMEDOUT:
+        return _ETIMEDOUT;
+    case EINVAL:
+        return _EINVAL;
+    case EPERM:
+        return _EPERM;
+    default:
+        FIXME("pthread_cond_wait returned unexpected error %d", rc);
+        return _EIO;
+    }
+}
+
 int wait_for(cond_t *cond, lock_t *lock, struct timespec *timeout) {
     if (is_signal_pending(lock))
         return _EINTR;
     int err = wait_for_ignore_signals(cond, lock, timeout);
     if (err < 0)
-        return _ETIMEDOUT;
+        return err;
     if (is_signal_pending(lock))
         return _EINTR;
     return 0;
@@ -52,16 +69,16 @@ int wait_for_ignore_signals(cond_t *cond, lock_t *lock, struct timespec *timeout
     lock->debug = (struct lock_debug) { .initialized = lock->debug.initialized };
 #endif
     if (!timeout) {
-        pthread_cond_wait(&cond->cond, &lock->m);
+        rc = pthread_cond_wait(&cond->cond, &lock->m);
     } else {
 #if __linux__
         struct timespec abs_timeout;
         clock_gettime(CLOCK_MONOTONIC, &abs_timeout);
         abs_timeout.tv_sec += timeout->tv_sec;
         abs_timeout.tv_nsec += timeout->tv_nsec;
-        if (abs_timeout.tv_nsec > 1000000000) {
-            abs_timeout.tv_sec++;
-            abs_timeout.tv_nsec -= 1000000000;
+        if (abs_timeout.tv_nsec >= 1000000000) {
+            abs_timeout.tv_sec += abs_timeout.tv_nsec / 1000000000;
+            abs_timeout.tv_nsec %= 1000000000;
         }
         rc = pthread_cond_timedwait(&cond->cond, &lock->m, &abs_timeout);
 #elif __APPLE__
@@ -80,9 +97,7 @@ int wait_for_ignore_signals(cond_t *cond, lock_t *lock, struct timespec *timeout
         current->waiting_lock = NULL;
         unlock(&current->waiting_cond_lock);
     }
-    if (rc == ETIMEDOUT)
-        return _ETIMEDOUT;
-    return 0;
+    return cond_wait_rc_to_error(rc);
 }
 
 void notify(cond_t *cond) {
@@ -128,4 +143,3 @@ void sigusr1_handler() {
         }
     }
 #endif
-

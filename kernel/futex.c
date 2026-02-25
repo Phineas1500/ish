@@ -88,10 +88,12 @@ static int futex_load(struct futex *futex, dword_t *out) {
     assert(futex->mem == current->mem);
     read_wrlock(&current->mem->lock);
     dword_t *ptr = mem_ptr(current->mem, futex->addr, MEM_READ);
-    read_wrunlock(&current->mem->lock);
-    if (ptr == NULL)
+    if (ptr == NULL) {
+        read_wrunlock(&current->mem->lock);
         return 1;
+    }
     *out = *ptr;
+    read_wrunlock(&current->mem->lock);
     return 0;
 }
 
