@@ -20,6 +20,35 @@ static int clockid_to_real(uint_t clock, clockid_t *real) {
         case CLOCK_MONOTONIC_:
         case CLOCK_MONOTONIC_COARSE_:
             *real = CLOCK_MONOTONIC; break;
+        case CLOCK_PROCESS_CPUTIME_ID_:
+#ifdef CLOCK_PROCESS_CPUTIME_ID
+            *real = CLOCK_PROCESS_CPUTIME_ID; break;
+#else
+            *real = CLOCK_MONOTONIC; break;
+#endif
+        case CLOCK_THREAD_CPUTIME_ID_:
+#ifdef CLOCK_THREAD_CPUTIME_ID
+            *real = CLOCK_THREAD_CPUTIME_ID; break;
+#else
+            *real = CLOCK_MONOTONIC; break;
+#endif
+        case CLOCK_MONOTONIC_RAW_:
+#ifdef CLOCK_MONOTONIC_RAW
+            *real = CLOCK_MONOTONIC_RAW; break;
+#else
+            *real = CLOCK_MONOTONIC; break;
+#endif
+        case CLOCK_BOOTTIME_:
+        case CLOCK_BOOTTIME_ALARM_:
+#ifdef CLOCK_BOOTTIME
+            *real = CLOCK_BOOTTIME; break;
+#else
+            *real = CLOCK_MONOTONIC; break;
+#endif
+        case CLOCK_REALTIME_ALARM_:
+        case CLOCK_TAI_:
+            // Closest Linux-compatible behavior available on host.
+            *real = CLOCK_REALTIME; break;
         default: return _EINVAL;
     }
     return 0;
