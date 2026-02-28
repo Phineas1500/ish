@@ -6626,20 +6626,46 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       } else {
         GEN(gadget_save_addr);
         // Load [mem] → _xtmp (old value)
-        if (xadd_size == size64_64) GEN(load64_gadgets[9]);
-        else GEN(load32_gadgets[9]);
+        if (xadd_size == size64_64) {
+          GEN(load64_gadgets[9]);
+        } else if (xadd_size == size64_32) {
+          GEN(load32_gadgets[9]);
+        } else if (xadd_size == size64_16) {
+          GEN(gadget_load16_mem);
+        } else {
+          GEN(gadget_load8_mem);
+        }
         GEN(state->orig_ip);
         // _xtmp = old [mem]. Save it to x8.
         GEN(gadget_save_xtmp_to_x8);  // x8 = old [mem]
         // Load reg → _xtmp
         GEN(load_reg);
+        if (xadd_size == size64_8 &&
+            zydis_is_high_byte_reg(inst.raw_operands[1].reg.value)) {
+          GEN(gadget_lea_lsr64_imm);
+          GEN(8);
+        }
         // Add: _xtmp = reg + old_[mem] (with flags). x8 still = old [mem].
-        if (xadd_size == size64_64) GEN(gadget_add64_x8);
-        else GEN(gadget_add32_x8);
+        if (xadd_size == size64_64) {
+          GEN(gadget_add64_x8);
+        } else if (xadd_size == size64_32) {
+          GEN(gadget_add32_x8);
+        } else if (xadd_size == size64_16) {
+          GEN(gadget_add16_x8);
+        } else {
+          GEN(gadget_add8_x8);
+        }
         // Store sum to [mem]
         GEN(gadget_restore_addr);
-        if (xadd_size == size64_64) GEN(store64_gadgets[9]);
-        else GEN(store32_gadgets[9]);
+        if (xadd_size == size64_64) {
+          GEN(store64_gadgets[9]);
+        } else if (xadd_size == size64_32) {
+          GEN(store32_gadgets[9]);
+        } else if (xadd_size == size64_16) {
+          GEN(gadget_store16_mem);
+        } else {
+          GEN(gadget_store8_mem);
+        }
         GEN(state->orig_ip);
         // Store old [mem] (x8) to register
         GEN(gadget_restore_xtmp_from_x8);
