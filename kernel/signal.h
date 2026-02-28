@@ -149,7 +149,7 @@ void sighand_release(struct sighand *sighand);
 
 dword_t sys_rt_sigaction(dword_t signum, addr_t action_addr, addr_t oldaction_addr, dword_t sigset_size);
 dword_t sys_sigaction(dword_t signum, addr_t action_addr, addr_t oldaction_addr);
-dword_t sys_rt_sigreturn(void);
+addr_t sys_rt_sigreturn(void);
 dword_t sys_sigreturn(void);
 
 #define SIG_BLOCK_ 0

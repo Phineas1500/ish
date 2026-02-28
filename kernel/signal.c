@@ -516,7 +516,7 @@ static void restore_sigcontext(struct sigcontext_ *context, struct cpu_state *cp
     cpu->eflags = (context->flags & USE_FLAGS) | (cpu->eflags & ~USE_FLAGS);
 }
 
-dword_t sys_rt_sigreturn() {
+addr_t sys_rt_sigreturn() {
     struct cpu_state *cpu = &current->cpu;
 #ifdef ISH_GUEST_64BIT
     // x86_64: after handler's ret popped pretcode, RSP = &frame + 8
