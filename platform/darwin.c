@@ -1,6 +1,7 @@
 #include <mach/mach.h>
 #include <sys/sysctl.h>
 #include <sys/time.h>
+#include <time.h>
 #include "platform/platform.h"
 
 struct cpu_usage get_cpu_usage() {
@@ -34,17 +35,15 @@ struct mem_usage get_mem_usage() {
 }
 
 struct uptime_info get_uptime() {
-    uint64_t kern_boottime[2];
-    size_t size = sizeof(kern_boottime);
-    sysctlbyname("kern.boottime", &kern_boottime, &size, NULL, 0);
-    struct timeval now;
-    gettimeofday(&now, NULL);
+    struct timespec mono = {};
+    if (clock_gettime(CLOCK_MONOTONIC, &mono) != 0)
+        mono.tv_sec = 0;
 
     struct {
         uint32_t ldavg[3];
         long scale;
     } vm_loadavg;
-    size = sizeof(vm_loadavg);
+    size_t size = sizeof(vm_loadavg);
     sysctlbyname("vm.loadavg", &vm_loadavg, &size, NULL, 0);
 
     // linux wants the scale to be 16 bits
@@ -56,7 +55,7 @@ struct uptime_info get_uptime() {
     }
 
     struct uptime_info uptime = {
-        .uptime_ticks = now.tv_sec - kern_boottime[0],
+        .uptime_ticks = (uint64_t) mono.tv_sec,
         .load_1m = vm_loadavg.ldavg[0],
         .load_5m = vm_loadavg.ldavg[1],
         .load_15m = vm_loadavg.ldavg[2],

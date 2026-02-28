@@ -19,8 +19,13 @@ static void read_proc_line(const char *file, const char *name, char *buf) {
 struct cpu_usage get_cpu_usage() {
     struct cpu_usage usage = {};
     char buf[1234];
+    uint64_t user = 0, nice = 0, system = 0, idle = 0;
     read_proc_line("/proc/stat", "cpu", buf);
-    sscanf(buf, "cpu %"SCNu64" %"SCNu64" %"SCNu64" %"SCNu64"\n", &usage.user_ticks, &usage.system_ticks, &usage.idle_ticks, &usage.nice_ticks);
+    sscanf(buf, "cpu %"SCNu64" %"SCNu64" %"SCNu64" %"SCNu64"\n", &user, &nice, &system, &idle);
+    usage.user_ticks = user;
+    usage.nice_ticks = nice;
+    usage.system_ticks = system;
+    usage.idle_ticks = idle;
     return usage;
 }
 

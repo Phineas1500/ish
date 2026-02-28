@@ -14,11 +14,22 @@ static int proc_show_version(struct proc_entry *UNUSED(entry), struct proc_data 
 
 static int proc_show_stat(struct proc_entry *UNUSED(entry), struct proc_data *buf) {
     struct cpu_usage usage = get_cpu_usage();
-    proc_printf(buf, "cpu  %"PRIu64" %"PRIu64" %"PRIu64" %"PRIu64"\n", usage.user_ticks, usage.nice_ticks, usage.system_ticks, usage.idle_ticks);
+    proc_printf(buf, "cpu  %"PRIu64" %"PRIu64" %"PRIu64" %"PRIu64" 0 0 0\n",
+                usage.user_ticks, usage.nice_ticks, usage.system_ticks, usage.idle_ticks);
+    unsigned cpus = sysconf(_SC_NPROCESSORS_ONLN);
+    if (cpus == 0)
+        cpus = 1;
+    for (unsigned i = 0; i < cpus; i++) {
+        proc_printf(buf, "cpu%u  %"PRIu64" %"PRIu64" %"PRIu64" %"PRIu64" 0 0 0\n", i,
+                    usage.user_ticks / cpus,
+                    usage.nice_ticks / cpus,
+                    usage.system_ticks / cpus,
+                    usage.idle_ticks / cpus);
+    }
 
     // calculate btime (boot time in seconds since epoch) by subtracting uptime from current time
     struct uptime_info uptime = get_uptime();
-    struct timespec uptime_ts = {.tv_sec = uptime.uptime_ticks / 100, .tv_nsec = uptime.uptime_ticks % 100};
+    struct timespec uptime_ts = {.tv_sec = uptime.uptime_ticks, .tv_nsec = 0};
     struct timespec boot_time = timespec_subtract(timespec_now(CLOCK_REALTIME), uptime_ts);
     proc_printf(buf, "btime %ld\n", boot_time.tv_sec);
 
@@ -30,6 +41,15 @@ static int proc_show_cpuinfo(struct proc_entry *UNUSED(entry), struct proc_data 
     for (unsigned i = 0; i < cpus; i++) {
         proc_printf(buf, "processor\t: %u\n", i);
         proc_printf(buf, "vendor_id\t: iSH\n");
+        proc_printf(buf, "model name\t: iSH Virtual CPU\n");
+        proc_printf(buf, "cpu MHz\t\t: 1000.000\n");
+        proc_printf(buf, "cache size\t: 0 KB\n");
+        proc_printf(buf, "physical id\t: 0\n");
+        proc_printf(buf, "siblings\t: %u\n", cpus);
+        proc_printf(buf, "core id\t\t: %u\n", i);
+        proc_printf(buf, "cpu cores\t: %u\n", cpus);
+        proc_printf(buf, "bogomips\t: 0.00\n");
+        proc_printf(buf, "flags\t\t: fpu tsc cx8 cmov mmx fxsr sse sse2\n");
         proc_printf(buf, "\n");
     }
     return 0;
@@ -60,8 +80,8 @@ static int proc_show_meminfo(struct proc_entry *UNUSED(entry), struct proc_data 
 
 static int proc_show_uptime(struct proc_entry *UNUSED(entry), struct proc_data *buf) {
     struct uptime_info uptime_info = get_uptime();
-    unsigned long uptime = uptime_info.uptime_ticks;
-    proc_printf(buf, "%lu.%lu %lu.%lu\n", uptime / 100, uptime % 100, uptime / 100, uptime % 100);
+    uint64_t uptime = uptime_info.uptime_ticks;
+    proc_printf(buf, "%"PRIu64".00 %"PRIu64".00\n", uptime, uptime);
     return 0;
 }
 
