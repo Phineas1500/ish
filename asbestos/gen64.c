@@ -488,6 +488,8 @@ extern void gadget_movss_mem_xmm(void);  // movss m32, xmm
 // SSE MOVHPS/MOVLPS - Move High/Low Packed Single-Precision
 extern void gadget_movhlps(void);       // movhlps xmm, xmm
 extern void gadget_movlhps(void);       // movlhps xmm, xmm
+extern void gadget_movddup_xmm_xmm(void); // movddup xmm, xmm
+extern void gadget_movddup_xmm_mem(void); // movddup xmm, m64
 extern void gadget_movhps_load(void);   // movhps xmm, m64
 extern void gadget_movhps_store(void);  // movhps m64, xmm
 extern void gadget_movlps_load(void);   // movlps xmm, m64
@@ -639,19 +641,31 @@ extern void gadget_cvtss2si_mem32(void);  // cvtss2si r32, m32
 // SSE ADDSD - Add Scalar Double
 extern void gadget_addsd_xmm_xmm(void);  // addsd xmm, xmm
 extern void gadget_addsd_xmm_mem(void);  // addsd xmm, m64
+extern void gadget_addpd_xmm_xmm(void);  // addpd xmm, xmm
+extern void gadget_addpd_xmm_mem(void);  // addpd xmm, m128
 // SSE SUBSD - Subtract Scalar Double
 extern void gadget_subsd_xmm_xmm(void);  // subsd xmm, xmm
 extern void gadget_subsd_xmm_mem(void);  // subsd xmm, m64
+extern void gadget_subpd_xmm_xmm(void);  // subpd xmm, xmm
+extern void gadget_subpd_xmm_mem(void);  // subpd xmm, m128
 // SSE MULSD - Multiply Scalar Double
 extern void gadget_mulsd_xmm_xmm(void);  // mulsd xmm, xmm
 extern void gadget_mulsd_xmm_mem(void);  // mulsd xmm, m64
+extern void gadget_mulpd_xmm_xmm(void);  // mulpd xmm, xmm
+extern void gadget_mulpd_xmm_mem(void);  // mulpd xmm, m128
 // SSE DIVSD - Divide Scalar Double
 extern void gadget_divsd_xmm_xmm(void);  // divsd xmm, xmm
 extern void gadget_divsd_xmm_mem(void);  // divsd xmm, m64
+extern void gadget_divpd_xmm_xmm(void);  // divpd xmm, xmm
+extern void gadget_divpd_xmm_mem(void);  // divpd xmm, m128
 extern void gadget_minsd_xmm_xmm(void);  // minsd xmm, xmm
 extern void gadget_minsd_xmm_mem(void);  // minsd xmm, m64
 extern void gadget_maxsd_xmm_xmm(void);  // maxsd xmm, xmm
 extern void gadget_maxsd_xmm_mem(void);  // maxsd xmm, m64
+extern void gadget_minpd_xmm_xmm(void);  // minpd xmm, xmm
+extern void gadget_minpd_xmm_mem(void);  // minpd xmm, m128
+extern void gadget_maxpd_xmm_xmm(void);  // maxpd xmm, xmm
+extern void gadget_maxpd_xmm_mem(void);  // maxpd xmm, m128
 // SSE SQRTSD/SQRTSS - Square Root Scalar
 extern void gadget_sqrtsd_xmm_xmm(void); // sqrtsd xmm, xmm
 extern void gadget_sqrtsd_xmm_mem(void); // sqrtsd xmm, m64
@@ -7814,6 +7828,76 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     }
     break;
 
+  case ZYDIS_MNEMONIC_ADDPD:
+  case ZYDIS_MNEMONIC_SUBPD:
+  case ZYDIS_MNEMONIC_MULPD:
+  case ZYDIS_MNEMONIC_DIVPD:
+  case ZYDIS_MNEMONIC_MINPD:
+  case ZYDIS_MNEMONIC_MAXPD: {
+    // ADDPD/SUBPD/MULPD/DIVPD/MINPD/MAXPD xmm, xmm/m128
+    gadget_t xmm_gadget, mem_gadget;
+    switch (inst.mnemonic) {
+      case ZYDIS_MNEMONIC_ADDPD:
+        xmm_gadget = gadget_addpd_xmm_xmm;
+        mem_gadget = gadget_addpd_xmm_mem;
+        break;
+      case ZYDIS_MNEMONIC_SUBPD:
+        xmm_gadget = gadget_subpd_xmm_xmm;
+        mem_gadget = gadget_subpd_xmm_mem;
+        break;
+      case ZYDIS_MNEMONIC_MULPD:
+        xmm_gadget = gadget_mulpd_xmm_xmm;
+        mem_gadget = gadget_mulpd_xmm_mem;
+        break;
+      case ZYDIS_MNEMONIC_DIVPD:
+        xmm_gadget = gadget_divpd_xmm_xmm;
+        mem_gadget = gadget_divpd_xmm_mem;
+        break;
+      case ZYDIS_MNEMONIC_MINPD:
+        xmm_gadget = gadget_minpd_xmm_xmm;
+        mem_gadget = gadget_minpd_xmm_mem;
+        break;
+      default:
+        xmm_gadget = gadget_maxpd_xmm_xmm;
+        mem_gadget = gadget_maxpd_xmm_mem;
+        break;
+    }
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      if (is_xmm(inst.operands[1].type)) {
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        GEN(load64_gadgets[8]); // load64_imm: Load source XMM index
+        GEN(src_xmm);
+        GEN(xmm_gadget);
+        GEN(dst_xmm);
+      } else if (is_mem(inst.operands[1].type)) {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        GEN(mem_gadget);
+        GEN(dst_xmm);
+        GEN(state->orig_ip);
+      } else {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
+    }
+    break;
+  }
+
   case ZYDIS_MNEMONIC_ADDSD:
     // ADDSD xmm, xmm/m64 - Add Scalar Double-Precision Floating-Point
     if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
@@ -8534,6 +8618,43 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     } else {
       g(interrupt); GEN(INT_UNDEFINED);
       GEN(state->orig_ip); GEN(state->orig_ip); return 0;
+    }
+    break;
+
+  case ZYDIS_MNEMONIC_MOVDDUP:
+    // MOVDDUP xmm, xmm/m64 - duplicate source low double into both destination lanes
+    if (inst.operand_count >= 2 && is_xmm(inst.operands[0].type)) {
+      int dst_xmm = get_xmm_index(inst.operands[0].type);
+      if (is_xmm(inst.operands[1].type)) {
+        int src_xmm = get_xmm_index(inst.operands[1].type);
+        GEN(load64_gadgets[8]); // load64_imm: source XMM index
+        GEN(src_xmm);
+        GEN(gadget_movddup_xmm_xmm);
+        GEN(dst_xmm);
+      } else if (is_mem(inst.operands[1].type)) {
+        if (!gen_addr(state, &inst.operands[1], &inst)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        GEN(gadget_movddup_xmm_mem);
+        GEN(dst_xmm);
+        GEN(state->orig_ip);
+      } else {
+        g(interrupt);
+        GEN(INT_UNDEFINED);
+        GEN(state->orig_ip);
+        GEN(state->orig_ip);
+        return 0;
+      }
+    } else {
+      g(interrupt);
+      GEN(INT_UNDEFINED);
+      GEN(state->orig_ip);
+      GEN(state->orig_ip);
+      return 0;
     }
     break;
 

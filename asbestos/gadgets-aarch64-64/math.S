@@ -3748,6 +3748,44 @@ NAME(imul32_r8_r15_gadgets):
     str x9, [x8, 8]            // dest high = src low
     gret 2
 
+// MOVDDUP xmm, xmm - Duplicate low double from source XMM into both lanes of dst
+// _xtmp = source XMM index, [_ip] = destination XMM index
+.gadget movddup_xmm_xmm
+    // Source XMM low 64 bits
+    lsl x8, _xtmp, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr x10, [x8]
+
+    // Destination XMM
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+
+    // Duplicate low 64 bits into both lanes
+    str x10, [x9]
+    str x10, [x9, 8]
+    gret 1
+
+// MOVDDUP xmm, m64 - Load one double from memory and duplicate into both lanes of dst
+// _addr = memory address (GUEST), [_ip] = destination XMM index, [_ip+8] = orig_ip
+.gadget movddup_xmm_mem
+    ldr x8, [_ip]              // Destination XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
+    read_prep 64, movddup_xmm_mem
+    ldr x10, [_addr]           // Load source low 64 bits from memory
+
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+
+    // Duplicate into both lanes
+    str x10, [x8]
+    str x10, [x8, 8]
+    gret 1
+    read_bullshit 64, movddup_xmm_mem
+
 // ============================================================
 // MOVD - Move Doubleword (32-bit) between GPR/memory and XMM
 // ============================================================
@@ -5358,6 +5396,65 @@ sse_xmm_xmm_op movdqa_xmm
 // ============================================================
 // Scalar Single-Precision FP Operations (ADDSS, SUBSS, MULSS, DIVSS)
 // ============================================================
+
+// ============================================================
+// Packed Double-Precision FP Operations (ADDPD/SUBPD/MULPD/DIVPD/MINPD/MAXPD)
+// ============================================================
+
+// Helper macro for packed double xmm,xmm ops
+// _xtmp = source XMM index, [_ip] = destination XMM index
+.macro pd_xmm_xmm_op name, insn
+.gadget \name\()_xmm_xmm
+    lsl x8, _xtmp, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr q0, [x8]               // Load src packed doubles
+
+    ldr x9, [_ip]
+    lsl x9, x9, 4
+    add x9, x9, CPU_xmm
+    add x9, _cpu, x9
+    ldr q1, [x9]               // Load dst packed doubles
+
+    \insn v1.2d, v1.2d, v0.2d  // dst = dst op src
+
+    str q1, [x9]               // Store packed result
+    gret 1
+.endm
+
+// Helper macro for packed double xmm,mem ops
+// _addr = GUEST mem addr, [_ip] = XMM index, [_ip+8] = orig_ip
+.macro pd_xmm_mem_op name, insn
+.gadget \name\()_xmm_mem
+    ldr x8, [_ip]              // XMM index (x8 safe across read_prep)
+    add _ip, _ip, 8            // [_ip] now points to orig_ip for fault path
+    read_prep 128, \name\()_xmm_mem
+    ldr q0, [_addr]            // Load src packed doubles from memory
+
+    lsl x8, x8, 4
+    add x8, x8, CPU_xmm
+    add x8, _cpu, x8
+    ldr q1, [x8]               // Load dst packed doubles
+
+    \insn v1.2d, v1.2d, v0.2d  // dst = dst op src
+
+    str q1, [x8]               // Store packed result
+    gret 1
+    read_bullshit 128, \name\()_xmm_mem
+.endm
+
+pd_xmm_xmm_op addpd, fadd
+pd_xmm_mem_op addpd, fadd
+pd_xmm_xmm_op subpd, fsub
+pd_xmm_mem_op subpd, fsub
+pd_xmm_xmm_op mulpd, fmul
+pd_xmm_mem_op mulpd, fmul
+pd_xmm_xmm_op divpd, fdiv
+pd_xmm_mem_op divpd, fdiv
+pd_xmm_xmm_op minpd, fmin
+pd_xmm_mem_op minpd, fmin
+pd_xmm_xmm_op maxpd, fmax
+pd_xmm_mem_op maxpd, fmax
 
 // Helper macro for scalar single-precision xmm,xmm ops
 // _xtmp = source XMM index, [_ip] = destination XMM index
