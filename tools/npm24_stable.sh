@@ -13,7 +13,7 @@ set -euo pipefail
 #   ROOTFS: guest rootfs path (default: alpine64)
 #   NODE_BIN: path to node binary in guest (default: /usr/bin/node24)
 #   NPM_CLI: path to npm cli script in guest rootfs
-#   NODE24_MODE: node24_stable mode override (default here: jitless)
+#   NODE24_MODE: mode override (default here: notf)
 #   NODE_DISABLE_COMPILE_CACHE: compile cache toggle (default here: 1)
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -22,8 +22,8 @@ ROOTFS="${ROOTFS:-$ROOT_DIR/alpine64}"
 NODE_BIN="${NODE_BIN:-/usr/bin/node24}"
 NPM_CLI="${NPM_CLI:-/usr/lib/node_modules/npm/bin/npm-cli.js}"
 
-# npm startup on Node 24 is currently most reliable in jitless mode.
-: "${NODE24_MODE:=jitless}"
+# npm startup on Node 24 is currently most reliable with Turbofan disabled.
+: "${NODE24_MODE:=notf}"
 
 # Avoid stale/corrupted cache entries causing validate-engines failures.
 : "${NODE_DISABLE_COMPILE_CACHE:=1}"
@@ -44,6 +44,12 @@ case "$NODE24_MODE" in
   delay)
     flags+=(--concurrent-recompilation-delay=1)
     ;;
+  notf)
+    flags+=(--no-turbofan)
+    ;;
+  noopt)
+    flags+=(--no-opt)
+    ;;
   jitless)
     flags+=(--jitless)
     ;;
@@ -59,7 +65,7 @@ case "$NODE24_MODE" in
   plain)
     ;;
   *)
-    echo "error: unknown NODE24_MODE '$NODE24_MODE' (expected: nmd|t1|delay|jitless|nomaglev|nco|nrs|plain)" >&2
+    echo "error: unknown NODE24_MODE '$NODE24_MODE' (expected: nmd|t1|delay|notf|noopt|jitless|nomaglev|nco|nrs|plain)" >&2
     exit 2
     ;;
 esac
