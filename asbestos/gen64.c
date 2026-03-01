@@ -1178,6 +1178,12 @@ static inline void gen_store_reg_partial(struct gen_state *state,
   }
 
   gadget_t store = get_store64_reg_gadget(reg);
+  if (size == size64_32) {
+    // x86-64: all 32-bit register writes zero-extend to 64-bit.
+    // Enforce this at store time so semantics are correct even if the
+    // producer gadget left stale upper bits in _xtmp.
+    GEN(gadget_zero_extend32);
+  }
   if (store)
     GEN(store);
 }
