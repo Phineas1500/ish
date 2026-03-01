@@ -8,6 +8,8 @@ set -euo pipefail
 #
 # Other modes:
 #   t1      -> --concurrent-maglev-max-threads=1
+#   notf    -> --no-turbofan
+#   noopt   -> --no-opt
 #   jitless -> --jitless
 #   nomaglev -> --no-maglev
 #   nco     -> --no-concurrent-osr
@@ -41,6 +43,12 @@ case "$MODE" in
   delay)
     flags+=(--concurrent-recompilation-delay=1)
     ;;
+  notf)
+    flags+=(--no-turbofan)
+    ;;
+  noopt)
+    flags+=(--no-opt)
+    ;;
   jitless)
     flags+=(--jitless)
     ;;
@@ -56,7 +64,7 @@ case "$MODE" in
   plain)
     ;;
   *)
-    echo "error: unknown NODE24_MODE '$MODE' (expected: nmd|t1|delay|jitless|nomaglev|nco|nrs|plain)" >&2
+    echo "error: unknown NODE24_MODE '$MODE' (expected: nmd|t1|delay|notf|noopt|jitless|nomaglev|nco|nrs|plain)" >&2
     exit 2
     ;;
 esac
