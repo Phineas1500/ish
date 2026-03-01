@@ -172,7 +172,9 @@
     b.eq lcmpxchg64_cross
     // Atomic CAS on host memory
     mov x9, rax               // x9 = expected (casal overwrites with old value)
+    dmb ish
     casal x9, _xtmp, [_addr]  // atomic: if [_addr]==x9 store _xtmp; x9 = old
+    dmb ish
     cmp x9, rax
     b.ne lcmpxchg64_fail
     // CAS succeeded: write_done needed (we wrote), then ZF=1
@@ -211,7 +213,9 @@ lcmpxchg64_cross_fail:
     cmp x11, _addr
     b.eq lcmpxchg32_cross
     mov w9, eax
+    dmb ish
     casal w9, _tmp, [_addr]   // atomic 32-bit CAS
+    dmb ish
     cmp w9, eax
     b.ne lcmpxchg32_fail
     write_done 32, lcmpxchg32
@@ -248,7 +252,9 @@ lcmpxchg32_cross_fail:
     uxth w12, eax
     mov w9, w12
     uxth w10, _tmp
+    dmb ish
     casalh w9, w10, [_addr]   // atomic 16-bit CAS
+    dmb ish
     cmp w9, w12
     b.ne lcmpxchg16_fail
     write_done 16, lcmpxchg16
@@ -287,7 +293,9 @@ lcmpxchg16_cross_fail:
     uxtb w12, eax
     mov w9, w12
     uxtb w10, _tmp
+    dmb ish
     casalb w9, w10, [_addr]   // atomic 8-bit CAS
+    dmb ish
     cmp w9, w12
     b.ne lcmpxchg8_fail
     write_done 8, lcmpxchg8
@@ -328,7 +336,9 @@ lcmpxchg8_cross_fail:
     cmp x11, _addr
     b.eq lock_add64_cross
     mov x9, _xtmp
+    dmb ish
     ldaddal x9, x10, [_addr]      // old -> x10, mem += x9
+    dmb ish
     mov _xtmp, x10
     b lock_add64_done
 lock_add64_cross:
@@ -348,7 +358,9 @@ lock_add64_done:
     cmp x11, _addr
     b.eq lock_add32_cross
     mov w9, _tmp
+    dmb ish
     ldaddal w9, w10, [_addr]      // old -> w10, mem += w9
+    dmb ish
     mov _tmp, w10
     b lock_add32_done
 lock_add32_cross:
@@ -368,7 +380,9 @@ lock_add32_done:
     cmp x11, _addr
     b.eq lock_add16_cross
     uxth w9, _tmp
+    dmb ish
     ldaddalh w9, w10, [_addr]     // old -> w10, mem += low16(w9)
+    dmb ish
     mov _tmp, w10
     b lock_add16_done
 lock_add16_cross:
@@ -388,7 +402,9 @@ lock_add16_done:
     cmp x11, _addr
     b.eq lock_add8_cross
     uxtb w9, _tmp
+    dmb ish
     ldaddalb w9, w10, [_addr]     // old -> w10, mem += low8(w9)
+    dmb ish
     mov _tmp, w10
     b lock_add8_done
 lock_add8_cross:
@@ -409,7 +425,9 @@ lock_add8_done:
     b.eq lock_sub64_cross
     mov x9, _xtmp
     neg x9, x9
+    dmb ish
     ldaddal x9, x10, [_addr]      // mem += (-src)
+    dmb ish
     mov _xtmp, x10
     b lock_sub64_done
 lock_sub64_cross:
@@ -430,7 +448,9 @@ lock_sub64_done:
     b.eq lock_sub32_cross
     mov w9, _tmp
     neg w9, w9
+    dmb ish
     ldaddal w9, w10, [_addr]
+    dmb ish
     mov _tmp, w10
     b lock_sub32_done
 lock_sub32_cross:
@@ -451,7 +471,9 @@ lock_sub32_done:
     b.eq lock_sub16_cross
     uxth w9, _tmp
     neg w9, w9
+    dmb ish
     ldaddalh w9, w10, [_addr]
+    dmb ish
     mov _tmp, w10
     b lock_sub16_done
 lock_sub16_cross:
@@ -472,7 +494,9 @@ lock_sub16_done:
     b.eq lock_sub8_cross
     uxtb w9, _tmp
     neg w9, w9
+    dmb ish
     ldaddalb w9, w10, [_addr]
+    dmb ish
     mov _tmp, w10
     b lock_sub8_done
 lock_sub8_cross:
@@ -493,7 +517,9 @@ lock_sub8_done:
     b.eq lock_and64_cross
     mov x9, _xtmp
     mvn x9, x9
+    dmb ish
     ldclral x9, x10, [_addr]      // mem &= ~x9 == src
+    dmb ish
     mov _xtmp, x10
     b lock_and64_done
 lock_and64_cross:
@@ -514,7 +540,9 @@ lock_and64_done:
     b.eq lock_and32_cross
     mov w9, _tmp
     mvn w9, w9
+    dmb ish
     ldclral w9, w10, [_addr]
+    dmb ish
     mov _tmp, w10
     b lock_and32_done
 lock_and32_cross:
@@ -535,7 +563,9 @@ lock_and32_done:
     b.eq lock_and16_cross
     uxth w9, _tmp
     mvn w9, w9
+    dmb ish
     ldclralh w9, w10, [_addr]
+    dmb ish
     mov _tmp, w10
     b lock_and16_done
 lock_and16_cross:
@@ -556,7 +586,9 @@ lock_and16_done:
     b.eq lock_and8_cross
     uxtb w9, _tmp
     mvn w9, w9
+    dmb ish
     ldclralb w9, w10, [_addr]
+    dmb ish
     mov _tmp, w10
     b lock_and8_done
 lock_and8_cross:
@@ -576,7 +608,9 @@ lock_and8_done:
     cmp x11, _addr
     b.eq lock_or64_cross
     mov x9, _xtmp
+    dmb ish
     ldsetal x9, x10, [_addr]
+    dmb ish
     mov _xtmp, x10
     b lock_or64_done
 lock_or64_cross:
@@ -596,7 +630,9 @@ lock_or64_done:
     cmp x11, _addr
     b.eq lock_or32_cross
     mov w9, _tmp
+    dmb ish
     ldsetal w9, w10, [_addr]
+    dmb ish
     mov _tmp, w10
     b lock_or32_done
 lock_or32_cross:
@@ -616,7 +652,9 @@ lock_or32_done:
     cmp x11, _addr
     b.eq lock_or16_cross
     uxth w9, _tmp
+    dmb ish
     ldsetalh w9, w10, [_addr]
+    dmb ish
     mov _tmp, w10
     b lock_or16_done
 lock_or16_cross:
@@ -636,7 +674,9 @@ lock_or16_done:
     cmp x11, _addr
     b.eq lock_or8_cross
     uxtb w9, _tmp
+    dmb ish
     ldsetalb w9, w10, [_addr]
+    dmb ish
     mov _tmp, w10
     b lock_or8_done
 lock_or8_cross:
@@ -656,7 +696,9 @@ lock_or8_done:
     cmp x11, _addr
     b.eq lock_xor64_cross
     mov x9, _xtmp
+    dmb ish
     ldeoral x9, x10, [_addr]
+    dmb ish
     mov _xtmp, x10
     b lock_xor64_done
 lock_xor64_cross:
@@ -676,7 +718,9 @@ lock_xor64_done:
     cmp x11, _addr
     b.eq lock_xor32_cross
     mov w9, _tmp
+    dmb ish
     ldeoral w9, w10, [_addr]
+    dmb ish
     mov _tmp, w10
     b lock_xor32_done
 lock_xor32_cross:
@@ -696,7 +740,9 @@ lock_xor32_done:
     cmp x11, _addr
     b.eq lock_xor16_cross
     uxth w9, _tmp
+    dmb ish
     ldeoralh w9, w10, [_addr]
+    dmb ish
     mov _tmp, w10
     b lock_xor16_done
 lock_xor16_cross:
@@ -716,7 +762,9 @@ lock_xor16_done:
     cmp x11, _addr
     b.eq lock_xor8_cross
     uxtb w9, _tmp
+    dmb ish
     ldeoralb w9, w10, [_addr]
+    dmb ish
     mov _tmp, w10
     b lock_xor8_done
 lock_xor8_cross:
@@ -740,7 +788,9 @@ lock_xor8_done:
     add x11, _cpu, LOCAL_value
     cmp x11, _addr
     b.eq xchg64_cross
+    dmb ish
     swpal x9, _xtmp, [_addr]      // _xtmp = old memory, memory = x9
+    dmb ish
     b 1f
 xchg64_cross:
     ldr x8, [_addr]
@@ -758,7 +808,9 @@ xchg64_cross:
     add x11, _cpu, LOCAL_value
     cmp x11, _addr
     b.eq xchg32_cross
+    dmb ish
     swpal w9, _tmp, [_addr]       // _tmp = old memory, memory = w9
+    dmb ish
     b 1f
 xchg32_cross:
     ldr w8, [_addr]
@@ -776,7 +828,9 @@ xchg32_cross:
     add x11, _cpu, LOCAL_value
     cmp x11, _addr
     b.eq xchg16_cross
+    dmb ish
     swpalh w9, w8, [_addr]        // w8 = old memory, memory = low16(w9)
+    dmb ish
     mov _tmp, w8
     b 1f
 xchg16_cross:
@@ -795,7 +849,9 @@ xchg16_cross:
     add x11, _cpu, LOCAL_value
     cmp x11, _addr
     b.eq xchg8_cross
+    dmb ish
     swpalb w9, w8, [_addr]        // w8 = old memory, memory = low8(w9)
+    dmb ish
     mov _tmp, w8
     b 1f
 xchg8_cross:
