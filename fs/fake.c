@@ -98,7 +98,8 @@ static int fakefs_unlink(struct mount *mount, const char *path) {
     }
     ino_t ino = path_unlink(fs, path);
     db_commit(fs);
-    inode_check_orphaned(mount, ino);
+    if (ino != 0)
+        inode_check_orphaned(mount, ino);
     return 0;
 }
 
@@ -112,7 +113,8 @@ static int fakefs_rmdir(struct mount *mount, const char *path) {
     }
     ino_t ino = path_unlink(fs, path);
     db_commit(fs);
-    inode_check_orphaned(mount, ino);
+    if (ino != 0)
+        inode_check_orphaned(mount, ino);
     return 0;
 }
 
