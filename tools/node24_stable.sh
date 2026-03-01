@@ -20,6 +20,10 @@ set -euo pipefail
 # Usage:
 #   tools/node24_stable.sh -e 'console.log(42)'
 #   NODE24_MODE=jitless tools/node24_stable.sh -e 'console.log(42)'
+#
+# Note:
+#   For npm workloads, prefer tools/npm24_stable.sh. It defaults to --jitless
+#   to avoid a currently reproducible Node24 JIT-path crash during npm startup.
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ISH_BIN="${ISH_BIN:-$ROOT_DIR/build-64/ish}"
