@@ -1050,6 +1050,28 @@ NAME(xor32_r8_r15_gadgets):
     setf_zsp w
     gret 1
 
+.gadget and16_imm
+    ldr w8, [_ip]
+    and w8, w8, 0xffff
+    and w10, _tmp, 0xffff
+    and w11, w10, w8
+    mov _tmp, w11
+    sxth x10, w11
+    clearf_oc
+    setf_zsp h, x10
+    gret 1
+
+.gadget and8_imm
+    ldr w8, [_ip]
+    and w8, w8, 0xff
+    and w10, _tmp, 0xff
+    and w11, w10, w8
+    mov _tmp, w11
+    sxtb x10, w11
+    clearf_oc
+    setf_zsp b, x10
+    gret 1
+
 // AND with register (x8 contains value to AND)
 .gadget and64_x8
     ands _xtmp, _xtmp, x8
@@ -1083,6 +1105,26 @@ NAME(xor32_r8_r15_gadgets):
     ands _tmp, _tmp, w8
     clearf_oc
     setf_zsp w
+    gret
+
+.gadget and16_x8
+    and w8, w8, 0xffff
+    and w10, _tmp, 0xffff
+    and w11, w10, w8
+    mov _tmp, w11
+    sxth x10, w11
+    clearf_oc
+    setf_zsp h, x10
+    gret
+
+.gadget and8_x8
+    and w8, w8, 0xff
+    and w10, _tmp, 0xff
+    and w11, w10, w8
+    mov _tmp, w11
+    sxtb x10, w11
+    clearf_oc
+    setf_zsp b, x10
     gret
 
 // AND memory operand (read from _addr, AND with value in x8)
