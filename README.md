@@ -3,6 +3,7 @@
 [![Build Status](https://github.com/ish-app/ish/actions/workflows/ci.yml/badge.svg)](https://github.com/ish-app/ish/actions)
 [![goto counter](https://img.shields.io/github/search/ish-app/ish/goto.svg)](https://github.com/ish-app/ish/search?q=goto)
 [![fuck counter](https://img.shields.io/github/search/ish-app/ish/fuck.svg)](https://github.com/ish-app/ish/search?q=fuck)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Phineas1500/ish)
 
 <p align="center">
 <a href="https://ish.app">
