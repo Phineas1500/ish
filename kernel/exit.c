@@ -111,8 +111,16 @@ noreturn void do_exit(int status) {
         send_signal(parent, leader->exit_signal, info);
     }
 
-    if (exit_hook != NULL)
-      exit_hook(current, status);
+    if (exit_hook != NULL) {
+      // The final exiting thread in a thread group may be non-leader.
+      // For top-level process exit propagation, report the leader task and
+      // the effective thread-group exit status (group-exit code if set,
+      // otherwise the leader's recorded exit code).
+      int hook_status = leader->exit_code;
+      if (leader->group->doing_group_exit)
+        hook_status = leader->group->group_exit_code;
+      exit_hook(leader, hook_status);
+    }
   }
 
   vfork_notify(current);
