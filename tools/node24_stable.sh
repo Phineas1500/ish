@@ -4,7 +4,7 @@ set -euo pipefail
 # Run Node.js 24 in iSH-64 with a stability workaround applied by default.
 #
 # Default mode:
-#   nmd     -> --no-maglev-destroy-on-background
+#   jitless -> --jitless (most reliable under current stress testing)
 #
 # Other modes:
 #   t1      -> --concurrent-maglev-max-threads=1
@@ -29,7 +29,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ISH_BIN="${ISH_BIN:-$ROOT_DIR/build-64/ish}"
 ROOTFS="${ROOTFS:-$ROOT_DIR/alpine64}"
 NODE_BIN="${NODE_BIN:-/usr/bin/node24}"
-MODE="${NODE24_MODE:-nmd}"
+MODE="${NODE24_MODE:-jitless}"
 
 if [[ ! -x "$ISH_BIN" ]]; then
   echo "error: ish binary not found/executable: $ISH_BIN" >&2
