@@ -382,6 +382,48 @@
     setf_zsp w
     gret 1
 
+// 16-bit ADC immediate: set flags from 16-bit result including carry-in.
+.gadget adc16_imm
+    ldr w8, [_ip]
+    and w8, w8, 0xffff
+    and w10, _tmp, 0xffff
+    ldrb w15, [_cpu, CPU_cf]
+    // Shift operands so 16-bit carry/sign map to bit 63 for NZCV.
+    lsl x12, x10, #48
+    lsl x13, x8, #48
+    adds x14, x12, x13
+    lsl x12, x15, #48
+    adds x14, x14, x12
+    add w11, w10, w8
+    add w11, w11, w15
+    and w11, w11, 0xffff
+    mov _tmp, w11
+    setf_oc_add
+    sxth x15, w11
+    setf_zsp h, x15
+    gret 1
+
+// 8-bit ADC immediate: set flags from 8-bit result including carry-in.
+.gadget adc8_imm
+    ldr w8, [_ip]
+    and w8, w8, 0xff
+    and w10, _tmp, 0xff
+    ldrb w15, [_cpu, CPU_cf]
+    // Shift operands so 8-bit carry/sign map to bit 63 for NZCV.
+    lsl x12, x10, #56
+    lsl x13, x8, #56
+    adds x14, x12, x13
+    lsl x12, x15, #56
+    adds x14, x14, x12
+    add w11, w10, w8
+    add w11, w11, w15
+    and w11, w11, 0xff
+    mov _tmp, w11
+    setf_oc_add
+    sxtb x15, w11
+    setf_zsp b, x15
+    gret 1
+
 // ADC with register (for ADC reg, reg)
 .macro adc_reg64 name, reg64, reg32
     .gadget adc64_\name
@@ -424,6 +466,44 @@
     and _xtmp, _xtmp, 0xffffffff  // Zero-extend
     setf_oc_add
     setf_zsp w
+    gret
+
+// 16-bit ADC with x8 source: set flags from 16-bit result including carry-in.
+.gadget adc16_x8
+    and w8, w8, 0xffff
+    and w10, _tmp, 0xffff
+    ldrb w15, [_cpu, CPU_cf]
+    lsl x12, x10, #48
+    lsl x13, x8, #48
+    adds x14, x12, x13
+    lsl x12, x15, #48
+    adds x14, x14, x12
+    add w11, w10, w8
+    add w11, w11, w15
+    and w11, w11, 0xffff
+    mov _tmp, w11
+    setf_oc_add
+    sxth x15, w11
+    setf_zsp h, x15
+    gret
+
+// 8-bit ADC with x8 source: set flags from 8-bit result including carry-in.
+.gadget adc8_x8
+    and w8, w8, 0xff
+    and w10, _tmp, 0xff
+    ldrb w15, [_cpu, CPU_cf]
+    lsl x12, x10, #56
+    lsl x13, x8, #56
+    adds x14, x12, x13
+    lsl x12, x15, #56
+    adds x14, x14, x12
+    add w11, w10, w8
+    add w11, w11, w15
+    and w11, w11, 0xff
+    mov _tmp, w11
+    setf_oc_add
+    sxtb x15, w11
+    setf_zsp b, x15
     gret
 
 // ADC with memory operand: dest = dest + [mem] + CF
@@ -502,6 +582,48 @@
     setf_zsp w
     gret 1
 
+// 16-bit SBB immediate: set flags from 16-bit result including borrow-in.
+.gadget sbb16_imm
+    ldr w8, [_ip]
+    and w8, w8, 0xffff
+    and w10, _tmp, 0xffff
+    ldrb w15, [_cpu, CPU_cf]
+    // Shift operands so 16-bit borrow/sign map to bit 63 for NZCV.
+    lsl x12, x10, #48
+    lsl x13, x8, #48
+    subs x14, x12, x13
+    lsl x13, x15, #48
+    subs x14, x14, x13
+    sub w11, w10, w8
+    sub w11, w11, w15
+    and w11, w11, 0xffff
+    mov _tmp, w11
+    setf_oc
+    sxth x15, w11
+    setf_zsp h, x15
+    gret 1
+
+// 8-bit SBB immediate: set flags from 8-bit result including borrow-in.
+.gadget sbb8_imm
+    ldr w8, [_ip]
+    and w8, w8, 0xff
+    and w10, _tmp, 0xff
+    ldrb w15, [_cpu, CPU_cf]
+    // Shift operands so 8-bit borrow/sign map to bit 63 for NZCV.
+    lsl x12, x10, #56
+    lsl x13, x8, #56
+    subs x14, x12, x13
+    lsl x13, x15, #56
+    subs x14, x14, x13
+    sub w11, w10, w8
+    sub w11, w11, w15
+    and w11, w11, 0xff
+    mov _tmp, w11
+    setf_oc
+    sxtb x15, w11
+    setf_zsp b, x15
+    gret 1
+
 // SBB with x8 (for r8-r15 source registers)
 // _xtmp = _xtmp - x8 - CF
 .gadget sbb64_x8
@@ -523,6 +645,44 @@
     and _xtmp, _xtmp, 0xffffffff  // Zero-extend
     setf_oc
     setf_zsp w
+    gret
+
+// 16-bit SBB with x8 source: set flags from 16-bit result including borrow-in.
+.gadget sbb16_x8
+    and w8, w8, 0xffff
+    and w10, _tmp, 0xffff
+    ldrb w15, [_cpu, CPU_cf]
+    lsl x12, x10, #48
+    lsl x13, x8, #48
+    subs x14, x12, x13
+    lsl x13, x15, #48
+    subs x14, x14, x13
+    sub w11, w10, w8
+    sub w11, w11, w15
+    and w11, w11, 0xffff
+    mov _tmp, w11
+    setf_oc
+    sxth x15, w11
+    setf_zsp h, x15
+    gret
+
+// 8-bit SBB with x8 source: set flags from 8-bit result including borrow-in.
+.gadget sbb8_x8
+    and w8, w8, 0xff
+    and w10, _tmp, 0xff
+    ldrb w15, [_cpu, CPU_cf]
+    lsl x12, x10, #56
+    lsl x13, x8, #56
+    subs x14, x12, x13
+    lsl x13, x15, #56
+    subs x14, x14, x13
+    sub w11, w10, w8
+    sub w11, w11, w15
+    and w11, w11, 0xff
+    mov _tmp, w11
+    setf_oc
+    sxtb x15, w11
+    setf_zsp b, x15
     gret
 
 // SBB with memory operand: dest = dest - [mem] - CF

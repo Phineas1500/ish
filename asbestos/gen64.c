@@ -174,8 +174,12 @@ extern void gadget_sbb32_bp(void);
 extern void gadget_sbb32_si(void);
 extern void gadget_sbb32_di(void);
 extern void gadget_sbb32_imm(void);
+extern void gadget_sbb16_imm(void);
+extern void gadget_sbb8_imm(void);
 extern void gadget_sbb64_x8(void);
 extern void gadget_sbb32_x8(void);
+extern void gadget_sbb16_x8(void);
+extern void gadget_sbb8_x8(void);
 extern void gadget_sbb64_mem(void);
 extern void gadget_sbb32_mem(void);
 extern void gadget_adc64_a(void);
@@ -196,6 +200,8 @@ extern void gadget_adc32_si(void);
 extern void gadget_adc32_di(void);
 extern void gadget_adc64_x8(void);
 extern void gadget_adc32_x8(void);
+extern void gadget_adc16_x8(void);
+extern void gadget_adc8_x8(void);
 extern void gadget_adc64_mem(void);
 extern void gadget_adc32_mem(void);
 extern void gadget_xor64_a(void);
@@ -884,6 +890,8 @@ extern void gadget_lock_xor8_mem(void);
 // ADC imm gadgets (register versions declared earlier)
 extern void gadget_adc64_imm(void);
 extern void gadget_adc32_imm(void);
+extern void gadget_adc16_imm(void);
+extern void gadget_adc8_imm(void);
 
 // CLD/STD gadgets
 extern void gadget_cld(void);
@@ -2883,41 +2891,73 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     // ADC: Add with Carry (dst = dst + src + CF)
     if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
       bool is64 = (inst.operands[0].size == size64_64);
+      bool is16 = (inst.operands[0].size == size64_16);
+      bool is8 = (inst.operands[0].size == size64_8);
+      bool dst_high_byte =
+          is8 && inst.raw_operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+          zydis_is_high_byte_reg(inst.raw_operands[0].reg.value);
       gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
       if (load)
         GEN(load);
 
       if (inst.operands[1].type == arg64_imm) {
         // ADC reg, imm
-        if (is64) {
+        int64_t imm = inst.operands[1].imm;
+        if (is8) {
+          imm &= 0xff;
+          if (dst_high_byte) {
+            GEN(gadget_lea_lsr64_imm);
+            GEN(8);
+          }
+          GEN(gadget_adc8_imm);
+        } else if (is16) {
+          imm &= 0xffff;
+          GEN(gadget_adc16_imm);
+        } else if (is64) {
           GEN(gadget_adc64_imm);
         } else {
           GEN(gadget_adc32_imm);
         }
-        GEN(inst.operands[1].imm);
-      } else if (inst.operands[1].type >= arg64_rax &&
-                 inst.operands[1].type <= arg64_rdi) {
-        // ADC reg, reg (rax-rdi)
-        if (is64) {
-          GEN(adc64_gadgets[inst.operands[1].type - arg64_rax]);
+        GEN(imm);
+      } else if (is_gpr(inst.operands[1].type)) {
+        if (is8 || is16) {
+          // 8/16-bit adc: source in x8, destination in _xtmp.
+          bool src_high_byte =
+              is8 && inst.raw_operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+              zydis_is_high_byte_reg(inst.raw_operands[1].reg.value);
+          GEN(gadget_save_xtmp_to_x8); // x8 = destination
+          gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
+          if (load_src)
+            GEN(load_src); // _xtmp = source
+          if (src_high_byte) {
+            GEN(gadget_lea_lsr64_imm);
+            GEN(8);
+          }
+          GEN(gadget_swap_xtmp_x8); // _xtmp = destination, x8 = source
+          if (dst_high_byte) {
+            GEN(gadget_lea_lsr64_imm);
+            GEN(8);
+          }
+          GEN(is8 ? gadget_adc8_x8 : gadget_adc16_x8);
+        } else if (inst.operands[1].type >= arg64_rax &&
+                   inst.operands[1].type <= arg64_rdi) {
+          // ADC reg, reg (rax-rdi)
+          if (is64) {
+            GEN(adc64_gadgets[inst.operands[1].type - arg64_rax]);
+          } else {
+            GEN(adc32_gadgets[inst.operands[1].type - arg64_rax]);
+          }
         } else {
-          GEN(adc32_gadgets[inst.operands[1].type - arg64_rax]);
-        }
-      } else if (inst.operands[1].type >= arg64_r8 &&
-                 inst.operands[1].type <= arg64_r15) {
-        // ADC reg, r8-r15 (need to load r8-r15 from memory first)
-        // Save dst to x8
-        GEN(gadget_save_xtmp_to_x8);
-        // Load r8-r15 into _xtmp
-        gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
-        if (load_src)
-          GEN(load_src);
-        // x8 = dst, _xtmp = src
-        // adc_x8 does: _xtmp = _xtmp + x8 + CF = src + dst + CF (commutative, so correct!)
-        if (is64) {
-          GEN(gadget_adc64_x8);
-        } else {
-          GEN(gadget_adc32_x8);
+          // ADC reg, r8-r15
+          GEN(gadget_save_xtmp_to_x8);
+          gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
+          if (load_src)
+            GEN(load_src);
+          if (is64) {
+            GEN(gadget_adc64_x8);
+          } else {
+            GEN(gadget_adc32_x8);
+          }
         }
       } else if (is_mem(inst.operands[1].type)) {
         // ADC reg, [mem]
@@ -2928,12 +2968,29 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(state->orig_ip);
           return 0;
         }
-        if (is64) {
+        if (is8 || is16) {
+          if (is8) {
+            GEN(gadget_load8_mem);
+          } else {
+            GEN(gadget_load16_mem);
+          }
+          GEN(state->orig_ip);
+          GEN(gadget_save_xtmp_to_x8); // x8 = memory source
+          gadget_t load_dst = get_load64_reg_gadget(inst.operands[0].type);
+          if (load_dst)
+            GEN(load_dst);
+          if (dst_high_byte) {
+            GEN(gadget_lea_lsr64_imm);
+            GEN(8);
+          }
+          GEN(is8 ? gadget_adc8_x8 : gadget_adc16_x8);
+        } else if (is64) {
           GEN(gadget_adc64_mem);
+          GEN(state->orig_ip);
         } else {
           GEN(gadget_adc32_mem);
+          GEN(state->orig_ip);
         }
-        GEN(state->orig_ip);
       } else {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -2947,6 +3004,11 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                inst.operands[1].type == arg64_imm) {
       // ADC [mem], imm - read-modify-write
       int adc_imm_sz = inst.operands[0].size;
+      int64_t adc_imm = inst.operands[1].imm;
+      if (adc_imm_sz == size64_8)
+        adc_imm &= 0xFF;
+      else if (adc_imm_sz == size64_16)
+        adc_imm &= 0xFFFF;
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt); GEN(INT_UNDEFINED); GEN(state->orig_ip); GEN(state->orig_ip); return 0;
       }
@@ -2963,10 +3025,14 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       GEN(state->orig_ip);
       if (adc_imm_sz == size64_64) {
         GEN(gadget_adc64_imm);
-      } else {
+      } else if (adc_imm_sz == size64_32) {
         GEN(gadget_adc32_imm);
+      } else if (adc_imm_sz == size64_16) {
+        GEN(gadget_adc16_imm);
+      } else {
+        GEN(gadget_adc8_imm);
       }
-      GEN(inst.operands[1].imm);
+      GEN(adc_imm);
       GEN(gadget_restore_addr);
       if (adc_imm_sz == size64_64) {
         GEN(store64_gadgets[9]);
@@ -2986,6 +3052,12 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
       if (!load_src) { g(interrupt); GEN(INT_UNDEFINED); GEN(state->orig_ip); GEN(state->orig_ip); return 0; }
       GEN(load_src);
+      if (adc_reg_sz == size64_8 &&
+          inst.raw_operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+          zydis_is_high_byte_reg(inst.raw_operands[1].reg.value)) {
+        GEN(gadget_lea_lsr64_imm);
+        GEN(8);
+      }
       GEN(gadget_save_xtmp_to_x8);
       // 2. Calculate address
       if (!gen_addr(state, &inst.operands[0], &inst)) {
@@ -3006,8 +3078,12 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       // 4. ADC: _xtmp = _xtmp + x8 + CF = [mem] + reg + CF (commutative)
       if (adc_reg_sz == size64_64) {
         GEN(gadget_adc64_x8);
-      } else {
+      } else if (adc_reg_sz == size64_32) {
         GEN(gadget_adc32_x8);
+      } else if (adc_reg_sz == size64_16) {
+        GEN(gadget_adc16_x8);
+      } else {
+        GEN(gadget_adc8_x8);
       }
       // 5. Restore address and store
       GEN(gadget_restore_addr);
@@ -3034,65 +3110,74 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     // SBB: Subtract with Borrow (dst = dst - src - CF)
     if (inst.operand_count >= 2 && is_gpr(inst.operands[0].type)) {
       bool is64 = (inst.operands[0].size == size64_64);
+      bool is16 = (inst.operands[0].size == size64_16);
+      bool is8 = (inst.operands[0].size == size64_8);
+      bool dst_high_byte =
+          is8 && inst.raw_operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+          zydis_is_high_byte_reg(inst.raw_operands[0].reg.value);
       gadget_t load = get_load64_reg_gadget(inst.operands[0].type);
       if (load)
         GEN(load);
 
       if (inst.operands[1].type == arg64_imm) {
         // SBB reg, imm
-        if (is64) {
+        int64_t imm = inst.operands[1].imm;
+        if (is8) {
+          imm &= 0xff;
+          if (dst_high_byte) {
+            GEN(gadget_lea_lsr64_imm);
+            GEN(8);
+          }
+          GEN(gadget_sbb8_imm);
+        } else if (is16) {
+          imm &= 0xffff;
+          GEN(gadget_sbb16_imm);
+        } else if (is64) {
           GEN(gadget_sbb64_imm);
         } else {
           GEN(gadget_sbb32_imm);
         }
-        GEN(inst.operands[1].imm);
-      } else if (inst.operands[1].type >= arg64_rax &&
-                 inst.operands[1].type <= arg64_rdi) {
-        // SBB reg, reg (rax-rdi)
-        if (is64) {
-          GEN(sbb64_gadgets[inst.operands[1].type - arg64_rax]);
+        GEN(imm);
+      } else if (is_gpr(inst.operands[1].type)) {
+        if (is8 || is16) {
+          // 8/16-bit sbb: source in x8, destination in _xtmp.
+          bool src_high_byte =
+              is8 && inst.raw_operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+              zydis_is_high_byte_reg(inst.raw_operands[1].reg.value);
+          GEN(gadget_save_xtmp_to_x8); // x8 = destination
+          gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
+          if (load_src)
+            GEN(load_src); // _xtmp = source
+          if (src_high_byte) {
+            GEN(gadget_lea_lsr64_imm);
+            GEN(8);
+          }
+          GEN(gadget_swap_xtmp_x8); // _xtmp = destination, x8 = source
+          if (dst_high_byte) {
+            GEN(gadget_lea_lsr64_imm);
+            GEN(8);
+          }
+          GEN(is8 ? gadget_sbb8_x8 : gadget_sbb16_x8);
+        } else if (inst.operands[1].type >= arg64_rax &&
+                   inst.operands[1].type <= arg64_rdi) {
+          // SBB reg, reg (rax-rdi)
+          if (is64) {
+            GEN(sbb64_gadgets[inst.operands[1].type - arg64_rax]);
+          } else {
+            GEN(sbb32_gadgets[inst.operands[1].type - arg64_rax]);
+          }
         } else {
-          GEN(sbb32_gadgets[inst.operands[1].type - arg64_rax]);
-        }
-      } else if (inst.operands[1].type >= arg64_r8 &&
-                 inst.operands[1].type <= arg64_r15) {
-        // SBB reg, r8-r15 (need to load r8-r15 from memory first)
-        // Save _xtmp (dst) to x8
-        GEN(gadget_save_xtmp_to_x8);
-        // Load r8-r15 into _xtmp
-        gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
-        if (load_src)
-          GEN(load_src);
-        // sbb_x8 does: _xtmp = _xtmp - x8 - CF = src - dst - CF
-        // But we want: dst - src - CF, so we need to swap
-        // Actually: _xtmp has src (r8-r15), x8 has dst
-        // sbb_x8: _xtmp = _xtmp - x8 - CF = src - dst - CF
-        // That's wrong! We need: dst - src - CF
-        // So swap x8 and _xtmp before the operation
-        // Actually let's just use a different pattern:
-        // 1. Load dst to _xtmp (already done)
-        // 2. Load src (r8-r15) to x8
-        // 3. SBB _xtmp - x8 - CF
-        // So we DON'T swap, we load src to x8 differently:
-        // After save_xtmp_to_x8: x8 = dst
-        // Load r8-r15 to _xtmp: _xtmp = src
-        // Then sbb_x8: _xtmp = _xtmp - x8 - CF = src - dst - CF (WRONG!)
-        // We need: dst - src - CF = x8 - _xtmp - CF
-        // Let me do it differently:
-        // 1. Load r8-r15 to x8 (using save_xtmp, load r8-r15, move to x8)
-        // Actually easier: swap after loading
-        // Current: _xtmp = dst
-        // After save_xtmp_to_x8: x8 = dst, _xtmp unchanged
-        // Load r8-r15: _xtmp = src
-        // Now we have: x8 = dst, _xtmp = src
-        // sbb_x8: _xtmp = _xtmp - x8 - CF = src - dst - CF (STILL WRONG)
-        // Let's swap before sbb:
-        GEN(gadget_swap_xtmp_x8); // Now x8 = src, _xtmp = dst
-        // sbb_x8: _xtmp = _xtmp - x8 - CF = dst - src - CF (CORRECT!)
-        if (is64) {
-          GEN(gadget_sbb64_x8);
-        } else {
-          GEN(gadget_sbb32_x8);
+          // SBB reg, r8-r15
+          GEN(gadget_save_xtmp_to_x8); // x8 = destination
+          gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
+          if (load_src)
+            GEN(load_src); // _xtmp = source
+          GEN(gadget_swap_xtmp_x8); // _xtmp = destination, x8 = source
+          if (is64) {
+            GEN(gadget_sbb64_x8);
+          } else {
+            GEN(gadget_sbb32_x8);
+          }
         }
       } else if (is_mem(inst.operands[1].type)) {
         // SBB reg, [mem]
@@ -3103,12 +3188,29 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
           GEN(state->orig_ip);
           return 0;
         }
-        if (is64) {
+        if (is8 || is16) {
+          if (is8) {
+            GEN(gadget_load8_mem);
+          } else {
+            GEN(gadget_load16_mem);
+          }
+          GEN(state->orig_ip);
+          GEN(gadget_save_xtmp_to_x8); // x8 = memory source
+          gadget_t load_dst = get_load64_reg_gadget(inst.operands[0].type);
+          if (load_dst)
+            GEN(load_dst);
+          if (dst_high_byte) {
+            GEN(gadget_lea_lsr64_imm);
+            GEN(8);
+          }
+          GEN(is8 ? gadget_sbb8_x8 : gadget_sbb16_x8);
+        } else if (is64) {
           GEN(gadget_sbb64_mem);
+          GEN(state->orig_ip);
         } else {
           GEN(gadget_sbb32_mem);
+          GEN(state->orig_ip);
         }
-        GEN(state->orig_ip);
       } else {
         g(interrupt);
         GEN(INT_UNDEFINED);
@@ -3122,6 +3224,11 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
                inst.operands[1].type == arg64_imm) {
       // SBB [mem], imm - read-modify-write
       int sbb_imm_sz = inst.operands[0].size;
+      int64_t sbb_imm = inst.operands[1].imm;
+      if (sbb_imm_sz == size64_8)
+        sbb_imm &= 0xFF;
+      else if (sbb_imm_sz == size64_16)
+        sbb_imm &= 0xFFFF;
       if (!gen_addr(state, &inst.operands[0], &inst)) {
         g(interrupt); GEN(INT_UNDEFINED); GEN(state->orig_ip); GEN(state->orig_ip); return 0;
       }
@@ -3138,10 +3245,14 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       GEN(state->orig_ip);
       if (sbb_imm_sz == size64_64) {
         GEN(gadget_sbb64_imm);
-      } else {
+      } else if (sbb_imm_sz == size64_32) {
         GEN(gadget_sbb32_imm);
+      } else if (sbb_imm_sz == size64_16) {
+        GEN(gadget_sbb16_imm);
+      } else {
+        GEN(gadget_sbb8_imm);
       }
-      GEN(inst.operands[1].imm);
+      GEN(sbb_imm);
       GEN(gadget_restore_addr);
       if (sbb_imm_sz == size64_64) {
         GEN(store64_gadgets[9]);
@@ -3161,6 +3272,12 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       gadget_t load_src = get_load64_reg_gadget(inst.operands[1].type);
       if (!load_src) { g(interrupt); GEN(INT_UNDEFINED); GEN(state->orig_ip); GEN(state->orig_ip); return 0; }
       GEN(load_src);
+      if (sbb_reg_sz == size64_8 &&
+          inst.raw_operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+          zydis_is_high_byte_reg(inst.raw_operands[1].reg.value)) {
+        GEN(gadget_lea_lsr64_imm);
+        GEN(8);
+      }
       GEN(gadget_save_xtmp_to_x8);
       // 2. Calculate address
       if (!gen_addr(state, &inst.operands[0], &inst)) {
@@ -3181,8 +3298,12 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
       // 4. SBB: _xtmp = _xtmp - x8 - CF = [mem] - reg - CF (sbb_x8 does _xtmp - x8 - CF)
       if (sbb_reg_sz == size64_64) {
         GEN(gadget_sbb64_x8);
-      } else {
+      } else if (sbb_reg_sz == size64_32) {
         GEN(gadget_sbb32_x8);
+      } else if (sbb_reg_sz == size64_16) {
+        GEN(gadget_sbb16_x8);
+      } else {
+        GEN(gadget_sbb8_x8);
       }
       // 5. Restore address and store
       GEN(gadget_restore_addr);
