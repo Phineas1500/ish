@@ -24,6 +24,7 @@ set -euo pipefail
 # Note:
 #   For npm workloads, prefer tools/npm24_stable.sh. It defaults to --jitless
 #   to avoid a currently reproducible Node24 JIT-path crash during npm startup.
+#   This launcher also disables Node's compile cache by default for stability.
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ISH_BIN="${ISH_BIN:-$ROOT_DIR/build-64/ish}"
@@ -74,7 +75,9 @@ case "$MODE" in
 esac
 
 if [[ ${#flags[@]} -gt 0 ]]; then
-  exec "$ISH_BIN" -f "$ROOTFS" "$NODE_BIN" "${flags[@]}" "$@"
+  exec "$ISH_BIN" -f "$ROOTFS" /usr/bin/env NODE_DISABLE_COMPILE_CACHE=1 \
+    "$NODE_BIN" "${flags[@]}" "$@"
 else
-  exec "$ISH_BIN" -f "$ROOTFS" "$NODE_BIN" "$@"
+  exec "$ISH_BIN" -f "$ROOTFS" /usr/bin/env NODE_DISABLE_COMPILE_CACHE=1 \
+    "$NODE_BIN" "$@"
 fi
