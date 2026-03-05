@@ -4449,9 +4449,9 @@ sse_xmm_xmm_op movdqa_xmm
     mov x0, _cpu
     ldr x1, [_ip]              // src XMM index
     bl NAME(helper_movmskpd)
-    mov x14, x0
+    mov w14, w0
     restore_c
-    mov _xtmp, x14
+    uxtw _xtmp, w14
     gret 1
 
 // MOVMSKPS r, xmm - Move sign bits of packed singles to GPR
@@ -4461,9 +4461,9 @@ sse_xmm_xmm_op movdqa_xmm
     mov x0, _cpu
     ldr x1, [_ip]              // src XMM index
     bl NAME(helper_movmskps)
-    mov x14, x0
+    mov w14, w0
     restore_c
-    mov _xtmp, x14
+    uxtw _xtmp, w14
     gret 1
 
 // PMOVMSKB r, xmm - Move byte mask to GPR
@@ -4473,9 +4473,9 @@ sse_xmm_xmm_op movdqa_xmm
     mov x0, _cpu
     ldr x1, [_ip]              // src XMM index
     bl NAME(helper_pmovmskb)
-    mov x14, x0               // Save result to x14 (not in save_c/restore_c set)
+    mov w14, w0               // Save 32-bit result across restore_c
     restore_c
-    mov _xtmp, x14             // Transfer result to _xtmp after restore_c
+    uxtw _xtmp, w14            // x86-64 r32 destinations must zero-extend
     gret 1
 
 // PEXTRW r32, xmm, imm8 - Extract word from XMM
@@ -4486,9 +4486,9 @@ sse_xmm_xmm_op movdqa_xmm
     ldr x1, [_ip]              // src XMM index
     ldr x2, [_ip, 8]           // imm8
     bl NAME(helper_pextrw)
-    mov x14, x0
+    mov w14, w0
     restore_c
-    mov _xtmp, x14
+    uxtw _xtmp, w14
     gret 2
 
 // PINSRW xmm, r32, imm8 - Insert word into XMM from register
