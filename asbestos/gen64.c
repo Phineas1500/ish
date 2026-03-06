@@ -1200,6 +1200,30 @@ static inline void gen_store_reg_partial(struct gen_state *state,
     GEN(store);
 }
 
+static inline bool gen_load_reg_as_operand_size(struct gen_state *state,
+    struct decoded_inst64 *inst, int operand_idx) {
+  struct decoded_op64 *op = &inst->operands[operand_idx];
+  gadget_t load = get_load64_reg_gadget(op->type);
+  if (!load)
+    return false;
+  GEN(load);
+
+  if (op->size == size64_32) {
+    GEN(gadget_zero_extend32);
+  } else if (op->size == size64_16) {
+    GEN(gadget_zero_extend16);
+  } else if (op->size == size64_8) {
+    bool src_high = zydis_is_high_byte_reg(
+        inst->raw_operands[operand_idx].reg.value);
+    if (src_high) {
+      GEN(gadget_lea_lsr64_imm);
+      GEN(8);
+    }
+    GEN(gadget_zero_extend8);
+  }
+  return true;
+}
+
 // Helper to check if a type is a memory operand (including RIP-relative)
 static inline bool is_mem(enum arg64 type) {
   return type == arg64_mem || type == arg64_rip_rel;
@@ -6707,27 +6731,70 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         // If both same byte position (xchg al, al), it's a NOP - do nothing
         break;
       }
-      // XCHG reg1, reg2 - Exchange two full registers
-      gadget_t load1 = get_load64_reg_gadget(inst.operands[0].type);
-      gadget_t load2 = get_load64_reg_gadget(inst.operands[1].type);
-      gadget_t store1 = get_store64_reg_gadget(inst.operands[0].type);
-      gadget_t store2 = get_store64_reg_gadget(inst.operands[1].type);
-      if (!load1 || !load2 || !store1 || !store2) {
-        g(interrupt);
-        GEN(INT_UNDEFINED);
-        GEN(state->orig_ip);
-        GEN(state->orig_ip);
-        return 0;
+      if (inst.operands[0].size == size64_64) {
+        // XCHG reg1, reg2 - Exchange two full 64-bit registers
+        gadget_t load1 = get_load64_reg_gadget(inst.operands[0].type);
+        gadget_t load2 = get_load64_reg_gadget(inst.operands[1].type);
+        gadget_t store1 = get_store64_reg_gadget(inst.operands[0].type);
+        gadget_t store2 = get_store64_reg_gadget(inst.operands[1].type);
+        if (!load1 || !load2 || !store1 || !store2) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        // Load reg1, save to x8
+        GEN(load1);
+        GEN(gadget_save_xtmp_to_x8);
+        // Load reg2, store to reg1
+        GEN(load2);
+        GEN(store1);
+        // Restore x8 (old reg1), store to reg2
+        GEN(gadget_restore_xtmp_from_x8);
+        GEN(store2);
+      } else if (inst.operands[0].size == size64_32) {
+        // 32-bit XCHG must zero-extend both results before storing them back.
+        if (!gen_load_reg_as_operand_size(state, &inst, 0) ||
+            !get_store64_reg_gadget(inst.operands[0].type) ||
+            !get_store64_reg_gadget(inst.operands[1].type)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        GEN(gadget_save_xtmp_to_x8); // x8 = old reg1 low 32 bits
+        if (!gen_load_reg_as_operand_size(state, &inst, 1)) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        gen_store_reg_partial(state, &inst, 0);
+        GEN(gadget_restore_xtmp_from_x8);
+        gen_store_reg_partial(state, &inst, 1);
+      } else {
+        // 8/16-bit reg-reg XCHG continues to use full-register swap machinery.
+        gadget_t load1 = get_load64_reg_gadget(inst.operands[0].type);
+        gadget_t load2 = get_load64_reg_gadget(inst.operands[1].type);
+        gadget_t store1 = get_store64_reg_gadget(inst.operands[0].type);
+        gadget_t store2 = get_store64_reg_gadget(inst.operands[1].type);
+        if (!load1 || !load2 || !store1 || !store2) {
+          g(interrupt);
+          GEN(INT_UNDEFINED);
+          GEN(state->orig_ip);
+          GEN(state->orig_ip);
+          return 0;
+        }
+        GEN(load1);
+        GEN(gadget_save_xtmp_to_x8);
+        GEN(load2);
+        GEN(store1);
+        GEN(gadget_restore_xtmp_from_x8);
+        GEN(store2);
       }
-      // Load reg1, save to x8
-      GEN(load1);
-      GEN(gadget_save_xtmp_to_x8);
-      // Load reg2, store to reg1
-      GEN(load2);
-      GEN(store1);
-      // Restore x8 (old reg1), store to reg2
-      GEN(gadget_restore_xtmp_from_x8);
-      GEN(store2);
     } else if (is_gpr(inst.operands[0].type) && is_mem(inst.operands[1].type)) {
       // XCHG reg, [mem] - operand order is reg, mem
       if (!gen_addr(state, &inst.operands[1], &inst)) {
